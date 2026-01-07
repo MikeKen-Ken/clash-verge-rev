@@ -33,10 +33,13 @@ export const useCloseAllWithDelayCheck = () => {
 
     groups.forEach((group) => {
       if (group.all) {
-        group.all.forEach((proxyName) => {
-          const proxy = proxiesData.records?.[proxyName];
-          if (proxy?.provider) {
-            allProviders.add(proxy.provider);
+        group.all.forEach((proxy) => {
+          const proxyName = typeof proxy === "string" ? proxy : proxy.name;
+          if (!proxyName) return;
+          
+          const proxyRecord = proxiesData.records?.[proxyName];
+          if (proxyRecord?.provider) {
+            allProviders.add(proxyRecord.provider);
           } else if (proxyName !== "DIRECT" && proxyName !== "REJECT") {
             allProxyNames.push(proxyName);
           }
@@ -61,12 +64,14 @@ export const useCloseAllWithDelayCheck = () => {
       if (!group.all || group.all.length === 0) return;
 
       const groupProxyNames = group.all
-        .filter((name) => {
-          const proxy = proxiesData.records?.[name];
+        .map((proxy) => typeof proxy === "string" ? proxy : proxy.name)
+        .filter((proxyName): proxyName is string => {
+          if (!proxyName) return false;
+          const proxy = proxiesData.records?.[proxyName];
           return (
             !proxy?.provider &&
-            name !== "DIRECT" &&
-            name !== "REJECT"
+            proxyName !== "DIRECT" &&
+            proxyName !== "REJECT"
           );
         });
 
