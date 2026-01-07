@@ -190,13 +190,9 @@ jobs:
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Updater signing keys are not needed since createUpdaterArtifacts is disabled for autobuilds
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Signing is disabled for autobuilds (personal testing)
+          # No TAURI_SIGNING_PRIVATE_KEY = no updater signing
+          # No APPLE_CERTIFICATE = no macOS code signing
         with:
           tagName: ${{ env.TAG_NAME }}
           releaseName: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
