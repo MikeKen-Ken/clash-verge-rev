@@ -177,38 +177,20 @@ jobs:
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
-      - name: Prepare signing environment variables
-        id: prepare_signing
+      - name: Disable updater artifacts for autobuild
         shell: bash
         run: |
-          # Only set signing keys if they exist, are not empty, and have valid format
-          # This prevents "Missing comment in secret key" errors when keys are missing/malformed
-          PRIVATE_KEY="${{ secrets.TAURI_PRIVATE_KEY }}"
-          KEY_PASSWORD="${{ secrets.TAURI_KEY_PASSWORD }}"
-          
-          if [ -n "$PRIVATE_KEY" ] && [ -n "$KEY_PASSWORD" ]; then
-            # Check if the key has a proper header (starts with -----BEGIN)
-            if echo "$PRIVATE_KEY" | grep -q "^-----BEGIN"; then
-              echo "TAURI_SIGNING_PRIVATE_KEY=$PRIVATE_KEY" >> $GITHUB_ENV
-              echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
-              echo "SIGNING_ENABLED=true" >> $GITHUB_ENV
-              echo "Valid signing keys found, updater signing will be enabled"
-            else
-              echo "SIGNING_ENABLED=false" >> $GITHUB_ENV
-              echo "Signing key format is invalid (missing header), updater signing will be skipped"
-            fi
-          else
-            echo "SIGNING_ENABLED=false" >> $GITHUB_ENV
-            echo "Signing keys not found or empty, updater signing will be skipped"
-          fi
+          # Disable createUpdaterArtifacts for autobuilds to avoid signing issues
+          # Autobuilds don't need signed updater artifacts
+          node -e "const fs = require('fs'); const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')); config.bundle.createUpdaterArtifacts = false; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2));"
+          echo "Disabled createUpdaterArtifacts for autobuild"
 
       - name: Tauri build for Windows x64 and macOS M chip
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Updater signing keys are not needed since createUpdaterArtifacts is disabled for autobuilds
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
