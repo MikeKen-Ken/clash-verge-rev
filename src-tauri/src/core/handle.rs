@@ -101,6 +101,10 @@ impl Handle {
         Self::send_event(FrontendEvent::ProfileUpdateCompleted { uid });
     }
 
+    pub fn notify_close_all_connections() {
+        Self::send_event(FrontendEvent::CloseAllConnections);
+    }
+
     // TODO 利用 &str 等缩短 Clone
     pub fn notice_message<S: Into<String>, M: Into<String>>(status: S, msg: M) {
         let handle = Self::global();

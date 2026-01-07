@@ -185,16 +185,10 @@ impl Hotkey {
                 });
             }
             HotkeyFunction::CloseAllConnections => {
-                AsyncHandler::spawn(async move || {
-                    if let Err(err) = handle::Handle::mihomo().await.close_all_connections().await {
-                        logging!(
-                            error,
-                            Type::Hotkey,
-                            "Failed to close all connections via hotkey: {}",
-                            err
-                        );
-                    }
-                });
+                // Emit frontend event to trigger delay checks first
+                // The frontend will handle delay checks and then close connections
+                use crate::core::notification::FrontendEvent;
+                handle::Handle::notify_close_all_connections();
             }
             HotkeyFunction::Quit => {
                 AsyncHandler::spawn(async move || {

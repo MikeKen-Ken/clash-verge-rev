@@ -15,6 +15,7 @@ pub enum FrontendEvent {
     TimerUpdated { profile_index: String },
     ProfileUpdateStarted { uid: String },
     ProfileUpdateCompleted { uid: String },
+    CloseAllConnections,
 }
 
 #[derive(Debug)]
@@ -116,6 +117,7 @@ impl NotificationSystem {
             FrontendEvent::TimerUpdated { profile_index } => ("verge://timer-updated", Ok(json!(profile_index))),
             FrontendEvent::ProfileUpdateStarted { uid } => ("profile-update-started", Ok(json!({ "uid": uid }))),
             FrontendEvent::ProfileUpdateCompleted { uid } => ("profile-update-completed", Ok(json!({ "uid": uid }))),
+            FrontendEvent::CloseAllConnections => ("verge://close-all-connections", Ok(json!("yes"))),
         }
     }
 
