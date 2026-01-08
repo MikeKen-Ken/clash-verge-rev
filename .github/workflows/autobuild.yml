@@ -105,8 +105,8 @@ jobs:
       tag_name: autobuild
       dry_run: false
 
-  autobuild-x86-windows-macos-linux:
-    name: Autobuild Windows x64 and macOS M chip
+  autobuild-x86-windows:
+    name: Autobuild Windows x64
     needs: [check_commit, update_tag]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     strategy:
@@ -115,8 +115,6 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
@@ -185,7 +183,7 @@ jobs:
           node -e "const fs = require('fs'); const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')); config.bundle.createUpdaterArtifacts = false; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2));"
           echo "Disabled createUpdaterArtifacts for autobuild"
 
-      - name: Tauri build for Windows x64 and macOS M chip
+      - name: Tauri build for Windows x64
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
