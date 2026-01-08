@@ -53,14 +53,14 @@ export interface IRenderItem {
   testUrl?: string;
 }
 
-// 优化列布局计算 - 最大10列
+// 优化列布局计算 - 最大20列
 const calculateColumns = (width: number, configCol: number): number => {
-  // 如果配置了固定列数（1-10，排除6因为6是自动模式）
-  if (configCol > 0 && configCol !== 6 && configCol <= 10) {
-    return Math.min(configCol, 10);
+  // 如果配置了固定列数（1-20，排除6因为6是自动模式）
+  if (configCol > 0 && configCol !== 6 && configCol <= 20) {
+    return Math.min(configCol, 20);
   }
 
-  // 自动模式：根据窗口宽度计算，最大10列
+  // 自动模式：根据窗口宽度计算，最大20列
   if (width > 3840) return 20; // 4K+ 显示器
   if (width > 3200) return 16;
   if (width > 2560) return 14;
