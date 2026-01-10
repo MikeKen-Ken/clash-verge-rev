@@ -1,4 +1,5 @@
 import {
+  ArrowDropDown,
   DeleteForeverRounded,
   TableChartRounded,
   TableRowsRounded,
@@ -9,6 +10,7 @@ import {
   ButtonGroup,
   Fab,
   IconButton,
+  Menu,
   MenuItem,
   Zoom,
 } from "@mui/material";
@@ -33,6 +35,7 @@ import { ConnectionTable } from "@/components/connection/connection-table";
 import { useConnectionData } from "@/hooks/use-connection-data";
 import { useConnectionSetting } from "@/hooks/use-connection-setting";
 import parseTraffic from "@/utils/parse-traffic";
+import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
 
@@ -111,12 +114,34 @@ const ConnectionsPage = () => {
   }, [connections, connectionsType, match, curOrderOpt]);
 
   const onCloseAll = useLockFn(closeAllConnections);
+  const onCloseExcludingDirect = useLockFn(closeConnectionsExcludingDirect);
+
+  const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
+  const isCloseMenuOpen = Boolean(closeMenuAnchor);
 
   const detailRef = useRef<ConnectionDetailRef>(null!);
 
   const handleSearch = useCallback((match: (content: string) => boolean) => {
     setMatch(() => match);
   }, []);
+
+  const handleCloseMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setCloseMenuAnchor(event.currentTarget);
+  }, []);
+
+  const handleCloseMenuClose = useCallback(() => {
+    setCloseMenuAnchor(null);
+  }, []);
+
+  const handleCloseAll = useCallback(() => {
+    onCloseAll();
+    handleCloseMenuClose();
+  }, [onCloseAll, handleCloseMenuClose]);
+
+  const handleCloseExcludingDirect = useCallback(() => {
+    onCloseExcludingDirect();
+    handleCloseMenuClose();
+  }, [onCloseExcludingDirect, handleCloseMenuClose]);
 
   const hasTableData = filterConn.length > 0;
 
@@ -163,11 +188,38 @@ const ConnectionsPage = () => {
               <TableChartRounded titleAccess={t("shared.actions.tableView")} />
             )}
           </IconButton>
-          <Button size="small" variant="contained" onClick={onCloseAll}>
-            <span style={{ whiteSpace: "nowrap" }}>
+          <ButtonGroup size="small" variant="contained">
+            <Button onClick={handleCloseAll}>
+              <span style={{ whiteSpace: "nowrap" }}>
+                {t("shared.actions.closeAll")}
+              </span>
+            </Button>
+            <Button
+              size="small"
+              aria-controls={isCloseMenuOpen ? "close-menu" : undefined}
+              aria-expanded={isCloseMenuOpen ? "true" : undefined}
+              aria-haspopup="true"
+              onClick={handleCloseMenuClick}
+            >
+              <ArrowDropDown />
+            </Button>
+          </ButtonGroup>
+          <Menu
+            id="close-menu"
+            anchorEl={closeMenuAnchor}
+            open={isCloseMenuOpen}
+            onClose={handleCloseMenuClose}
+            MenuListProps={{
+              "aria-labelledby": "close-button",
+            }}
+          >
+            <MenuItem onClick={handleCloseAll}>
               {t("shared.actions.closeAll")}
-            </span>
-          </Button>
+            </MenuItem>
+            <MenuItem onClick={handleCloseExcludingDirect}>
+              关闭非DIRECT连接
+            </MenuItem>
+          </Menu>
         </Box>
       }
     >

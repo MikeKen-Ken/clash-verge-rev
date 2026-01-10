@@ -6,6 +6,7 @@ import { useProxiesData } from "@/hooks/use-clash-data";
 import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
+import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 
 /**
  * Hook to handle close all connections with delay checks
@@ -17,8 +18,8 @@ export const useCloseAllWithDelayCheck = () => {
 
   const handleCloseAllWithDelayCheck = useCallback(async () => {
     if (!proxiesData?.groups) {
-      debugLog("[CloseAll] No proxy groups available, closing connections directly");
-      await closeAllConnections();
+      debugLog("[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)");
+      await closeConnectionsExcludingDirect();
       return;
     }
 
@@ -95,10 +96,10 @@ export const useCloseAllWithDelayCheck = () => {
 
     // Wait for all delay checks to complete
     await Promise.allSettled(delayCheckPromises);
-    debugLog("[CloseAll] All delay checks completed, closing connections");
+    debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
 
-    // Close all connections
-    await closeAllConnections();
+    // Close all connections except those using DIRECT
+    await closeConnectionsExcludingDirect();
   }, [proxiesData, verge?.default_latency_timeout]);
 
   useEffect(() => {
