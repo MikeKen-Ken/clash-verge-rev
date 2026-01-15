@@ -11,6 +11,7 @@
 - 修复恢复备份时 `config.yaml` / `profiles.yaml` 文件内字段未正确恢复
 - 修复 Windows 下系统主题同步问题
 - 修复 URL Schemes 无法正常导入
+- 修复 Linux 下无法安装 TUN 服务
 
 <details>
 <summary><strong> ✨ 新增功能 </strong></summary>
@@ -23,7 +24,7 @@
 - 允许禁用在托盘中显示代理组
 - 支持在「编辑节点」中直接导入 AnyTLS URI 配置
 - 支持关闭「验证代理绕过格式」
-- 新增系统代理绕过的可视化编辑器
+- 新增系统代理绕过和 TUN 排除自定义网段的可视化编辑器
 
 </details>
 
@@ -42,5 +43,7 @@
 - 移除 Windows 自启动计划任务中冗余的 3 秒延时
 - 右键错误通知可复制错误详情
 - 保存 TUN 设置时优化执行流程，避免界面卡顿
+- 补充 `deb` / `rpm` 依赖 `libayatana-appindicator`
+- 「连接」表格标题的排序点击区域扩展到整列宽度
 
 </details>
