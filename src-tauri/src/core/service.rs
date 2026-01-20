@@ -256,9 +256,11 @@ fn install_service() -> Result<()> {
 
     // clash_verge_i18n::sync_locale(Config::verge().await.latest_arc().language.as_deref());
 
+    let gid = tauri_plugin_clash_verge_sysinfo::current_gid();
     let prompt = clash_verge_i18n::t!("service.adminInstallPrompt");
-    let command =
-        format!(r#"do shell script "sudo '{install_shell}'" with administrator privileges with prompt "{prompt}""#);
+    let command = format!(
+        r#"do shell script "sudo CLASH_VERGE_SERVICE_GID={gid} '{install_shell}'" with administrator privileges with prompt "{prompt}""#
+    );
 
     let status = StdCommand::new("osascript").args(vec!["-e", &command]).status()?;
 
@@ -381,7 +383,12 @@ pub(super) async fn stop_core_by_service() -> Result<()> {
 /// 检查服务是否正在运行
 pub async fn is_service_available() -> Result<()> {
     if let Err(e) = Path::metadata(clash_verge_service_ipc::IPC_PATH.as_ref()) {
-        logging!(warn, Type::Service, "Some issue with service IPC Path: {}", e);
+        let verge = Config::verge().await;
+        let verge_last = verge.latest_arc();
+        let is_enable = verge_last.enable_tun_mode.unwrap_or(false);
+        if is_enable {
+            logging!(warn, Type::Service, "Some issue with service IPC Path: {}", e);
+        }
         return Err(e.into());
     }
     clash_verge_service_ipc::connect().await?;

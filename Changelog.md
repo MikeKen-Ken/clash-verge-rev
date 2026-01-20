@@ -1,6 +1,6 @@
 ## v2.4.5
 
-- **Mihomo(Meta) 内核升级至 v1.19.18**
+- **Mihomo(Meta) 内核升级至 v1.19.19**
 
 ### 🐞 修复问题
 
@@ -12,6 +12,9 @@
 - 修复 Windows 下系统主题同步问题
 - 修复 URL Schemes 无法正常导入
 - 修复 Linux 下无法安装 TUN 服务
+- 修复可能的端口被占用误报
+- 修复设置允许外部控制来源不能立即生效
+- 修复前端性能回归问题
 
 <details>
 <summary><strong> ✨ 新增功能 </strong></summary>
@@ -45,5 +48,6 @@
 - 保存 TUN 设置时优化执行流程，避免界面卡顿
 - 补充 `deb` / `rpm` 依赖 `libayatana-appindicator`
 - 「连接」表格标题的排序点击区域扩展到整列宽度
+- 备份恢复时显示加载覆盖层，恢复过程无需再手动关闭对话框
 
 </details>
