@@ -98,10 +98,19 @@ export const ProxyItemMini = (props: Props) => {
           justifyContent: "space-between",
           alignItems: "center",
         },
-        ({ palette: { mode, primary } }) => {
+        ({ palette: { mode, primary, success } }) => {
           const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
           const showDelay = delayValue > 0;
           const selectColor = mode === "light" ? primary.main : primary.light;
+          
+          // 判断节点是否测试成功（不是 T 或 E）
+          const delayText = delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
+          const isSuccess = delayText !== "T" && delayText !== "E" && delayText !== "-" && delayText !== "testing" && delayText !== "";
+          
+          // 成功的节点使用浅绿色背景
+          const finalBgcolor = isSuccess 
+            ? alpha(success.main, 0.15)
+            : bgcolor;
 
           return {
             "&:hover .the-check": { display: !showDelay ? "block" : "none" },
@@ -123,7 +132,7 @@ export const ProxyItemMini = (props: Props) => {
                   ? alpha(primary.main, 0.15)
                   : alpha(primary.main, 0.35),
             },
-            backgroundColor: bgcolor,
+            backgroundColor: finalBgcolor,
           };
         },
       ]}
@@ -246,23 +255,11 @@ export const ProxyItemMini = (props: Props) => {
               onDelay();
             }}
             color={delayManager.formatDelayColor(delayValue, timeout)}
-            sx={({ palette }) => {
-              const delayText = delayManager.formatDelay(delayValue, timeout);
-              const isSuccess = delayText !== "T" && delayText !== "E" && delayText !== "-" && delayText !== "testing";
-              const baseSx = !proxy.provider
+            sx={({ palette }) =>
+              !proxy.provider
                 ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
-                : {};
-              
-              // 成功的节点显示浅绿色背景
-              if (isSuccess) {
-                return {
-                  ...baseSx,
-                  bgcolor: alpha(palette.success.main, 0.15),
-                };
-              }
-              
-              return baseSx;
-            }}
+                : {}
+            }
           >
             {delayManager.formatDelay(delayValue, timeout)}
           </Widget>
