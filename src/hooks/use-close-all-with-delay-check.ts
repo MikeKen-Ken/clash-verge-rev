@@ -1,7 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { closeAllConnections } from "tauri-plugin-mihomo-api";
-import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
 import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
@@ -78,16 +77,13 @@ export const useCloseAllWithDelayCheck = () => {
 
       if (groupProxyNames.length === 0) return;
 
-      const url = delayManager.getUrl(group.name);
       debugLog(
         `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
       );
 
       try {
-        await Promise.race([
-          delayManager.checkListDelay(groupProxyNames, group.name, timeout),
-          delayGroup(group.name, url, timeout),
-        ]);
+        // 只使用 checkListDelay 来测试所有代理，避免 Promise.race 导致测试被取消
+        await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
         debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
       } catch (error) {
         console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
