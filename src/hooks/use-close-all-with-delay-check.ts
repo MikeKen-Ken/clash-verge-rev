@@ -83,16 +83,24 @@ export const useCloseAllWithDelayCheck = () => {
       );
 
       try {
-        // 使用 Promise.race 同时运行 checkListDelay 和 delayGroup，取最快结果
-        // delayGroup 是后端 API，可能更快更可靠，和正常测试保持一致
-        await Promise.race([
-          delayManager.checkListDelay(groupProxyNames, group.name, timeout),
-          delayGroup(group.name, url, timeout).then((result) => {
+        // 串行执行：主要等待 checkListDelay 完成（它会等待所有代理测试完成）
+        // delayGroup 作为辅助，但不阻塞下一个组的开始
+        // 确保当前组的所有代理测试都完成后再进行下一个组，避免多个组同时测试
+        debugLog(`[CloseAll] Starting checkListDelay for group ${group.name}`);
+        await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
+        debugLog(`[CloseAll] checkListDelay completed for group ${group.name}`);
+        
+        // delayGroup 作为辅助测试，不阻塞流程
+        delayGroup(group.name, url, timeout)
+          .then((result) => {
             debugLog(
               `[CloseAll] delayGroup returned ${Object.keys(result || {}).length} results for group ${group.name}`,
             );
-          }),
-        ]);
+          })
+          .catch((error) => {
+            debugLog(`[CloseAll] delayGroup error for group ${group.name}:`, error);
+          });
+        
         debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
       } catch (error) {
         console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
