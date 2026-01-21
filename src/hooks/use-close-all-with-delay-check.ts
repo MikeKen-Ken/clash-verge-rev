@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
-import { useProxiesData } from "@/hooks/use-clash-data";
+import { useAppData } from "@/providers/app-data-context";
 import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
@@ -13,7 +13,7 @@ import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
  * Listens to the hotkey event and triggers delay checks for all groups before closing connections
  */
 export const useCloseAllWithDelayCheck = () => {
-  const { proxies: proxiesData } = useProxiesData();
+  const { proxies: proxiesData } = useAppData();
   const { verge } = useVerge();
 
   const handleCloseAllWithDelayCheck = useCallback(async () => {
@@ -32,9 +32,9 @@ export const useCloseAllWithDelayCheck = () => {
     const allProxyNames: string[] = [];
     const allProviders = new Set<string>();
 
-    groups.forEach((group) => {
+    groups.forEach((group: IProxyGroupItem) => {
       if (group.all) {
-        group.all.forEach((proxy) => {
+        group.all.forEach((proxy: IProxyItem | string) => {
           const proxyName = typeof proxy === "string" ? proxy : proxy.name;
           if (!proxyName) return;
           
@@ -61,12 +61,12 @@ export const useCloseAllWithDelayCheck = () => {
     }
 
     // Check delays for each group
-    const delayCheckPromises = groups.map(async (group) => {
+    const delayCheckPromises = groups.map(async (group: IProxyGroupItem) => {
       if (!group.all || group.all.length === 0) return;
 
       const groupProxyNames = group.all
-        .map((proxy) => typeof proxy === "string" ? proxy : proxy.name)
-        .filter((proxyName): proxyName is string => {
+        .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
+        .filter((proxyName: string | undefined): proxyName is string => {
           if (!proxyName) return false;
           const proxy = proxiesData.records?.[proxyName];
           return (
