@@ -246,11 +246,23 @@ export const ProxyItemMini = (props: Props) => {
               onDelay();
             }}
             color={delayManager.formatDelayColor(delayValue, timeout)}
-            sx={({ palette }) =>
-              !proxy.provider
+            sx={({ palette }) => {
+              const delayText = delayManager.formatDelay(delayValue, timeout);
+              const isSuccess = delayText !== "T" && delayText !== "E" && delayText !== "-" && delayText !== "testing";
+              const baseSx = !proxy.provider
                 ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
-                : {}
-            }
+                : {};
+              
+              // 成功的节点显示浅绿色背景
+              if (isSuccess) {
+                return {
+                  ...baseSx,
+                  bgcolor: alpha(palette.success.main, 0.15),
+                };
+              }
+              
+              return baseSx;
+            }}
           >
             {delayManager.formatDelay(delayValue, timeout)}
           </Widget>

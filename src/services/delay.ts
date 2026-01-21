@@ -330,10 +330,10 @@ class DelayManager {
 
   formatDelayColor(delay: number, timeout = 10000) {
     if (delay < 0) return "";
-    if (delay === 0 || delay >= timeout) return "error.main";
-    if (delay >= 10000) return "error.main";
-    if (delay >= 400) return "warning.main";
-    if (delay >= 250) return "primary.main";
+    // T (timeout) 或 E (error) 显示为红色
+    if (delay === 0 || (delay >= timeout && delay <= 1e5)) return "error.main";
+    if (delay > 1e5) return "error.main";
+    // 所有成功的节点（不是 T 或 E）都显示为浅绿色
     return "success.main";
   }
 }
