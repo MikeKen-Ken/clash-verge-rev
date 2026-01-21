@@ -241,18 +241,12 @@ class DelayManager {
         timeoutPromise,
       ]);
 
-      // 确保至少显示500ms的加载动画
       const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < 500) {
-        await new Promise((resolve) => setTimeout(resolve, 500 - elapsedTime));
-      }
 
       delay = result.delay;
       elapsed = elapsedTime;
       debugLog(`[DelayManager] 延迟测试完成，代理: ${name}, 结果: ${delay}ms`);
     } catch (error) {
-      // 确保至少显示500ms的加载动画
-      await new Promise((resolve) => setTimeout(resolve, 500));
       console.error(`[DelayManager] 延迟测试出错，代理: ${name}`, error);
       delay = 1e6; // error
       elapsed = Date.now() - startTime;
@@ -311,7 +305,7 @@ class DelayManager {
     };
 
     // 限制并发数，避免发送太多请求
-    const actualConcurrency = Math.min(concurrency, names.length, 10);
+    const actualConcurrency = Math.min(concurrency, names.length, 30);
     debugLog(`[DelayManager] 实际并发数: ${actualConcurrency}`);
 
     const promiseList: Promise<void>[] = [];
