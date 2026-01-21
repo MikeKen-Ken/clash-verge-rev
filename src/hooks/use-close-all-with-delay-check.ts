@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
 import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
@@ -59,9 +59,9 @@ export const useCloseAllWithDelayCheck = () => {
       );
     }
 
-    // Check delays for each group
-    const delayCheckPromises = groups.map(async (group: IProxyGroupItem) => {
-      if (!group.all || group.all.length === 0) return;
+    // Check delays for each group - 串行执行避免并发过高
+    for (const group of groups) {
+      if (!group.all || group.all.length === 0) continue;
 
       const groupProxyNames = group.all
         .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
@@ -75,23 +75,29 @@ export const useCloseAllWithDelayCheck = () => {
           );
         });
 
-      if (groupProxyNames.length === 0) return;
+      if (groupProxyNames.length === 0) continue;
 
+      const url = delayManager.getUrl(group.name);
       debugLog(
         `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
       );
 
       try {
-        // 只使用 checkListDelay 来测试所有代理，避免 Promise.race 导致测试被取消
-        await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
+        // 使用 Promise.race 同时运行 checkListDelay 和 delayGroup，取最快结果
+        // delayGroup 是后端 API，可能更快更可靠，和正常测试保持一致
+        await Promise.race([
+          delayManager.checkListDelay(groupProxyNames, group.name, timeout),
+          delayGroup(group.name, url, timeout).then((result) => {
+            debugLog(
+              `[CloseAll] delayGroup returned ${Object.keys(result || {}).length} results for group ${group.name}`,
+            );
+          }),
+        ]);
         debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
       } catch (error) {
         console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
       }
-    });
-
-    // Wait for all delay checks to complete
-    await Promise.allSettled(delayCheckPromises);
+    }
     debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
 
     // Close all connections except those using DIRECT
