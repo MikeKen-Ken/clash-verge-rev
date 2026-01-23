@@ -243,6 +243,16 @@ pub async fn notify_close_all_completed() {
     notify_event(NotificationEvent::CloseAllConnectionsCompleted).await;
 }
 
+/// 发送 fallback 节点切换的通知
+#[tauri::command]
+pub async fn notify_fallback_node_switched(group_name: String, node_name: String) {
+    use crate::utils::notification::{NotificationEvent, notify_event};
+    notify_event(NotificationEvent::FallbackNodeSwitched {
+        group_name: group_name.as_str(),
+        node_name: node_name.as_str(),
+    }).await;
+}
+
 /// UI加载阶段
 #[tauri::command]
 pub fn update_ui_stage(stage: UiReadyStage) {

@@ -14,7 +14,12 @@ pub enum NotificationEvent<'a> {
     LightweightModeEntered,
     ProfilesReactivated,
     AppQuit,
+    CloseAllConnectionsStarted,
     CloseAllConnectionsCompleted,
+    FallbackNodeSwitched {
+        group_name: &'a str,
+        node_name: &'a str,
+    },
     #[cfg(target_os = "macos")]
     AppHidden,
 }
@@ -63,10 +68,22 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
             let body = clash_verge_i18n::t!("notifications.appQuit.body");
             notify(title, body);
         }
+        NotificationEvent::CloseAllConnectionsStarted => {
+            notify(
+                "开始关闭连接".into(),
+                "正在关闭所有连接并切换节点，请稍候...".into(),
+            );
+        }
         NotificationEvent::CloseAllConnectionsCompleted => {
             notify(
                 "操作完成".into(),
                 "所有连接已关闭，节点已切换完成，可以正常使用网络".into(),
+            );
+        }
+        NotificationEvent::FallbackNodeSwitched { group_name, node_name } => {
+            notify(
+                "节点已切换".into(),
+                format!("代理组 {} 已切换到节点 {}", group_name, node_name).into(),
             );
         }
         #[cfg(target_os = "macos")]
