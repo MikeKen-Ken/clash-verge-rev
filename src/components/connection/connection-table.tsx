@@ -28,6 +28,7 @@ import parseTraffic from "@/utils/parse-traffic";
 import { truncateStr } from "@/utils/truncate-str";
 
 import { ConnectionColumnManager } from "./connection-column-manager";
+import { ProcessIcon } from "./process-icon";
 
 const ROW_HEIGHT = 40;
 
@@ -63,6 +64,7 @@ const createConnectionRow = (each: IConnectionsItem) => {
     chains,
     rule,
     process: truncateStr(metadata.process || metadata.processPath),
+    processPath: metadata.processPath,
     time: each.start,
     source: `${metadata.sourceIP}:${metadata.sourcePort}`,
     remoteDestination: destination,
@@ -149,7 +151,7 @@ export const ConnectionTable = (props: Props) => {
     },
   );
 
-  type ColumnField = Exclude<keyof ConnectionRow, "connectionData">;
+  type ColumnField = Exclude<keyof ConnectionRow, "connectionData" | "processPath">;
 
   interface BaseColumn {
     field: ColumnField;
@@ -217,6 +219,20 @@ export const ConnectionTable = (props: Props) => {
         headerName: t("connections.components.fields.process"),
         width: 180,
         minWidth: 140,
+        cell: (row) => (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <ProcessIcon processPath={row.processPath} size={16} />
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {row.process}
+            </span>
+          </Box>
+        ),
       },
       {
         field: "time",
