@@ -3,22 +3,29 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppData } from "@/providers/app-data-context";
 import { debugLog } from "@/utils/debug";
 
-// 全局标志：是否正在执行关闭连接操作（此时不发送 fallback 切换通知）
-let isClosingConnections = false;
+// 关闭连接操作的时间戳（此后一段时间内不发送 fallback 切换通知）
+let closeConnectionsTimestamp = 0;
+
+// 关闭连接后禁用通知的时长（毫秒）
+const CLOSE_CONNECTIONS_NOTIFY_COOLDOWN = 10000; // 10秒
 
 /**
- * 设置关闭连接状态
- * 当设置为 true 时，fallback 切换不会发送通知
+ * 标记关闭连接操作开始
+ * 在此后 10 秒内，fallback 切换不会发送通知
  */
-export const setClosingConnectionsState = (state: boolean) => {
-  isClosingConnections = state;
-  debugLog(`[FallbackNotify] Closing connections state set to: ${state}`);
+export const markCloseConnectionsStarted = () => {
+  closeConnectionsTimestamp = Date.now();
+  debugLog(`[FallbackNotify] Close connections started at ${closeConnectionsTimestamp}`);
 };
 
 /**
- * 获取当前关闭连接状态
+ * 检查是否在关闭连接冷却期内
  */
-export const getClosingConnectionsState = () => isClosingConnections;
+export const isInCloseConnectionsCooldown = () => {
+  if (closeConnectionsTimestamp === 0) return false;
+  const elapsed = Date.now() - closeConnectionsTimestamp;
+  return elapsed < CLOSE_CONNECTIONS_NOTIFY_COOLDOWN;
+};
 
 /**
  * Hook to monitor fallback/urltest proxy group switches and send notifications
@@ -64,10 +71,11 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`
         );
         
-        // 如果正在执行关闭连接操作，不发送通知
-        if (isClosingConnections) {
+        // 如果在关闭连接冷却期内（10秒），不发送通知
+        if (isInCloseConnectionsCooldown()) {
+          const elapsed = Date.now() - closeConnectionsTimestamp;
           debugLog(
-            `[FallbackNotify] Skipping notification (closing connections in progress)`
+            `[FallbackNotify] Skipping notification (in cooldown, ${elapsed}ms elapsed)`
           );
         } else {
           // 发送 fallback 切换通知

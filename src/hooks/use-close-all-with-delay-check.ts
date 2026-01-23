@@ -7,7 +7,7 @@ import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
-import { setClosingConnectionsState } from "@/hooks/use-fallback-switch-notify";
+import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
 
 /**
  * Hook to handle close all connections with delay checks
@@ -18,8 +18,8 @@ export const useCloseAllWithDelayCheck = () => {
   const { verge } = useVerge();
 
   const handleCloseAllWithDelayCheck = useCallback(async () => {
-    // 设置关闭连接状态，禁用 fallback 切换通知
-    setClosingConnectionsState(true);
+    // 标记关闭连接开始，在此后 10 秒内禁用 fallback 切换通知
+    markCloseConnectionsStarted();
     
     try {
       if (!proxiesData?.groups) {
@@ -242,10 +242,10 @@ export const useCloseAllWithDelayCheck = () => {
       } catch (error) {
         console.error("[CloseAll] Failed to send notification:", error);
       }
-    } finally {
-      // 恢复 fallback 切换通知
-      setClosingConnectionsState(false);
+    } catch (error) {
+      console.error("[CloseAll] Error during close all connections:", error);
     }
+    // 注意：不需要重置关闭连接状态，因为使用基于时间的冷却期（10秒）
   }, [proxiesData, verge?.default_latency_timeout]);
 
   useEffect(() => {
