@@ -26,58 +26,10 @@ import { useTranslation } from "react-i18next";
 
 import parseTraffic from "@/utils/parse-traffic";
 import { truncateStr } from "@/utils/truncate-str";
-import { useProcessIcon } from "@/hooks/use-process-icon";
 
 import { ConnectionColumnManager } from "./connection-column-manager";
 
 const ROW_HEIGHT = 40;
-
-/**
- * Component to display process icon in table cell
- */
-const ProcessIconCell = ({ processPath }: { processPath?: string }) => {
-  const iconSrc = useProcessIcon(processPath);
-
-  if (!processPath || !iconSrc) {
-    return (
-      <Box
-        sx={{
-          width: 20,
-          height: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      />
-    );
-  }
-
-  return (
-    <Box
-      sx={{
-        width: 20,
-        height: 20,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <img
-        src={iconSrc}
-        alt=""
-        style={{
-          width: 20,
-          height: 20,
-          objectFit: "contain",
-        }}
-        onError={(e) => {
-          // Hide image on error
-          e.currentTarget.style.display = "none";
-        }}
-      />
-    </Box>
-  );
-};
 
 /**
  * Reconcile stored column order with base columns to handle added/removed fields
@@ -111,8 +63,6 @@ const createConnectionRow = (each: IConnectionsItem) => {
     chains,
     rule,
     process: truncateStr(metadata.process || metadata.processPath),
-    processPath: metadata.processPath,
-    processIcon: null, // Virtual field for icon display
     time: each.start,
     source: `${metadata.sourceIP}:${metadata.sourcePort}`,
     remoteDestination: destination,
@@ -132,7 +82,6 @@ const areRowsEqual = (a: ConnectionRow, b: ConnectionRow) =>
   a.chains === b.chains &&
   a.rule === b.rule &&
   a.process === b.process &&
-  a.processPath === b.processPath &&
   a.time === b.time &&
   a.source === b.source &&
   a.remoteDestination === b.remoteDestination &&
@@ -262,13 +211,6 @@ export const ConnectionTable = (props: Props) => {
         headerName: t("connections.components.fields.rule"),
         width: 220,
         minWidth: 160,
-      },
-      {
-        field: "processIcon",
-        headerName: "",
-        width: 32,
-        minWidth: 32,
-        cell: (row) => <ProcessIconCell processPath={row.processPath} />,
       },
       {
         field: "process",
