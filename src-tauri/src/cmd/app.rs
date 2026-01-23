@@ -249,8 +249,9 @@ pub fn update_ui_stage(stage: UiReadyStage) {
 #[tauri::command]
 pub async fn get_process_icon(process_path: String) -> CmdResult<Option<String>> {
     use base64::Engine;
-    use std::io::Cursor;
     use std::path::Path as StdPath;
+
+    let process_path_str: std::string::String = process_path.into();
 
     // 检查缓存目录
     let icon_cache_dir = dirs::app_home_dir()
@@ -263,25 +264,25 @@ pub async fn get_process_icon(process_path: String) -> CmdResult<Option<String>>
     }
 
     // 使用进程路径的 hash 作为缓存文件名
-    let path_hash = format!("{:x}", md5_hash(process_path.as_str()));
+    let path_hash = format!("{:x}", md5_hash(&process_path_str));
     let cache_path = icon_cache_dir.join(format!("{}.png", path_hash));
 
     // 如果缓存存在，直接返回
     if cache_path.exists() {
         if let Ok(data) = fs::read(&cache_path).await {
             let base64_str = base64::engine::general_purpose::STANDARD.encode(&data);
-            return Ok(Some(format!("data:image/png;base64,{}", base64_str)));
+            return Ok(Some(format!("data:image/png;base64,{}", base64_str).into()));
         }
     }
 
     // 提取图标
-    let exe_path = StdPath::new(&process_path);
+    let exe_path = StdPath::new(&process_path_str);
     if !exe_path.exists() {
         return Ok(None);
     }
 
     // 在阻塞线程中提取图标
-    let process_path_clone = process_path.clone();
+    let process_path_clone = process_path_str.clone();
     let icon_data = tokio::task::spawn_blocking(move || {
         extract_icon_from_exe(&process_path_clone)
     })
@@ -294,7 +295,7 @@ pub async fn get_process_icon(process_path: String) -> CmdResult<Option<String>>
             let _ = fs::write(&cache_path, &png_data).await;
 
             let base64_str = base64::engine::general_purpose::STANDARD.encode(&png_data);
-            Ok(Some(format!("data:image/png;base64,{}", base64_str)))
+            Ok(Some(format!("data:image/png;base64,{}", base64_str).into()))
         }
         None => Ok(None),
     }
@@ -322,7 +323,7 @@ fn extract_icon_from_exe(exe_path: &str) -> Option<Vec<u8>> {
     use windows::core::PCWSTR;
     use windows::Win32::Graphics::Gdi::{
         BITMAPINFOHEADER, BI_RGB, CreateCompatibleDC, DeleteDC, DeleteObject,
-        GetDIBits, GetObjectW, SelectObject, BITMAP, BITMAPINFO, DIB_RGB_COLORS,
+        GetDIBits, GetObjectW, SelectObject, BITMAP, BITMAPINFO, DIB_RGB_COLORS, HGDIOBJ,
     };
     use windows::Win32::UI::Shell::ExtractIconExW;
     use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
@@ -357,8 +358,9 @@ fn extract_icon_from_exe(exe_path: &str) -> Option<Vec<u8>> {
 
         // 获取位图信息
         let mut bmp = BITMAP::default();
+        let hbm_color_gdi: HGDIOBJ = icon_info.hbmColor.into();
         if GetObjectW(
-            icon_info.hbmColor,
+            hbm_color_gdi,
             std::mem::size_of::<BITMAP>() as i32,
             Some(&mut bmp as *mut _ as *mut _),
         ) == 0
@@ -382,7 +384,7 @@ fn extract_icon_from_exe(exe_path: &str) -> Option<Vec<u8>> {
             return None;
         }
 
-        let old_bmp = SelectObject(hdc, icon_info.hbmColor);
+        let old_bmp = SelectObject(hdc, hbm_color_gdi);
 
         // 设置位图信息头
         let mut bmi = BITMAPINFO {
@@ -463,7 +465,7 @@ unsafe fn cleanup_icon_resources(
     small_icon: windows::Win32::UI::WindowsAndMessaging::HICON,
     icon_info: &windows::Win32::UI::WindowsAndMessaging::ICONINFO,
 ) {
-    use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::Graphics::Gdi::{DeleteObject, HGDIOBJ};
     use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
     DestroyIcon(large_icon).ok();
@@ -471,9 +473,11 @@ unsafe fn cleanup_icon_resources(
         DestroyIcon(small_icon).ok();
     }
     if !icon_info.hbmColor.is_invalid() {
-        DeleteObject(icon_info.hbmColor).ok();
+        let hbm_color: HGDIOBJ = icon_info.hbmColor.into();
+        DeleteObject(hbm_color).ok();
     }
     if !icon_info.hbmMask.is_invalid() {
-        DeleteObject(icon_info.hbmMask).ok();
+        let hbm_mask: HGDIOBJ = icon_info.hbmMask.into();
+        DeleteObject(hbm_mask).ok();
     }
 }
