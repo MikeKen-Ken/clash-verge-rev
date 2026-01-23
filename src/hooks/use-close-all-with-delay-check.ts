@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
 import { useVerge } from "@/hooks/use-verge";
@@ -228,6 +229,14 @@ export const useCloseAllWithDelayCheck = () => {
 
     // Close all connections except those using DIRECT
     await closeConnectionsExcludingDirect();
+    
+    // 发送完成通知
+    try {
+      await invoke("notify_close_all_completed");
+      debugLog("[CloseAll] Notification sent successfully");
+    } catch (error) {
+      console.error("[CloseAll] Failed to send notification:", error);
+    }
   }, [proxiesData, verge?.default_latency_timeout]);
 
   useEffect(() => {

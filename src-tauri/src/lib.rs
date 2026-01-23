@@ -151,6 +151,7 @@ mod app_init {
             cmd::stop_core,
             cmd::restart_core,
             cmd::notify_ui_ready,
+            cmd::notify_close_all_completed,
             cmd::update_ui_stage,
             cmd::get_running_mode,
             cmd::get_auto_launch_status,

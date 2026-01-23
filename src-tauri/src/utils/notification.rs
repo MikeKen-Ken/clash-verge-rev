@@ -14,6 +14,7 @@ pub enum NotificationEvent<'a> {
     LightweightModeEntered,
     ProfilesReactivated,
     AppQuit,
+    CloseAllConnectionsCompleted,
     #[cfg(target_os = "macos")]
     AppHidden,
 }
@@ -61,6 +62,12 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
             let title = clash_verge_i18n::t!("notifications.appQuit.title");
             let body = clash_verge_i18n::t!("notifications.appQuit.body");
             notify(title, body);
+        }
+        NotificationEvent::CloseAllConnectionsCompleted => {
+            notify(
+                "操作完成".into(),
+                "所有连接已关闭，节点已切换完成，可以正常使用网络".into(),
+            );
         }
         #[cfg(target_os = "macos")]
         NotificationEvent::AppHidden => {
