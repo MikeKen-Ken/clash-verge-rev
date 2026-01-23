@@ -60,7 +60,10 @@ export const useCloseAllWithDelayCheck = () => {
     }
 
     // Check delays for each group - 串行执行避免并发过高
-    for (const group of groups) {
+    let firstGroupName: string | null = null;
+    
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+      const group = groups[groupIndex];
       if (!group.all || group.all.length === 0) continue;
 
       const groupProxyNames = group.all
@@ -77,18 +80,63 @@ export const useCloseAllWithDelayCheck = () => {
 
       if (groupProxyNames.length === 0) continue;
 
+      // 记录第一个组
+      if (firstGroupName === null) {
+        firstGroupName = group.name;
+      }
+
       const url = delayManager.getUrl(group.name);
       debugLog(
         `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
       );
 
       try {
-        // 串行执行：主要等待 checkListDelay 完成（它会等待所有代理测试完成）
-        // delayGroup 作为辅助，但不阻塞下一个组的开始
-        // 确保当前组的所有代理测试都完成后再进行下一个组，避免多个组同时测试
-        debugLog(`[CloseAll] Starting checkListDelay for group ${group.name}`);
-        await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
-        debugLog(`[CloseAll] checkListDelay completed for group ${group.name}`);
+        // 如果不是第一个组，尝试复用第一个组的测试结果
+        if (groupIndex > 0 && firstGroupName) {
+          let reusedCount = 0;
+          const proxiesToTest: string[] = [];
+
+          for (const proxyName of groupProxyNames) {
+            // 检查第一个组是否有该节点的测试结果
+            const firstGroupResult = delayManager.getDelayUpdate(proxyName, firstGroupName);
+            
+            if (firstGroupResult && firstGroupResult.delay !== -1 && firstGroupResult.delay !== -2) {
+              // 复用第一个组的结果，直接设置到当前组
+              delayManager.setDelay(
+                proxyName,
+                group.name,
+                firstGroupResult.delay,
+                { elapsed: firstGroupResult.elapsed }
+              );
+              reusedCount++;
+              debugLog(
+                `[CloseAll] Reused delay result for ${proxyName}: ${firstGroupResult.delay}ms (from group ${firstGroupName})`,
+              );
+            } else {
+              // 第一个组没有结果，需要测试
+              proxiesToTest.push(proxyName);
+            }
+          }
+
+          debugLog(
+            `[CloseAll] Group ${group.name}: reused ${reusedCount}/${groupProxyNames.length} results from first group`,
+          );
+
+          // 只测试第一个组没有结果的节点
+          if (proxiesToTest.length > 0) {
+            debugLog(
+              `[CloseAll] Testing ${proxiesToTest.length} proxies that were not in first group`,
+            );
+            await delayManager.checkListDelay(proxiesToTest, group.name, timeout);
+          } else {
+            debugLog(`[CloseAll] All proxies reused from first group, skipping test`);
+          }
+        } else {
+          // 第一个组，正常测试所有节点
+          debugLog(`[CloseAll] Starting checkListDelay for group ${group.name}`);
+          await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
+          debugLog(`[CloseAll] checkListDelay completed for group ${group.name}`);
+        }
         
         // delayGroup 作为辅助测试，不阻塞流程
         delayGroup(group.name, url, timeout)
