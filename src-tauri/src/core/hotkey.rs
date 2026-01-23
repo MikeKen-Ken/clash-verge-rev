@@ -185,15 +185,13 @@ impl Hotkey {
                 });
             }
             HotkeyFunction::CloseAllConnections => {
-                // Send notification that close all connections has started
-                AsyncHandler::spawn(async move || {
-                    logging!(info, Type::Hotkey, "Sending close all connections started notification");
-                    notify_event(NotificationEvent::CloseAllConnectionsStarted).await;
-                });
                 // Emit frontend event to trigger delay checks first
                 // The frontend will handle delay checks and then close connections
-                use crate::core::notification::FrontendEvent;
-                handle::Handle::notify_close_all_connections();
+                AsyncHandler::spawn(async move || {
+                    // 立刻发送开始通知
+                    notify_event(NotificationEvent::CloseAllConnectionsStarted).await;
+                    handle::Handle::notify_close_all_connections();
+                });
             }
             HotkeyFunction::Quit => {
                 AsyncHandler::spawn(async move || {

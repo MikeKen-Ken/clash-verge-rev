@@ -152,7 +152,7 @@ mod app_init {
             cmd::restart_core,
             cmd::notify_ui_ready,
             cmd::notify_close_all_completed,
-            cmd::notify_fallback_node_switched,
+            cmd::notify_fallback_proxy_switched,
             cmd::update_ui_stage,
             cmd::get_running_mode,
             cmd::get_auto_launch_status,

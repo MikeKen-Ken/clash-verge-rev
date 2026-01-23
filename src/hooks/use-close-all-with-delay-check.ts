@@ -212,15 +212,16 @@ export const useCloseAllWithDelayCheck = () => {
             await selectNodeForGroup(group.name, firstSuccessProxy);
             debugLog(`[CloseAll] Successfully switched group ${group.name} to ${firstSuccessProxy}`);
             
-            // 发送 fallback 节点切换通知
+            // 发送 Fallback 切换节点通知
             try {
-              await invoke("notify_fallback_node_switched", {
-                groupName: group.name,
-                nodeName: firstSuccessProxy,
+              await invoke("notify_fallback_proxy_switched", {
+                group: group.name,
+                from: currentProxy || "none",
+                to: firstSuccessProxy,
               });
-              debugLog(`[CloseAll] Fallback notification sent for group ${group.name}`);
-            } catch (error) {
-              console.error("[CloseAll] Failed to send fallback notification:", error);
+              debugLog(`[CloseAll] Fallback switch notification sent for group ${group.name}`);
+            } catch (notifyError) {
+              console.error(`[CloseAll] Failed to send fallback switch notification:`, notifyError);
             }
           } catch (error) {
             console.error(

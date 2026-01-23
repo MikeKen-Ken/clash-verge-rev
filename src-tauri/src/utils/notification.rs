@@ -16,9 +16,10 @@ pub enum NotificationEvent<'a> {
     AppQuit,
     CloseAllConnectionsStarted,
     CloseAllConnectionsCompleted,
-    FallbackNodeSwitched {
-        group_name: &'a str,
-        node_name: &'a str,
+    FallbackProxySwitched {
+        group: &'a str,
+        from: &'a str,
+        to: &'a str,
     },
     #[cfg(target_os = "macos")]
     AppHidden,
@@ -26,27 +27,7 @@ pub enum NotificationEvent<'a> {
 
 fn notify(title: Cow<'_, str>, body: Cow<'_, str>) {
     let app_handle = handle::Handle::app_handle();
-    match app_handle.notification().builder().title(title).body(body).show() {
-        Ok(_) => {
-            clash_verge_logging::logging!(
-                debug,
-                clash_verge_logging::Type::System,
-                "Notification sent: {} - {}",
-                title,
-                body
-            );
-        }
-        Err(e) => {
-            clash_verge_logging::logging!(
-                error,
-                clash_verge_logging::Type::System,
-                "Failed to send notification: {} - {}: {}",
-                title,
-                body,
-                e
-            );
-        }
-    }
+    app_handle.notification().builder().title(title).body(body).show().ok();
 }
 
 pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
@@ -91,7 +72,7 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
         NotificationEvent::CloseAllConnectionsStarted => {
             notify(
                 "开始关闭连接".into(),
-                "正在关闭所有连接并切换节点，请稍候...".into(),
+                "正在检测节点延迟并关闭所有连接...".into(),
             );
         }
         NotificationEvent::CloseAllConnectionsCompleted => {
@@ -100,10 +81,10 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
                 "所有连接已关闭，节点已切换完成，可以正常使用网络".into(),
             );
         }
-        NotificationEvent::FallbackNodeSwitched { group_name, node_name } => {
+        NotificationEvent::FallbackProxySwitched { group, from, to } => {
             notify(
-                "节点已切换".into(),
-                format!("代理组 {} 已切换到节点 {}", group_name, node_name).into(),
+                "节点自动切换".into(),
+                format!("分组 {} 已从 {} 切换到 {}", group, from, to).into(),
             );
         }
         #[cfg(target_os = "macos")]
