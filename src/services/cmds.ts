@@ -419,6 +419,10 @@ export async function downloadIconCache(url: string, name: string) {
   return invoke<string>("download_icon_cache", { url, name });
 }
 
+export async function extractProcessIcon(processPath: string) {
+  return invoke<string>("extract_process_icon", { processPath });
+}
+
 export async function getNetworkInterfaces() {
   return invoke<string[]>("get_network_interfaces");
 }
