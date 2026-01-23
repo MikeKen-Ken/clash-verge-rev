@@ -243,13 +243,6 @@ pub async fn notify_close_all_completed() {
     notify_event(NotificationEvent::CloseAllConnectionsCompleted).await;
 }
 
-/// 发送关闭所有连接完成的通知
-#[tauri::command]
-pub async fn notify_close_all_completed() {
-    use crate::utils::notification::{NotificationEvent, notify_event};
-    notify_event(NotificationEvent::CloseAllConnectionsCompleted).await;
-}
-
 /// UI加载阶段
 #[tauri::command]
 pub fn update_ui_stage(stage: UiReadyStage) {
