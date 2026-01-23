@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
 import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
@@ -155,6 +155,76 @@ export const useCloseAllWithDelayCheck = () => {
       }
     }
     debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
+
+    // 自动切换到每个组第一个连接成功的节点（只处理 URLTest 和 Fallback，不处理 Selector）
+    for (const group of groups) {
+      if (!group.all || group.all.length === 0) continue;
+      if (!["URLTest", "Fallback"].includes(group.type)) continue;
+
+      const groupProxyNames = group.all
+        .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
+        .filter((proxyName: string | undefined): proxyName is string => {
+          if (!proxyName) return false;
+          const proxy = proxiesData.records?.[proxyName];
+          return (
+            !proxy?.provider &&
+            proxyName !== "DIRECT" &&
+            proxyName !== "REJECT"
+          );
+        });
+
+      if (groupProxyNames.length === 0) continue;
+
+      // 找到第一个连接成功的节点（不是T或E，且delay > 0）
+      let firstSuccessProxy: string | null = null;
+      
+      for (const proxyName of groupProxyNames) {
+        const delayUpdate = delayManager.getDelayUpdate(proxyName, group.name);
+        if (delayUpdate) {
+          const delay = delayUpdate.delay;
+          const delayText = delayManager.formatDelay(delay, timeout);
+          
+          // 判断是否连接成功：不是T、E、-、testing，且delay > 0
+          if (
+            delayText !== "T" &&
+            delayText !== "E" &&
+            delayText !== "-" &&
+            delayText !== "testing" &&
+            delay > 0 &&
+            delay < timeout &&
+            delay <= 1e5
+          ) {
+            firstSuccessProxy = proxyName;
+            break;
+          }
+        }
+      }
+
+      // 如果找到连接成功的节点，且当前节点不是它，则切换
+      if (firstSuccessProxy) {
+        const currentProxy = group.now;
+        if (currentProxy !== firstSuccessProxy) {
+          try {
+            debugLog(
+              `[CloseAll] Auto-switching group ${group.name}: ${currentProxy || "none"} -> ${firstSuccessProxy}`,
+            );
+            await selectNodeForGroup(group.name, firstSuccessProxy);
+            debugLog(`[CloseAll] Successfully switched group ${group.name} to ${firstSuccessProxy}`);
+          } catch (error) {
+            console.error(
+              `[CloseAll] Failed to switch group ${group.name} to ${firstSuccessProxy}:`,
+              error,
+            );
+          }
+        } else {
+          debugLog(
+            `[CloseAll] Group ${group.name} already using first success proxy: ${firstSuccessProxy}`,
+          );
+        }
+      } else {
+        debugLog(`[CloseAll] No success proxy found for group ${group.name}, skipping switch`);
+      }
+    }
 
     // Close all connections except those using DIRECT
     await closeConnectionsExcludingDirect();
