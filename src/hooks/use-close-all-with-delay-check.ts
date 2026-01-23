@@ -161,24 +161,20 @@ export const useCloseAllWithDelayCheck = () => {
       if (!group.all || group.all.length === 0) continue;
       if (!["URLTest", "Fallback"].includes(group.type)) continue;
 
-      const groupProxyNames = group.all
-        .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
-        .filter((proxyName: string | undefined): proxyName is string => {
-          if (!proxyName) return false;
-          const proxy = proxiesData.records?.[proxyName];
-          return (
-            !proxy?.provider &&
-            proxyName !== "DIRECT" &&
-            proxyName !== "REJECT"
-          );
-        });
-
-      if (groupProxyNames.length === 0) continue;
-
-      // 找到第一个连接成功的节点（不是T或E，且delay > 0）
+      // 按照组中节点的原始顺序（group.all）查找第一个连接成功的节点
+      // 这样可以确保选择的是排序最靠前的成功节点
       let firstSuccessProxy: string | null = null;
       
-      for (const proxyName of groupProxyNames) {
+      for (const proxy of group.all) {
+        const proxyName = typeof proxy === "string" ? proxy : proxy.name;
+        if (!proxyName) continue;
+        
+        // 跳过 DIRECT、REJECT 和 provider 节点
+        if (proxyName === "DIRECT" || proxyName === "REJECT") continue;
+        const proxyRecord = proxiesData.records?.[proxyName];
+        if (proxyRecord?.provider) continue;
+        
+        // 检查该节点是否连接成功
         const delayUpdate = delayManager.getDelayUpdate(proxyName, group.name);
         if (delayUpdate) {
           const delay = delayUpdate.delay;
@@ -194,7 +190,11 @@ export const useCloseAllWithDelayCheck = () => {
             delay < timeout &&
             delay <= 1e5
           ) {
+            // 找到第一个连接成功的节点（按原始顺序）
             firstSuccessProxy = proxyName;
+            debugLog(
+              `[CloseAll] Found first success proxy for group ${group.name}: ${proxyName} (delay: ${delay}ms)`,
+            );
             break;
           }
         }
