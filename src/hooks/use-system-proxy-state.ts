@@ -5,6 +5,7 @@ import { closeAllConnections } from "tauri-plugin-mihomo-api";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { getAutotemProxy } from "@/services/cmds";
+import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 
 // 系统代理状态检测统一逻辑
 export const useSystemProxyState = () => {
@@ -54,6 +55,10 @@ export const useSystemProxyState = () => {
     mutateVerge({ ...verge, enable_system_proxy: enabled }, false);
 
     try {
+      // 启用系统代理时标记，1分钟内不发送 fallback 切换通知
+      if (enabled) {
+        markProxyModeChanged();
+      }
       if (!enabled && verge?.auto_close_connection) {
         await closeAllConnections();
       }

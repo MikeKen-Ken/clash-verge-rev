@@ -15,6 +15,7 @@ import { DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { SysproxyViewer } from "@/components/setting/mods/sysproxy-viewer";
 import { TunViewer } from "@/components/setting/mods/tun-viewer";
+import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import { useServiceInstaller } from "@/hooks/use-service-installer";
 import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
 import { useSystemProxyState } from "@/hooks/use-system-proxy-state";
@@ -134,6 +135,10 @@ const ProxyControlSwitches = ({
       const msgKey = "settings.sections.proxyControl.tooltips.tunUnavailable";
       showErrorNotice(msgKey);
       throw new Error(t(msgKey));
+    }
+    // 启用 TUN 模式时标记，1分钟内不发送 fallback 切换通知
+    if (value) {
+      markProxyModeChanged();
     }
     mutateVerge({ ...verge, enable_tun_mode: value }, false);
     await patchVerge({ enable_tun_mode: value });

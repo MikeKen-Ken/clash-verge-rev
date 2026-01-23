@@ -6,8 +6,14 @@ import { debugLog } from "@/utils/debug";
 // 关闭连接操作的时间戳（此后一段时间内不发送 fallback 切换通知）
 let closeConnectionsTimestamp = 0;
 
+// TUN/系统代理模式切换的时间戳
+let proxyModeChangeTimestamp = 0;
+
 // 关闭连接后禁用通知的时长（毫秒）
 const CLOSE_CONNECTIONS_NOTIFY_COOLDOWN = 10000; // 10秒
+
+// TUN/系统代理模式切换后禁用通知的时长（毫秒）
+const PROXY_MODE_CHANGE_NOTIFY_COOLDOWN = 60000; // 1分钟
 
 /**
  * 标记关闭连接操作开始
@@ -19,12 +25,37 @@ export const markCloseConnectionsStarted = () => {
 };
 
 /**
- * 检查是否在关闭连接冷却期内
+ * 标记 TUN/系统代理模式切换
+ * 在此后 1 分钟内，fallback 切换不会发送通知
  */
-export const isInCloseConnectionsCooldown = () => {
-  if (closeConnectionsTimestamp === 0) return false;
-  const elapsed = Date.now() - closeConnectionsTimestamp;
-  return elapsed < CLOSE_CONNECTIONS_NOTIFY_COOLDOWN;
+export const markProxyModeChanged = () => {
+  proxyModeChangeTimestamp = Date.now();
+  debugLog(`[FallbackNotify] Proxy mode changed at ${proxyModeChangeTimestamp}`);
+};
+
+/**
+ * 检查是否在任何冷却期内
+ */
+export const isInNotifyCooldown = () => {
+  const now = Date.now();
+  
+  // 检查关闭连接冷却期（10秒）
+  if (closeConnectionsTimestamp > 0) {
+    const closeElapsed = now - closeConnectionsTimestamp;
+    if (closeElapsed < CLOSE_CONNECTIONS_NOTIFY_COOLDOWN) {
+      return { inCooldown: true, reason: "close_connections", elapsed: closeElapsed };
+    }
+  }
+  
+  // 检查代理模式切换冷却期（1分钟）
+  if (proxyModeChangeTimestamp > 0) {
+    const modeElapsed = now - proxyModeChangeTimestamp;
+    if (modeElapsed < PROXY_MODE_CHANGE_NOTIFY_COOLDOWN) {
+      return { inCooldown: true, reason: "proxy_mode_change", elapsed: modeElapsed };
+    }
+  }
+  
+  return { inCooldown: false, reason: null, elapsed: 0 };
 };
 
 /**
@@ -71,11 +102,11 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`
         );
         
-        // 如果在关闭连接冷却期内（10秒），不发送通知
-        if (isInCloseConnectionsCooldown()) {
-          const elapsed = Date.now() - closeConnectionsTimestamp;
+        // 检查是否在冷却期内
+        const cooldownStatus = isInNotifyCooldown();
+        if (cooldownStatus.inCooldown) {
           debugLog(
-            `[FallbackNotify] Skipping notification (in cooldown, ${elapsed}ms elapsed)`
+            `[FallbackNotify] Skipping notification (${cooldownStatus.reason}, ${cooldownStatus.elapsed}ms elapsed)`
           );
         } else {
           // 发送 fallback 切换通知
