@@ -39,6 +39,7 @@ import { NoticeManager } from "@/components/layout/notice-manager";
 import { UpdateButton } from "@/components/layout/update-button";
 import { WindowControls } from "@/components/layout/window-controller";
 import { useCloseAllWithDelayCheck } from "@/hooks/use-close-all-with-delay-check";
+import { useFallbackSwitchNotify } from "@/hooks/use-fallback-switch-notify";
 import { useI18n } from "@/hooks/use-i18n";
 import { useVerge } from "@/hooks/use-verge";
 import { useWindowDecorations } from "@/hooks/use-window";
@@ -216,6 +217,7 @@ const Layout = () => {
   useLoadingOverlay(themeReady);
   useAppInitialization();
   useCloseAllWithDelayCheck();
+  useFallbackSwitchNotify();
 
   const handleNotice = useCallback(
     (payload: [string, string]) => {
