@@ -246,11 +246,23 @@ pub async fn notify_close_all_completed() {
 /// 发送 fallback 节点切换的通知
 #[tauri::command]
 pub async fn notify_fallback_node_switched(group_name: String, node_name: String) {
-    use crate::utils::notification::{NotificationEvent, notify_event};
-    notify_event(NotificationEvent::FallbackNodeSwitched {
-        group_name: group_name.as_str(),
-        node_name: node_name.as_str(),
-    }).await;
+    logging!(info, Type::Cmd, "Sending fallback node switched notification: {} -> {}", group_name, node_name);
+    use crate::core::handle;
+    use std::borrow::Cow;
+    use tauri_plugin_notification::NotificationExt as _;
+    
+    let app_handle = handle::Handle::app_handle();
+    let title = Cow::from("节点已切换");
+    let body = Cow::from(format!("代理组 {} 已切换到节点 {}", group_name, node_name));
+    
+    match app_handle.notification().builder().title(title).body(body).show() {
+        Ok(_) => {
+            logging!(debug, Type::Cmd, "Fallback notification sent successfully");
+        }
+        Err(e) => {
+            logging!(error, Type::Cmd, "Failed to send fallback notification: {}", e);
+        }
+    }
 }
 
 /// UI加载阶段

@@ -26,7 +26,27 @@ pub enum NotificationEvent<'a> {
 
 fn notify(title: Cow<'_, str>, body: Cow<'_, str>) {
     let app_handle = handle::Handle::app_handle();
-    app_handle.notification().builder().title(title).body(body).show().ok();
+    match app_handle.notification().builder().title(title).body(body).show() {
+        Ok(_) => {
+            clash_verge_logging::logging!(
+                debug,
+                clash_verge_logging::Type::System,
+                "Notification sent: {} - {}",
+                title,
+                body
+            );
+        }
+        Err(e) => {
+            clash_verge_logging::logging!(
+                error,
+                clash_verge_logging::Type::System,
+                "Failed to send notification: {} - {}: {}",
+                title,
+                body,
+                e
+            );
+        }
+    }
 }
 
 pub async fn notify_event<'a>(event: NotificationEvent<'a>) {

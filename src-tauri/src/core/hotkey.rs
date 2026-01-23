@@ -187,6 +187,7 @@ impl Hotkey {
             HotkeyFunction::CloseAllConnections => {
                 // Send notification that close all connections has started
                 AsyncHandler::spawn(async move || {
+                    logging!(info, Type::Hotkey, "Sending close all connections started notification");
                     notify_event(NotificationEvent::CloseAllConnectionsStarted).await;
                 });
                 // Emit frontend event to trigger delay checks first
