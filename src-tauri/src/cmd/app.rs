@@ -427,7 +427,7 @@ fn find_process_and_extract_icon(process_name: &str) -> Option<Vec<u8>> {
                     if !process_handle.is_invalid() {
                         let mut path_buf = [0u16; MAX_PATH as usize];
                         let len = GetModuleFileNameExW(
-                            process_handle,
+                            Some(process_handle),
                             None,
                             &mut path_buf,
                         );
