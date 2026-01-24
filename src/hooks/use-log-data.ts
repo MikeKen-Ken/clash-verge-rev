@@ -8,6 +8,45 @@ import { getClashLogs } from "@/services/cmds";
 import { useClashLog } from "./use-clash-log";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
+/**
+ * Extract process path from log payload
+ * Tries to parse JSON first, then falls back to regex matching
+ */
+function extractProcessPath(payload: string): string | undefined {
+  if (!payload) return undefined;
+
+  // Try to parse as JSON first
+  try {
+    const parsed = JSON.parse(payload);
+    if (parsed.metadata?.processPath) {
+      return parsed.metadata.processPath;
+    }
+    if (parsed.processPath) {
+      return parsed.processPath;
+    }
+  } catch {
+    // Not JSON, continue with regex
+  }
+
+  // Try to match Windows paths (C:\...\*.exe)
+  const windowsPathMatch = payload.match(/([A-Z]:[\\/][^\s"']+\.exe)/i);
+  if (windowsPathMatch) {
+    return windowsPathMatch[1];
+  }
+
+  // Try to match Unix paths (/.../...)
+  const unixPathMatch = payload.match(/(\/[^\s"']+)/);
+  if (unixPathMatch) {
+    const path = unixPathMatch[1];
+    // Only return if it looks like an executable path
+    if (path.includes("/") && (path.endsWith(".exe") || path.endsWith(".app") || path.includes("/bin/") || path.includes("/usr/"))) {
+      return path;
+    }
+  }
+
+  return undefined;
+}
+
 const MAX_LOG_NUM = 1000;
 const FLUSH_DELAY_MS = 50;
 type LogType = ILogItem["type"];
@@ -90,6 +129,10 @@ export const useLogData = () => {
               return;
             }
             parsed.time = dayjs().format("MM-DD HH:mm:ss");
+            // Extract process path from payload if not already present
+            if (!parsed.processPath && parsed.payload) {
+              parsed.processPath = extractProcessPath(parsed.payload);
+            }
             buffer.push(parsed);
             if (!flushTimer) {
               flushTimer = setTimeout(flush, FLUSH_DELAY_MS);

@@ -220,6 +220,45 @@ export async function calcuProxyProviders() {
   );
 }
 
+/**
+ * Extract process path from log payload
+ * Tries to parse JSON first, then falls back to regex matching
+ */
+function extractProcessPath(payload: string): string | undefined {
+  if (!payload) return undefined;
+
+  // Try to parse as JSON first
+  try {
+    const parsed = JSON.parse(payload);
+    if (parsed.metadata?.processPath) {
+      return parsed.metadata.processPath;
+    }
+    if (parsed.processPath) {
+      return parsed.processPath;
+    }
+  } catch {
+    // Not JSON, continue with regex
+  }
+
+  // Try to match Windows paths (C:\...\*.exe)
+  const windowsPathMatch = payload.match(/([A-Z]:[\\/][^\s"']+\.exe)/i);
+  if (windowsPathMatch) {
+    return windowsPathMatch[1];
+  }
+
+  // Try to match Unix paths (/.../...)
+  const unixPathMatch = payload.match(/(\/[^\s"']+)/);
+  if (unixPathMatch) {
+    const path = unixPathMatch[1];
+    // Only return if it looks like an executable path
+    if (path.includes("/") && (path.endsWith(".exe") || path.endsWith(".app") || path.includes("/bin/") || path.includes("/usr/"))) {
+      return path;
+    }
+  }
+
+  return undefined;
+}
+
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
   const newRegex = /(.+?)\s+(.+?)\s+(.+)/;
@@ -230,14 +269,16 @@ export async function getClashLogs() {
     if (result) {
       const [_, _time, type, payload] = result;
       const time = dayjs(_time).format("MM-DD HH:mm:ss");
-      acc.push({ time, type, payload });
+      const processPath = extractProcessPath(payload);
+      acc.push({ time, type, payload, processPath });
       return acc;
     }
 
     const result2 = log.match(newRegex);
     if (result2) {
       const [_, time, type, payload] = result2;
-      acc.push({ time, type, payload });
+      const processPath = extractProcessPath(payload);
+      acc.push({ time, type, payload, processPath });
     }
     return acc;
   }, []);

@@ -196,6 +196,7 @@ interface ILogItem {
   type: string;
   time?: string;
   payload: string;
+  processPath?: string;
 }
 
 type LogLevel = import("tauri-plugin-mihomo-api").LogLevel;

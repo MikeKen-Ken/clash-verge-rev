@@ -2,6 +2,7 @@ import { styled, Box } from "@mui/material";
 import type { ReactNode } from "react";
 
 import type { SearchState } from "@/components/base";
+import { ProcessIcon } from "@/components/connection/process-icon";
 
 const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   padding: "8px 0",
@@ -107,7 +108,10 @@ const LogItem = ({ value, searchState }: Props) => {
 
   return (
     <Item>
-      <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {value.processPath && (
+          <ProcessIcon processPath={value.processPath} size={16} />
+        )}
         <span className="time">{renderHighlightText(value.time || "")}</span>
         <span className="type" data-type={value.type.toLowerCase()}>
           {renderHighlightText(value.type)}
