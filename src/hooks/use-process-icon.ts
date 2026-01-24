@@ -5,6 +5,27 @@ import { useCallback, useRef, useState } from "react";
 const iconCache = new Map<string, string | null>();
 // 正在请求中的 Promise 缓存，避免重复请求
 const pendingRequests = new Map<string, Promise<string | null>>();
+// 进程名到进程路径的映射缓存
+const processNameToPathCache = new Map<string, string>();
+
+/**
+ * Register a process name to path mapping
+ * Called when connection data is received
+ */
+export const registerProcessPath = (processName: string, processPath: string) => {
+  if (processName && processPath) {
+    // 使用进程名（不区分大小写）作为 key
+    processNameToPathCache.set(processName.toLowerCase(), processPath);
+  }
+};
+
+/**
+ * Get process path by process name
+ */
+export const getProcessPathByName = (processName: string): string | undefined => {
+  if (!processName) return undefined;
+  return processNameToPathCache.get(processName.toLowerCase());
+};
 
 /**
  * Hook to get process icon from executable path

@@ -1,8 +1,9 @@
 import { styled, Box } from "@mui/material";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import type { SearchState } from "@/components/base";
 import { ProcessIcon } from "@/components/connection/process-icon";
+import { getProcessPathByName } from "@/hooks/use-process-icon";
 
 const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   padding: "8px 0",
@@ -49,6 +50,12 @@ interface Props {
 }
 
 const LogItem = ({ value, searchState }: Props) => {
+  // Try to get process path from process name
+  const processPath = useMemo(() => {
+    if (!value.processName) return undefined;
+    return getProcessPathByName(value.processName);
+  }, [value.processName]);
+
   const renderHighlightText = (text: string) => {
     if (!searchState?.text.trim()) return text;
 
@@ -109,8 +116,8 @@ const LogItem = ({ value, searchState }: Props) => {
   return (
     <Item>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {value.processPath && (
-          <ProcessIcon processPath={value.processPath} size={16} />
+        {value.processName && (
+          <ProcessIcon processPath={processPath} size={16} />
         )}
         <span className="time">{renderHighlightText(value.time || "")}</span>
         <span className="type" data-type={value.type.toLowerCase()}>

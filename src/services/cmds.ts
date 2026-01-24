@@ -221,38 +221,32 @@ export async function calcuProxyProviders() {
 }
 
 /**
- * Extract process path from log payload
- * Tries to parse JSON first, then falls back to regex matching
+ * Extract process name from log payload
+ * Matches patterns like (xxx.exe) in log messages
+ * Example: "[TCP] 198.18.0.1:10369(BaiduNetdiskUnite.exe) --> pan.baidu.com:443"
  */
-function extractProcessPath(payload: string): string | undefined {
+function extractProcessName(payload: string): string | undefined {
   if (!payload) return undefined;
 
-  // Try to parse as JSON first
-  try {
-    const parsed = JSON.parse(payload);
-    if (parsed.metadata?.processPath) {
-      return parsed.metadata.processPath;
-    }
-    if (parsed.processPath) {
-      return parsed.processPath;
-    }
-  } catch {
-    // Not JSON, continue with regex
+  // Match process name in parentheses, e.g., (BaiduNetdiskUnite.exe)
+  const processMatch = payload.match(/\(([^)]+\.exe)\)/i);
+  if (processMatch) {
+    return processMatch[1];
   }
 
-  // Try to match Windows paths (C:\...\*.exe)
-  const windowsPathMatch = payload.match(/([A-Z]:[\\/][^\s"']+\.exe)/i);
-  if (windowsPathMatch) {
-    return windowsPathMatch[1];
+  // Match macOS app bundles
+  const macMatch = payload.match(/\(([^)]+\.app)\)/i);
+  if (macMatch) {
+    return macMatch[1];
   }
 
-  // Try to match Unix paths (/.../...)
-  const unixPathMatch = payload.match(/(\/[^\s"']+)/);
-  if (unixPathMatch) {
-    const path = unixPathMatch[1];
-    // Only return if it looks like an executable path
-    if (path.includes("/") && (path.endsWith(".exe") || path.endsWith(".app") || path.includes("/bin/") || path.includes("/usr/"))) {
-      return path;
+  // Match process without extension in parentheses (Linux/macOS)
+  const linuxMatch = payload.match(/\(([a-zA-Z0-9_-]+)\)/);
+  if (linuxMatch) {
+    const name = linuxMatch[1];
+    // Filter out common non-process patterns
+    if (name.length > 2 && !name.includes('.') && !/^\d+$/.test(name)) {
+      return name;
     }
   }
 
@@ -269,16 +263,16 @@ export async function getClashLogs() {
     if (result) {
       const [_, _time, type, payload] = result;
       const time = dayjs(_time).format("MM-DD HH:mm:ss");
-      const processPath = extractProcessPath(payload);
-      acc.push({ time, type, payload, processPath });
+      const processName = extractProcessName(payload);
+      acc.push({ time, type, payload, processName });
       return acc;
     }
 
     const result2 = log.match(newRegex);
     if (result2) {
       const [_, time, type, payload] = result2;
-      const processPath = extractProcessPath(payload);
-      acc.push({ time, type, payload, processPath });
+      const processName = extractProcessName(payload);
+      acc.push({ time, type, payload, processName });
     }
     return acc;
   }, []);

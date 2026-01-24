@@ -1,6 +1,7 @@
 import { mutate } from "swr";
 import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
+import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
 const MAX_CLOSED_CONNS_NUM = 500;
@@ -33,6 +34,14 @@ const mergeConnectionSnapshot = (
   const nextConnections = payload.connections ?? [];
   const previousActive = previous.activeConnections ?? [];
   const nextById = new Map(nextConnections.map((conn) => [conn.id, conn]));
+
+  // Register process name to path mappings for log icon display
+  nextConnections.forEach((conn) => {
+    const { process, processPath } = conn.metadata;
+    if (process && processPath) {
+      registerProcessPath(process, processPath);
+    }
+  });
   const newIds = new Set(nextConnections.map((conn) => conn.id));
 
   // Keep surviving connections in their previous relative order to reduce row reshuffle,
