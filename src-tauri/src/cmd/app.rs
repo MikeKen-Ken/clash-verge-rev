@@ -325,6 +325,139 @@ pub async fn get_process_icon(_process_path: String) -> CmdResult<Option<String>
     Ok(None)
 }
 
+/// 通过进程名获取进程图标 (Windows only)
+/// 先查找运行中的进程获取完整路径，然后提取图标
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn get_process_icon_by_name(process_name: String) -> CmdResult<Option<String>> {
+    use base64::Engine;
+
+    let process_name_str: std::string::String = process_name.into();
+    
+    // 先检查进程名缓存
+    let icon_cache_dir = dirs::app_home_dir()
+        .stringify_err()?
+        .join("icons")
+        .join("process_name_cache");
+
+    if !icon_cache_dir.exists() {
+        let _ = fs::create_dir_all(&icon_cache_dir).await;
+    }
+
+    let name_hash = format!("{:x}", md5_hash(&process_name_str.to_lowercase()));
+    let cache_path = icon_cache_dir.join(format!("{}.png", name_hash));
+
+    // 如果缓存存在，直接返回
+    if cache_path.exists() {
+        if let Ok(data) = fs::read(&cache_path).await {
+            let base64_str = base64::engine::general_purpose::STANDARD.encode(&data);
+            return Ok(Some(format!("data:image/png;base64,{}", base64_str).into()));
+        }
+    }
+
+    // 在阻塞线程中查找进程并提取图标
+    let process_name_clone = process_name_str.clone();
+    let icon_data = tokio::task::spawn_blocking(move || {
+        find_process_and_extract_icon(&process_name_clone)
+    })
+    .await
+    .stringify_err()?;
+
+    match icon_data {
+        Some(png_data) => {
+            // 保存到缓存
+            let _ = fs::write(&cache_path, &png_data).await;
+
+            let base64_str = base64::engine::general_purpose::STANDARD.encode(&png_data);
+            Ok(Some(format!("data:image/png;base64,{}", base64_str).into()))
+        }
+        None => Ok(None),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub async fn get_process_icon_by_name(_process_name: String) -> CmdResult<Option<String>> {
+    Ok(None)
+}
+
+/// 通过进程名查找进程路径并提取图标 (Windows)
+#[cfg(target_os = "windows")]
+fn find_process_and_extract_icon(process_name: &str) -> Option<Vec<u8>> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE, MAX_PATH};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    unsafe {
+        // 创建进程快照
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        if Process32FirstW(snapshot, &mut entry).is_err() {
+            let _ = CloseHandle(snapshot);
+            return None;
+        }
+
+        let target_name = process_name.to_lowercase();
+        let mut found_path: Option<std::string::String> = None;
+
+        loop {
+            // 获取进程名
+            let exe_name: std::string::String = entry.szExeFile
+                .iter()
+                .take_while(|&&c| c != 0)
+                .map(|&c| c as u8 as char)
+                .collect();
+
+            if exe_name.to_lowercase() == target_name {
+                // 尝试打开进程获取完整路径
+                if let Ok(process_handle) = OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION,
+                    false,
+                    entry.th32ProcessID,
+                ) {
+                    if !process_handle.is_invalid() {
+                        let mut path_buf = [0u16; MAX_PATH as usize];
+                        let len = GetModuleFileNameExW(
+                            process_handle,
+                            None,
+                            &mut path_buf,
+                        );
+                        
+                        if len > 0 {
+                            found_path = Some(
+                                std::string::String::from_utf16_lossy(&path_buf[..len as usize])
+                            );
+                        }
+                        let _ = CloseHandle(process_handle);
+                    }
+                }
+                
+                if found_path.is_some() {
+                    break;
+                }
+            }
+
+            if Process32NextW(snapshot, &mut entry).is_err() {
+                break;
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+
+        // 如果找到了进程路径，提取图标
+        found_path.and_then(|path| extract_icon_from_exe(&path))
+    }
+}
+
 /// 简单的字符串 hash 函数
 fn md5_hash(s: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;

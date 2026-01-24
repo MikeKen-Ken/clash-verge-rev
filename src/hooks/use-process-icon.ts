@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 
-// 全局图标缓存，避免重复请求
+// 全局图标缓存，避免重复请求 (key: processPath)
 const iconCache = new Map<string, string | null>();
+// 进程名图标缓存 (key: processName)
+const iconByNameCache = new Map<string, string | null>();
 // 正在请求中的 Promise 缓存，避免重复请求
 const pendingRequests = new Map<string, Promise<string | null>>();
 // 进程名到进程路径的映射缓存
@@ -112,8 +114,68 @@ export const useProcessIconSync = (processPath: string | undefined) => {
 };
 
 /**
+ * Synchronous hook to get cached process icon by process name
+ * First tries to find path from cache, then calls backend API directly
+ */
+export const useProcessIconByNameSync = (processName: string | undefined) => {
+  const [icon, setIcon] = useState<string | null>(() => {
+    if (!processName) return null;
+    const key = processName.toLowerCase();
+    return iconByNameCache.get(key) ?? null;
+  });
+  const fetchedRef = useRef(false);
+
+  // 如果没有缓存，异步获取
+  if (processName && !fetchedRef.current) {
+    const key = processName.toLowerCase();
+    
+    if (iconByNameCache.has(key)) {
+      if (icon !== iconByNameCache.get(key)) {
+        setIcon(iconByNameCache.get(key) ?? null);
+      }
+    } else {
+      fetchedRef.current = true;
+      const requestKey = `name:${key}`;
+
+      // 检查是否已有请求在进行中
+      if (!pendingRequests.has(requestKey)) {
+        // 先尝试使用已知的路径
+        const knownPath = processNameToPathCache.get(key);
+        
+        const request = (knownPath
+          ? invoke<string | null>("get_process_icon", { processPath: knownPath })
+          : invoke<string | null>("get_process_icon_by_name", { processName })
+        )
+          .then((result) => {
+            iconByNameCache.set(key, result);
+            pendingRequests.delete(requestKey);
+            setIcon(result);
+            return result;
+          })
+          .catch((err) => {
+            console.warn(`Failed to get icon for process ${processName}:`, err);
+            iconByNameCache.set(key, null);
+            pendingRequests.delete(requestKey);
+            return null;
+          });
+
+        pendingRequests.set(requestKey, request);
+      } else {
+        // 等待已有请求完成
+        pendingRequests.get(requestKey)!.then((result) => {
+          setIcon(result);
+        });
+      }
+    }
+  }
+
+  return icon;
+};
+
+/**
  * Clear the icon cache
  */
 export const clearProcessIconCache = () => {
   iconCache.clear();
+  iconByNameCache.clear();
 };
