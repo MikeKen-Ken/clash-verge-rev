@@ -224,7 +224,7 @@ export const ConnectionTable = (props: Props) => {
         minWidth: 140,
         cell: (row) => (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-            <ProcessIcon processPath={row.processPath} size={16} />
+            <ProcessIcon processPath={row.metadata.processPath} size={16} />
             <span
               style={{
                 overflow: "hidden",
@@ -232,7 +232,7 @@ export const ConnectionTable = (props: Props) => {
                 whiteSpace: "nowrap",
               }}
             >
-              {row.process}
+              {row.metadata.process}
             </span>
           </Box>
         ),
