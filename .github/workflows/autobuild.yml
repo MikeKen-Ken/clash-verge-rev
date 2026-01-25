@@ -1,6 +1,8 @@
 name: Auto Build
 
 on:
+  push:
+    branches: [dev, main]
   workflow_dispatch:
   schedule:
     # UTC+8 12:00, 18:00 -> UTC 4:00, 10:00
@@ -22,7 +24,7 @@ jobs:
     uses: clash-verge-rev/clash-verge-rev/.github/workflows/check-commit-needs-build.yml@dev
     with:
       tag_name: autobuild
-      force_build: ${{ github.event_name == 'workflow_dispatch' }}
+      force_build: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
 
   update_tag:
     name: Update tag
@@ -62,35 +64,12 @@ jobs:
           echo "DOWNLOAD_URL=https://github.com/clash-verge-rev/clash-verge-rev/releases/download/autobuild" >> $GITHUB_ENV
         shell: bash
 
-      - run: |
-          if [ -z "$UPDATE_LOGS" ]; then
-            echo "No update logs found, using default message"
-            UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
-          else
-            echo "Using found update logs"
-          fi
-
-          cat > release.txt << EOF
-          $UPDATE_LOGS
-
-          ## 下载地址
-
-          ### Windows (不再支持Win7)
-          #### 正常版本(推荐)
-          - [64位(常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
-
-          ### macOS
-          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg)
-
-          Created at ${{ env.BUILDTIME }}.
-          EOF
-
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
-          body_path: release.txt
+          body: ""
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: false
@@ -194,7 +173,7 @@ jobs:
         with:
           tagName: ${{ env.TAG_NAME }}
           releaseName: "Clash Verge Rev ${{ env.TAG_CHANNEL }}"
-          releaseBody: "More new features are now supported."
+          releaseBody: ""
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm
