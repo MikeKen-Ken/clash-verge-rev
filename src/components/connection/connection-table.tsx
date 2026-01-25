@@ -1,5 +1,6 @@
 import { ViewColumnRounded } from "@mui/icons-material";
 import { Box, IconButton, Tooltip } from "@mui/material";
+import type { Column } from "@tanstack/react-table";
 import {
   ColumnDef,
   ColumnOrderState,
@@ -379,7 +380,7 @@ export const ConnectionTable = (props: Props) => {
     [setColumnWidths],
   );
 
-  const table = useReactTable({
+  const table = useReactTable<IConnectionsItem>({
     data: connections,
     state: {
       columnVisibility: columnVisibilityModel ?? {},
@@ -431,7 +432,10 @@ export const ConnectionTable = (props: Props) => {
   const virtualRows = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
   const tableWidth = table.getTotalSize();
-  const managerColumns = table.getAllLeafColumns();
+  const managerColumns = table.getAllLeafColumns() as Column<
+    IConnectionsItem,
+    unknown
+  >[];
 
   return (
     <>
