@@ -404,7 +404,7 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
-  nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
+  ExecShell "runas" "$INSTDIR\${MAINBINARYNAME}.exe" "" SW_SHOW
 FunctionEnd
 
 ; Uninstaller Pages
@@ -1036,7 +1036,7 @@ Function .onInstSuccess
     ${GetOptions} $CMDLINE "/R" $R0
     ${IfNot} ${Errors}
       ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
+      ExecShell "runas" "$INSTDIR\${MAINBINARYNAME}.exe" "$R0" SW_SHOW
     ${EndIf}
   ${EndIf}
 FunctionEnd
