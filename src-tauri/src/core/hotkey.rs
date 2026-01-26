@@ -188,8 +188,6 @@ impl Hotkey {
                 // Emit frontend event to trigger delay checks first
                 // The frontend will handle delay checks and then close connections
                 AsyncHandler::spawn(async move || {
-                    // 立刻发送开始通知
-                    notify_event(NotificationEvent::CloseAllConnectionsStarted).await;
                     handle::Handle::notify_close_all_connections();
                 });
             }
