@@ -98,7 +98,6 @@ async function main() {
   });
 
   const updateData = {
-    version,
     name: version,
     notes: "AutoBuild release. See GitHub Actions for details.",
     pub_date: new Date().toISOString(),
