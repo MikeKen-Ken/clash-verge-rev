@@ -166,6 +166,7 @@ async function updateHashCache(targetPath) {
 // Meta maps (stable & alpha)
 // =======================
 // Alpha 内核使用自建 fork: https://github.com/MikeKen-Ken/mihomo (阿尔法分支)
+// 你当前只发布 mihomo-windows-amd64-{version}.zip，故 win32-x64 使用 mihomo-windows-amd64
 const META_ALPHA_VERSION_URL =
   "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
 const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
@@ -177,7 +178,7 @@ const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
 let META_VERSION;
 
 const META_ALPHA_MAP = {
-  "win32-x64": "mihomo-windows-amd64-v2",
+  "win32-x64": "mihomo-windows-amd64",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
   "darwin-x64": "mihomo-darwin-amd64-v1-go122",
