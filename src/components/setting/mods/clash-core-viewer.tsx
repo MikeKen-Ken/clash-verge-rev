@@ -51,7 +51,7 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
     close: () => setOpen(false),
   }));
 
-  const { clash_core = "verge-mihomo" } = verge ?? {};
+  const { clash_core = "verge-mihomo-alpha" } = verge ?? {};
 
   const onCoreChange = useLockFn(async (core: string) => {
     if (core === clash_core) return;

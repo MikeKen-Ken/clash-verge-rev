@@ -165,9 +165,10 @@ async function updateHashCache(targetPath) {
 // =======================
 // Meta maps (stable & alpha)
 // =======================
+// Alpha 内核使用自建 fork: https://github.com/MikeKen-Ken/mihomo (阿尔法分支)
 const META_ALPHA_VERSION_URL =
-  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
+  "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
 let META_ALPHA_VERSION;
 
 const META_VERSION_URL =
