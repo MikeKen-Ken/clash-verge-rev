@@ -44,7 +44,15 @@ export const extractSemver = (
 
 export const splitVersion = (version: string | null): VersionParts | null => {
   if (!version) return null;
-  const [mainPart, preRelease] = version.split("-");
+  
+  // 处理 build metadata (+ 后面的部分): 将其转换为 pre-release 格式以便比较
+  // 例如: "2.4.6+autobuild.xxx" -> "2.4.6-autobuild.xxx"
+  let normalized = version;
+  if (normalized.includes("+")) {
+    normalized = normalized.replace("+", "-");
+  }
+  
+  const [mainPart, preRelease] = normalized.split("-");
   const main = mainPart
     .split(".")
     .map((part) => Number.parseInt(part, 10))
@@ -104,27 +112,32 @@ export const compareVersions = (
 };
 
 export const resolveRemoteVersion = (update: Update): string | null => {
+  const raw = update.rawJson ?? {};
+  
+  // 优先从 rawJson.name 提取（autobuild 版本号通常在这里，包含完整的 +build 部分）
+  const nameVersion = extractSemver(
+    typeof raw.name === "string" ? raw.name : null,
+  );
+  if (nameVersion) return nameVersion;
+  
+  // 其次从 update.version 提取
   const primary = ensureSemver(update.version);
   if (primary) return primary;
 
   const fallbackPrimary = extractSemver(update.version);
   if (fallbackPrimary) return fallbackPrimary;
 
-  const raw = update.rawJson ?? {};
+  // 然后从 rawJson.version 提取
   const rawVersion = ensureSemver(
     typeof raw.version === "string" ? raw.version : null,
   );
   if (rawVersion) return rawVersion;
 
+  // 最后从 tag_name 提取
   const tagVersion = extractSemver(
     typeof raw.tag_name === "string" ? raw.tag_name : null,
   );
   if (tagVersion) return tagVersion;
-
-  const nameVersion = extractSemver(
-    typeof raw.name === "string" ? raw.name : null,
-  );
-  if (nameVersion) return nameVersion;
 
   return null;
 };
