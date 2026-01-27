@@ -94,7 +94,12 @@ async function main() {
   }
 
   Object.keys(platforms).forEach((key) => {
-    if (!platforms[key].url) delete platforms[key];
+    if (!platforms[key].url) {
+      delete platforms[key];
+    } else {
+      // Autobuild 版本不使用签名，移除 signature 字段以避免验证错误
+      delete platforms[key].signature;
+    }
   });
 
   const updateData = {
