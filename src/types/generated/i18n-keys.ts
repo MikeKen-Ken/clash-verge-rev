@@ -462,6 +462,7 @@ export const translationKeys = [
   "settings.modals.clashPort.messages.saveFailed",
   "settings.modals.clashCore.variants.release",
   "settings.modals.clashCore.variants.alpha",
+  "settings.modals.clashCore.variants.custom",
   "settings.modals.liteMode.title",
   "settings.modals.liteMode.actions.enterNow",
   "settings.modals.liteMode.toggles.autoEnter",

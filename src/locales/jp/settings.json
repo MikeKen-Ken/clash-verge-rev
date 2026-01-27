@@ -265,7 +265,8 @@
     "clashCore": {
       "variants": {
         "release": "正式版",
-        "alpha": "アルファ版"
+        "alpha": "アルファ版",
+        "custom": "自用カーネル"
       }
     },
     "liteMode": {

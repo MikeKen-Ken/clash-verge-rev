@@ -34,6 +34,11 @@ const VALID_CORE = [
     core: "verge-mihomo-alpha",
     chipKey: "settings.modals.clashCore.variants.alpha",
   },
+  {
+    name: "Mihomo (Custom)",
+    core: "verge-mihomo-custom",
+    chipKey: "settings.modals.clashCore.variants.custom",
+  },
 ];
 
 export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
@@ -51,7 +56,7 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
     close: () => setOpen(false),
   }));
 
-  const { clash_core = "verge-mihomo-alpha" } = verge ?? {};
+  const { clash_core = "verge-mihomo-custom" } = verge ?? {};
 
   const onCoreChange = useLockFn(async (core: string) => {
     if (core === clash_core) return;

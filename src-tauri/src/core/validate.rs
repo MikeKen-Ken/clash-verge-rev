@@ -234,7 +234,8 @@ impl CoreConfigValidator {
         logging!(info, Type::Validate, "开始验证配置文件: {}", config_path);
 
         let clash_core = Config::verge().await.latest_arc().get_valid_clash_core();
-        logging!(info, Type::Validate, "使用内核: {}", clash_core);
+        let binary = crate::config::sidecar_binary_name(clash_core.as_str());
+        logging!(info, Type::Validate, "使用内核: {} (binary: {})", clash_core, binary);
 
         let app_handle = handle::Handle::app_handle();
         let app_dir = dirs::app_home_dir()?;
@@ -245,7 +246,7 @@ impl CoreConfigValidator {
         let command =
             app_handle
                 .shell()
-                .sidecar(clash_core.as_str())?
+                .sidecar(binary)?
                 .args(["-t", "-d", app_dir_str, "-f", config_path]);
         let output = command.output().await?;
 

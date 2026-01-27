@@ -303,10 +303,11 @@ pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result
 
     let verge_config = Config::verge().await;
     let clash_core = verge_config.latest_arc().get_valid_clash_core();
+    let binary = crate::config::sidecar_binary_name(clash_core.as_str());
     drop(verge_config);
 
     let bin_ext = if cfg!(windows) { ".exe" } else { "" };
-    let bin_path = current_exe()?.with_file_name(format!("{clash_core}{bin_ext}"));
+    let bin_path = current_exe()?.with_file_name(format!("{binary}{bin_ext}"));
 
     let payload = clash_verge_service_ipc::ClashConfig {
         core_config: CoreConfig {

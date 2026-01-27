@@ -265,7 +265,8 @@
     "clashCore": {
       "variants": {
         "release": "안정 버전",
-        "alpha": "알파 버전"
+        "alpha": "알파 버전",
+        "custom": "자체 커널"
       }
     },
     "liteMode": {

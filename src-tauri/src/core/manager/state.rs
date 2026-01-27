@@ -1,7 +1,7 @@
 use super::{CoreManager, RunningMode};
 use crate::{
     AsyncHandler,
-    config::{Config, IClashTemp},
+    config::{sidecar_binary_name, Config, IClashTemp},
     core::{handle, logger::Logger, manager::CLASH_LOGGER, service},
     logging,
     utils::dirs,
@@ -28,13 +28,14 @@ impl CoreManager {
         let config_file = Config::generate_file(crate::config::ConfigType::Run).await?;
         let app_handle = handle::Handle::app_handle();
         let clash_core = Config::verge().await.latest_arc().get_valid_clash_core();
+        let binary = sidecar_binary_name(clash_core.as_str());
         let config_dir = dirs::app_home_dir()?;
 
         #[cfg(unix)]
         let previous_mask = unsafe { tauri_plugin_clash_verge_sysinfo::libc::umask(0o007) };
         let (mut rx, child) = app_handle
             .shell()
-            .sidecar(clash_core.as_str())?
+            .sidecar(binary)?
             .args([
                 "-d",
                 dirs::path_to_str(&config_dir)?,

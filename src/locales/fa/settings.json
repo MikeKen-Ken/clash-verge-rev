@@ -265,7 +265,8 @@
     "clashCore": {
       "variants": {
         "release": "نسخه نهایی",
-        "alpha": "نسخه آلفا"
+        "alpha": "نسخه آلفا",
+        "custom": "شخصی (سفارشی)"
       }
     },
     "liteMode": {

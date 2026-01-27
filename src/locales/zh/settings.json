@@ -265,7 +265,8 @@
     "clashCore": {
       "variants": {
         "release": "正式版",
-        "alpha": "预览版"
+        "alpha": "预览版",
+        "custom": "自用内核"
       }
     },
     "liteMode": {

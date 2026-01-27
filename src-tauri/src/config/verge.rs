@@ -280,9 +280,19 @@ pub struct IVergeTheme {
     pub css_injection: Option<String>,
 }
 
+/// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名。
+/// "verge-mihomo-custom" 使用与 Alpha 相同的二进制 "verge-mihomo-alpha"。
+pub fn sidecar_binary_name(core: &str) -> &str {
+    match core {
+        "verge-mihomo-custom" => "verge-mihomo-alpha",
+        _ => core,
+    }
+}
+
 impl IVerge {
-    /// 有效的clash核心名称
-    pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo", "verge-mihomo-alpha"];
+    /// 有效的clash核心名称（含私人内核选项 verge-mihomo-custom，实际使用 alpha 二进制）
+    pub const VALID_CLASH_CORES: &'static [&'static str] =
+        &["verge-mihomo", "verge-mihomo-alpha", "verge-mihomo-custom"];
 
     /// 验证并修正配置文件中的clash_core值
     pub async fn validate_and_fix_config() -> Result<()> {
@@ -300,19 +310,19 @@ impl IVerge {
                 logging!(
                     warn,
                     Type::Config,
-                    "启动时发现无效的clash_core配置: '{}', 将自动修正为 'verge-mihomo-alpha'",
+                    "启动时发现无效的clash_core配置: '{}', 将自动修正为 'verge-mihomo-custom'",
                     core
                 );
-                config.clash_core = Some("verge-mihomo-alpha".into());
+                config.clash_core = Some("verge-mihomo-custom".into());
                 needs_fix = true;
             }
         } else {
             logging!(
                 info,
                 Type::Config,
-                "启动时发现未配置clash_core, 将设置为默认值 'verge-mihomo-alpha'"
+                "启动时发现未配置clash_core, 将设置为默认值 'verge-mihomo-custom'"
             );
-            config.clash_core = Some("verge-mihomo-alpha".into());
+            config.clash_core = Some("verge-mihomo-custom".into());
             needs_fix = true;
         }
 
@@ -349,7 +359,7 @@ impl IVerge {
     }
 
     pub fn get_valid_clash_core(&self) -> String {
-        self.clash_core.clone().unwrap_or_else(|| "verge-mihomo-alpha".into())
+        self.clash_core.clone().unwrap_or_else(|| "verge-mihomo-custom".into())
     }
 
     pub async fn new() -> Self {
@@ -380,7 +390,7 @@ impl IVerge {
         Self {
             app_log_max_size: Some(128),
             app_log_max_count: Some(8),
-            clash_core: Some("verge-mihomo-alpha".into()),
+            clash_core: Some("verge-mihomo-custom".into()),
             language: Some(clash_verge_i18n::system_language().into()),
             theme_mode: Some("system".into()),
             #[cfg(not(target_os = "windows"))]

@@ -784,6 +784,7 @@ export interface TranslationResources {
           variants: {
             alpha: string;
             release: string;
+            custom: string;
           };
         };
         clashPort: {

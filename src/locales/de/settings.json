@@ -265,7 +265,8 @@
     "clashCore": {
       "variants": {
         "release": "Stabile Version",
-        "alpha": "Alpha-Version"
+        "alpha": "Alpha-Version",
+        "custom": "Eigener Build"
       }
     },
     "liteMode": {
