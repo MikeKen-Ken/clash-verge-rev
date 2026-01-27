@@ -19,11 +19,17 @@ import { mutate } from "swr";
 import { closeAllConnections, upgradeCore } from "tauri-plugin-mihomo-api";
 
 import { BaseDialog, DialogRef } from "@/components/base";
+import { useClash } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { changeClashCore, restartCore } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 
 const VALID_CORE = [
+  {
+    name: "Mihomo (Custom)",
+    core: "verge-mihomo-custom",
+    chipKey: "settings.modals.clashCore.variants.custom",
+  },
   {
     name: "Mihomo",
     core: "verge-mihomo",
@@ -34,17 +40,13 @@ const VALID_CORE = [
     core: "verge-mihomo-alpha",
     chipKey: "settings.modals.clashCore.variants.alpha",
   },
-  {
-    name: "Mihomo (Custom)",
-    core: "verge-mihomo-custom",
-    chipKey: "settings.modals.clashCore.variants.custom",
-  },
 ];
 
 export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
 
   const { verge, mutateVerge } = useVerge();
+  const { version: clashVersion } = useClash();
 
   const [open, setOpen] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
@@ -163,21 +165,28 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
       onCancel={() => setOpen(false)}
     >
       <List component="nav">
-        {VALID_CORE.map((each) => (
-          <ListItemButton
-            key={each.core}
-            selected={each.core === clash_core}
-            onClick={() => onCoreChange(each.core)}
-            disabled={changingCore !== null || restarting || upgrading}
-          >
-            <ListItemText primary={each.name} secondary={`/${each.core}`} />
-            {changingCore === each.core ? (
-              <CircularProgress size={20} sx={{ mr: 1 }} />
-            ) : (
-              <Chip label={t(each.chipKey)} size="small" />
-            )}
-          </ListItemButton>
-        ))}
+        {VALID_CORE.map((each) => {
+          const isCustom = each.core === "verge-mihomo-custom";
+          const displayName = isCustom && clashVersion && clashVersion !== "-"
+            ? `${clashVersion} (${t(each.chipKey)})`
+            : each.name;
+          
+          return (
+            <ListItemButton
+              key={each.core}
+              selected={each.core === clash_core}
+              onClick={() => onCoreChange(each.core)}
+              disabled={changingCore !== null || restarting || upgrading}
+            >
+              <ListItemText primary={displayName} secondary={`/${each.core}`} />
+              {changingCore === each.core ? (
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+              ) : (
+                <Chip label={t(each.chipKey)} size="small" />
+              )}
+            </ListItemButton>
+          );
+        })}
       </List>
     </BaseDialog>
   );
