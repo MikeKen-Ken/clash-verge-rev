@@ -163,14 +163,21 @@ async function updateHashCache(targetPath) {
 }
 
 // =======================
-// Meta maps (stable & alpha)
+// Meta maps (stable & alpha & custom)
 // =======================
-// Alpha 内核使用自建 fork: https://github.com/MikeKen-Ken/mihomo (阿尔法分支)
+// Alpha 内核使用 MetaCubeX 官方: https://github.com/MetaCubeX/mihomo (Prerelease-Alpha)
+// Custom 版本使用自建 fork: https://github.com/MikeKen-Ken/mihomo (Prerelease-Alpha)
+// Custom 版本 (verge-mihomo-custom) 使用独立的二进制文件名 (verge-mihomo-custom)，避免覆盖 Alpha 版本
 // 你当前只发布 mihomo-windows-amd64-{version}.zip，故 win32-x64 使用 mihomo-windows-amd64
 const META_ALPHA_VERSION_URL =
-  "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
+  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
 let META_ALPHA_VERSION;
+
+const META_CUSTOM_VERSION_URL =
+  "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const META_CUSTOM_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
+let META_CUSTOM_VERSION;
 
 const META_VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
@@ -242,6 +249,40 @@ async function getLatestAlphaVersion() {
   }
 }
 
+async function getLatestCustomVersion() {
+  if (!FORCE) {
+    const cached = await getCachedVersion("META_CUSTOM_VERSION");
+    if (cached) {
+      META_CUSTOM_VERSION = cached;
+      return;
+    }
+  }
+  const options = {};
+  const httpProxy =
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy;
+  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy);
+
+  try {
+    const response = await fetch(META_CUSTOM_VERSION_URL, {
+      ...options,
+      method: "GET",
+    });
+    if (!response.ok)
+      throw new Error(
+        `Failed to fetch ${META_CUSTOM_VERSION_URL}: ${response.status}`,
+      );
+    META_CUSTOM_VERSION = (await response.text()).trim();
+    log_info(`Latest custom version: ${META_CUSTOM_VERSION}`);
+    await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
+  } catch (err) {
+    log_error("Error fetching latest custom version:", err.message);
+    process.exit(1);
+  }
+}
+
 async function getLatestReleaseVersion() {
   if (!FORCE) {
     const cached = await getCachedVersion("META_VERSION");
@@ -287,6 +328,7 @@ if (!META_ALPHA_MAP[`${platform}-${arch}`]) {
     `clash meta alpha unsupported platform "${platform}-${arch}"`,
   );
 }
+// Custom 版本使用与 Alpha 相同的平台映射
 
 // =======================
 // Build meta objects
@@ -314,6 +356,20 @@ function clashMeta() {
     exeFile: `${name}${isWin ? ".exe" : ""}`,
     zipFile: `${name}-${META_VERSION}.${urlExt}`,
     downloadURL: `${META_URL_PREFIX}/${META_VERSION}/${name}-${META_VERSION}.${urlExt}`,
+  };
+}
+
+function clashMetaCustom() {
+  // Custom 版本使用独立的二进制文件名，避免覆盖 Alpha 版本
+  const name = META_ALPHA_MAP[`${platform}-${arch}`];
+  const isWin = platform === "win32";
+  const urlExt = isWin ? "zip" : "gz";
+  return {
+    name: "verge-mihomo-custom",
+    targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    exeFile: `${name}${isWin ? ".exe" : ""}`,
+    zipFile: `${name}-${META_CUSTOM_VERSION}.${urlExt}`,
+    downloadURL: `${META_CUSTOM_URL_PREFIX}/${name}-${META_CUSTOM_VERSION}.${urlExt}`,
   };
 }
 
@@ -646,6 +702,12 @@ const tasks = [
     name: "verge-mihomo-alpha",
     func: () =>
       getLatestAlphaVersion().then(() => resolveSidecar(clashMetaAlpha())),
+    retry: 5,
+  },
+  {
+    name: "verge-mihomo-custom",
+    func: () =>
+      getLatestCustomVersion().then(() => resolveSidecar(clashMetaCustom())),
     retry: 5,
   },
   {

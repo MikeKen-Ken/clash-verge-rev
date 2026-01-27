@@ -281,16 +281,16 @@ pub struct IVergeTheme {
 }
 
 /// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名。
-/// "verge-mihomo-custom" 使用与 Alpha 相同的二进制 "verge-mihomo-alpha"。
+/// "verge-mihomo-custom" 使用独立的二进制文件名 "verge-mihomo-custom"。
 pub fn sidecar_binary_name(core: &str) -> &str {
     match core {
-        "verge-mihomo-custom" => "verge-mihomo-alpha",
+        "verge-mihomo-custom" => "verge-mihomo-custom",
         _ => core,
     }
 }
 
 impl IVerge {
-    /// 有效的clash核心名称（含私人内核选项 verge-mihomo-custom，实际使用 alpha 二进制）
+    /// 有效的clash核心名称（含私人内核选项 verge-mihomo-custom，使用独立的二进制文件）
     pub const VALID_CLASH_CORES: &'static [&'static str] =
         &["verge-mihomo", "verge-mihomo-alpha", "verge-mihomo-custom"];
 

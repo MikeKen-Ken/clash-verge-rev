@@ -142,7 +142,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm run prebuild ${{ matrix.target }}
+          pnpm run prebuild -- --force ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
         run: pnpm release-version autobuild-latest
