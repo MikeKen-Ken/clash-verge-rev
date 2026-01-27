@@ -154,13 +154,27 @@ jobs:
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
-      - name: Disable updater artifacts for autobuild
+      - name: Configure updater for autobuild (check autobuild channel, no signing)
         shell: bash
         run: |
-          # Disable createUpdaterArtifacts for autobuilds to avoid signing issues
-          # Autobuilds don't need signed updater artifacts
-          node -e "const fs = require('fs'); const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')); config.bundle.createUpdaterArtifacts = false; fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2));"
-          echo "Disabled createUpdaterArtifacts for autobuild"
+          node -e "
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          config.bundle.createUpdaterArtifacts = false;
+          const repo = process.env.GITHUB_REPOSITORY || 'clash-verge-rev/clash-verge-rev';
+          const base = 'https://github.com/' + repo + '/releases/download/autobuild';
+          config.plugins.updater = {
+            pubkey: '',
+            endpoints: [
+              'https://download.clashverge.dev/' + base + '/update-proxy.json',
+              base + '/update-proxy.json',
+              base + '/update.json'
+            ],
+            windows: { installMode: 'basicUi' }
+          };
+          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(config, null, 2));
+          "
+          echo "Autobuild will check updates from autobuild release (unsigned)"
 
       - name: Tauri build for Windows x64
         uses: tauri-apps/tauri-action@v0
@@ -179,3 +193,39 @@ jobs:
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
           # includeUpdaterJson: true
+
+      - name: Save version for update-json job
+        shell: bash
+        run: |
+          node -p "require('./package.json').version" > version.txt
+          cat version.txt
+
+      - name: Upload version artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: autobuild-version
+          path: version.txt
+
+  upload-autobuild-update-json:
+    name: Upload autobuild update.json
+    needs: autobuild-x86-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download version
+        uses: actions/download-artifact@v4
+        with:
+          name: autobuild-version
+
+      - name: Run autobuild-update-json script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          VERSION=$(cat version.txt | tr -d '\n\r')
+          export AUTOBUILD_VERSION="$VERSION"
+          node scripts/autobuild-update-json.mjs
