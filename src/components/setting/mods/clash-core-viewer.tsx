@@ -35,7 +35,7 @@ const VALID_CORE = [
     core: "verge-mihomo",
     chipKey: "settings.modals.clashCore.variants.release",
   },
-  // Alpha 版本已隐藏，因为与 Custom 版本使用相同的二进制文件
+  // Alpha 版本已隐藏，因为它与 Custom 版本使用相同的二进制文件
   // {
   //   name: "Mihomo Alpha",
   //   core: "verge-mihomo-alpha",
