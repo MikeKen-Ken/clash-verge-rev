@@ -35,11 +35,12 @@ const VALID_CORE = [
     core: "verge-mihomo",
     chipKey: "settings.modals.clashCore.variants.release",
   },
-  {
-    name: "Mihomo Alpha",
-    core: "verge-mihomo-alpha",
-    chipKey: "settings.modals.clashCore.variants.alpha",
-  },
+  // Alpha 版本已隐藏，因为与 Custom 版本使用相同的二进制文件
+  // {
+  //   name: "Mihomo Alpha",
+  //   core: "verge-mihomo-alpha",
+  //   chipKey: "settings.modals.clashCore.variants.alpha",
+  // },
 ];
 
 export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {

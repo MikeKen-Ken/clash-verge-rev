@@ -564,22 +564,6 @@ FunctionEnd
     !endif
   ${EndIf}
 
-  ; Check if verge-mihomo-custom.exe is running
-  !if "${INSTALLMODE}" == "currentUser"
-    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom.exe"
-  !else
-    nsis_tauri_utils::FindProcess "verge-mihomo-custom.exe"
-  !endif
-  Pop $R0
-  ${If} $R0 = 0
-    DetailPrint "Kill verge-mihomo-custom.exe..."
-    !if "${INSTALLMODE}" == "currentUser"
-      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom.exe"
-    !else
-      nsis_tauri_utils::KillProcess "verge-mihomo-custom.exe"
-    !endif
-  ${EndIf}
-
   ; Check if verge-mihomo.exe is running
   !if "${INSTALLMODE}" == "currentUser"
     nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo.exe"

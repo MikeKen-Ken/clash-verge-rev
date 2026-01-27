@@ -167,7 +167,7 @@ async function updateHashCache(targetPath) {
 // =======================
 // Alpha 内核使用 MetaCubeX 官方: https://github.com/MetaCubeX/mihomo (Prerelease-Alpha)
 // Custom 版本使用自建 fork: https://github.com/MikeKen-Ken/mihomo (Prerelease-Alpha)
-// Custom 版本 (verge-mihomo-custom) 使用独立的二进制文件名 (verge-mihomo-custom)，避免覆盖 Alpha 版本
+// Custom 版本 (verge-mihomo-custom) 实际使用与 Alpha 相同的二进制文件名 (verge-mihomo-alpha)
 // 你当前只发布 mihomo-windows-amd64-{version}.zip，故 win32-x64 使用 mihomo-windows-amd64
 const META_ALPHA_VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
@@ -360,13 +360,13 @@ function clashMeta() {
 }
 
 function clashMetaCustom() {
-  // Custom 版本使用独立的二进制文件名，避免覆盖 Alpha 版本
+  // Custom 版本使用与 Alpha 相同的二进制文件名，但下载源不同
   const name = META_ALPHA_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
   return {
     name: "verge-mihomo-custom",
-    targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    targetFile: `verge-mihomo-alpha-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile: `${name}${isWin ? ".exe" : ""}`,
     zipFile: `${name}-${META_CUSTOM_VERSION}.${urlExt}`,
     downloadURL: `${META_CUSTOM_URL_PREFIX}/${name}-${META_CUSTOM_VERSION}.${urlExt}`,
