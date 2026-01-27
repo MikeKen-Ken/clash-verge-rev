@@ -96,10 +96,9 @@ async function main() {
   Object.keys(platforms).forEach((key) => {
     if (!platforms[key].url) {
       delete platforms[key];
-    } else {
-      // Autobuild 版本不使用签名，移除 signature 字段以避免验证错误
-      delete platforms[key].signature;
     }
+    // Autobuild 版本不使用签名，但 signature 字段必须存在（为空字符串）
+    // 当 pubkey 为空时，Tauri updater 会跳过签名验证
   });
 
   const updateData = {
