@@ -4,9 +4,6 @@ on:
   push:
     branches: [dev, main]
   workflow_dispatch:
-  schedule:
-    # UTC+8 12:00, 18:00 -> UTC 4:00, 10:00
-    - cron: "0 4,10 * * *"
 permissions: write-all
 env:
   TAG_NAME: autobuild
@@ -118,7 +115,6 @@ jobs:
             . -> target
           cache-all-crates: true
           cache-workspace-crates: true
-
 
       - uses: pnpm/action-setup@v4.2.0
         name: Install pnpm
