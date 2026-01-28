@@ -81,10 +81,10 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
                 "所有连接已关闭，节点已切换完成，可以正常使用网络".into(),
             );
         }
-        NotificationEvent::FallbackProxySwitched { group, from, to } => {
+        NotificationEvent::FallbackProxySwitched { group, from: _, to: _ } => {
             notify(
                 "节点自动切换".into(),
-                format!("分组 {} 已从 {} 切换到 {}", group, from, to).into(),
+                format!("分组 {} 触发了 fallback", group).into(),
             );
         }
         #[cfg(target_os = "macos")]
