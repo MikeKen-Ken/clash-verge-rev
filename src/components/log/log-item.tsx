@@ -111,8 +111,9 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
-    // 规则详情段（最后一个 --> 前的段）中，高亮逗号后的匹配值（如 DOMAIN-SUFFIX,+..github.com 中的 +..github.com）
+    // 规则详情段：高亮逗号后的匹配值（如 DOMAIN-SUFFIX,+..github.com 中的 +..github.com、+.cursor.sh 等）
     const lastArrow = text.lastIndexOf(" --> ");
+    let ruleDetailValueAdded = false;
     if (lastArrow > 0) {
       const secondLastArrow = text.lastIndexOf(" --> ", lastArrow - 1);
       if (secondLastArrow >= 0) {
@@ -129,7 +130,27 @@ const LogItem = ({ value, searchState }: Props) => {
               text: valueText,
               type: "rule-detail-value",
             });
+            ruleDetailValueAdded = true;
           }
+        }
+      }
+    }
+    // 若未从「最后一个 --> 前一段」解析到规则值，则整行匹配规则类型,值（如 DOMAIN-SUFFIX,+.cursor.sh），高亮值部分
+    if (!ruleDetailValueAdded) {
+      const ruleValueRegex =
+        /(DOMAIN-SUFFIX|GEOIP|IP-CIDR|IP-CIDR6|MATCH|RULE-SET|SUB-RULE|PROCESS-NAME|DST-PORT|SRC-PORT),([^\s-->]+)/gi;
+      let ruleValueMatch: RegExpExecArray | null;
+      while ((ruleValueMatch = ruleValueRegex.exec(text)) !== null) {
+        const valueStart = ruleValueMatch.index + ruleValueMatch[1].length + 1;
+        const valueEnd = ruleValueMatch.index + ruleValueMatch[0].length;
+        const valueText = ruleValueMatch[2];
+        if (valueText.length > 0) {
+          matches.push({
+            start: valueStart,
+            end: valueEnd,
+            text: valueText,
+            type: "rule-detail-value",
+          });
         }
       }
     }
@@ -300,29 +321,39 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
-    // RULE-SET 带 ruleDetail：match RuleSet(name)[detail] 改为 --> name --> detail（末尾不补 --> 或空格，避免 --> --> proxy）
+    // RULE-SET 带 ruleDetail：match RULE-SET(name)[detail] 改为 --> name --> detail
     secondLine = secondLine.replace(
-      /\s+match\s+RuleSet\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
+      /\s+match\s+RULE-SET\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
       " --> $1 --> $2",
     );
-    // match RuleSet(x) 改为 --> x，但若前面已有 --> x 则只删 match RuleSet(x)，避免规则名重复（如 cncn）
+    // match RULE-SET(x) 改为 --> x，但若前面已有 --> x 则只删 match RULE-SET(x)，避免规则名重复
     secondLine = secondLine.replace(
-      /\s+match\s+RuleSet\s*\(([^)]+)\)/gi,
+      /\s+match\s+RULE-SET\s*\(([^)]+)\)/gi,
       (match, ruleName, offset) => {
         const name = ruleName.trim();
         const before = secondLine.slice(0, offset);
         const lastArrow = before.lastIndexOf(" --> ");
         const afterLast = before.slice(lastArrow + " --> ".length).trim();
         const token = afterLast.split(/\s+/)[0] ?? "";
-        if (token === name) return ""; // 已有规则名，只删 match RuleSet(x)
+        if (token === name) return ""; // 已有规则名，只删 match RULE-SET(x)
         return " --> " + name;
+      },
+    );
+    // match 其他规则类型(payload)[detail]：如 match DOMAIN-SUFFIX(+.cursor.sh) 改为 --> DOMAIN-SUFFIX,+.cursor.sh
+    secondLine = secondLine.replace(
+      /\s+match\s+(DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH)\s*\(([^)]*)\)\s*(?:\[([^\]]*)\])?\s*/gi,
+      (_, ruleType, payload, detail) => {
+        if (detail) {
+          return ` --> ${ruleType},${payload} --> ${detail}`;
+        }
+        return ` --> ${ruleType},${payload}`;
       },
     );
     // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]
     secondLine = secondLine.replace(/\s+using\s+/, " --> ");
-    // dial ⬆️ (match RuleSet/games-cn) 改为 dial ⬆️ --> games-cn -->
+    // dial ⬆️ (match RULE-SET/games-cn) 改为 dial ⬆️ --> games-cn -->
     secondLine = secondLine.replace(
-      /\s*\(?\s*match\s+RuleSet\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
+      /\s*\(?\s*match\s+RULE-SET\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
       " --> $1 --> ",
     );
     return { protocol, secondLine };
