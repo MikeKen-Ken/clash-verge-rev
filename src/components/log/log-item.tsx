@@ -43,6 +43,10 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   },
   "& .rule-name, & .destination": {
     fontWeight: "bold",
+    color: palette.primary.main,
+  },
+  "& .log-warning": {
+    color: palette.warning.main,
   },
 }));
 
@@ -54,25 +58,33 @@ interface Props {
 const LogItem = ({ value, searchState }: Props) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
+  const warningColor = theme.palette.warning.main;
 
-  // 解析日志文本，标记目标地址和规则名
+  // 解析日志文本，标记目标地址、规则名、以及 error / i/o timeout 等警告信息
   const parseLogText = (text: string): ReactNode[] => {
     const elements: ReactNode[] = [];
     let lastIndex = 0;
 
-    // 匹配目标地址：--> 与 match 之间的 host:port，例如 audio-ak.spotifycdn.com:443
-    const destinationRegex = /-->\s*([^\s]+)\s+match/gi;
+    // 第二行格式：... --> host:port --> ruleName using ...
+    // 匹配目标地址：第一个 --> 后的 host:port
+    const destinationRegex = /\s-->\s+([^\s]+)\s+-->/gi;
     let destMatch: RegExpExecArray | null;
 
-    // 匹配规则名称：RuleSet(规则名) 中的规则名
-    const ruleRegex = /(?:RuleSet|RULE-SET|rule-set)\s*\(([^)]+)\)/gi;
+    // 匹配规则名称：第二个 --> 与 using 之间的规则名
+    const ruleRegex = /-->\s+[^\s]+\s+-->\s+([^\s]+)\s+using/gi;
     let ruleMatch: RegExpExecArray | null;
+
+    // 匹配 error（整词）和 i/o timeout，使用警告色
+    const errorRegex = /\berror\b/gi;
+    const timeoutRegex = /i\/o timeout/gi;
+    let errMatch: RegExpExecArray | null;
+    let timeoutMatch: RegExpExecArray | null;
 
     const matches: Array<{
       start: number;
       end: number;
       text: string;
-      type: "destination" | "rule";
+      type: "destination" | "rule" | "warning";
     }> = [];
 
     // 查找目标地址
@@ -87,19 +99,34 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
-    // 查找规则名称
+    // 查找规则名称（格式：--> host:port --> ruleName using）
     while ((ruleMatch = ruleRegex.exec(text)) !== null) {
-      // ruleMatch[1] 是括号内的规则名，需要找到它在原文本中的位置
-      const fullMatch = ruleMatch[0]; // 例如 "RuleSet(custome-noHK)"
-      const ruleName = ruleMatch[1]; // 例如 "custome-noHK"
-      // 计算规则名在原文本中的位置：RuleSet( 之后的位置
-      const leftParenIndex = fullMatch.indexOf("(");
-      const ruleStart = ruleMatch.index + leftParenIndex + 1;
+      const fullMatch = ruleMatch[0];
+      const ruleName = ruleMatch[1];
+      const ruleStart = ruleMatch.index + fullMatch.indexOf(ruleName);
       matches.push({
         start: ruleStart,
         end: ruleStart + ruleName.length,
         text: ruleName,
         type: "rule",
+      });
+    }
+
+    // 查找 error、i/o timeout 等警告词
+    while ((errMatch = errorRegex.exec(text)) !== null) {
+      matches.push({
+        start: errMatch.index,
+        end: errMatch.index + errMatch[0].length,
+        text: errMatch[0],
+        type: "warning",
+      });
+    }
+    while ((timeoutMatch = timeoutRegex.exec(text)) !== null) {
+      matches.push({
+        start: timeoutMatch.index,
+        end: timeoutMatch.index + timeoutMatch[0].length,
+        text: timeoutMatch[0],
+        type: "warning",
       });
     }
 
@@ -115,12 +142,17 @@ const LogItem = ({ value, searchState }: Props) => {
 
       // 添加标记的匹配文本
       const className =
-        match.type === "destination" ? "destination" : "rule-name";
+        match.type === "destination"
+          ? "destination"
+          : match.type === "rule"
+            ? "rule-name"
+            : "log-warning";
+      const color = match.type === "warning" ? warningColor : primaryColor;
       elements.push(
         <span
           key={`${match.type}-${match.start}`}
           className={className}
-          style={{ color: primaryColor }}
+          style={{ color }}
         >
           {match.text}
         </span>,
@@ -214,6 +246,28 @@ const LogItem = ({ value, searchState }: Props) => {
     }
   };
 
+  // 从 payload 提取协议 [TCP]/[UDP]，并生成第二行：去掉协议、去掉进程名括号、match RuleSet(x) 改为 --> x
+  const payloadLine = (() => {
+    const raw = value.payload || "";
+    const protocolMatch = raw.match(/^\[(TCP|UDP)\]\s*/i);
+    const protocol = protocolMatch
+      ? `[${protocolMatch[1].toUpperCase()}]`
+      : null;
+    const withoutProtocol = protocol
+      ? raw.slice(protocolMatch![0].length)
+      : raw;
+    let secondLine = withoutProtocol;
+    if (value.processName) {
+      const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
+    }
+    secondLine = secondLine.replace(
+      /\bmatch\s+RuleSet\s*\(([^)]+)\)/gi,
+      "--> $1",
+    );
+    return { protocol, secondLine };
+  })();
+
   return (
     <Item>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -224,9 +278,15 @@ const LogItem = ({ value, searchState }: Props) => {
         <span className="type" data-type={value.type.toLowerCase()}>
           {renderHighlightText(value.type)}
         </span>
+        {value.processName && <span className="data">{value.processName}</span>}
+        {payloadLine.protocol && (
+          <span className="data">{payloadLine.protocol}</span>
+        )}
       </div>
       <div>
-        <span className="data">{renderHighlightText(value.payload)}</span>
+        <span className="data">
+          {renderHighlightText(payloadLine.secondLine)}
+        </span>
       </div>
     </Item>
   );
