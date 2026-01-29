@@ -41,7 +41,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
     borderRadius: 2,
     padding: "0 2px",
   },
-  "& .process-name, & .rule-name": {
+  "& .rule-name, & .destination": {
     fontWeight: "bold",
   },
 }));
@@ -55,36 +55,35 @@ const LogItem = ({ value, searchState }: Props) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
 
-  // 解析日志文本，标记程序名和规则
+  // 解析日志文本，标记目标地址和规则名
   const parseLogText = (text: string): ReactNode[] => {
     const elements: ReactNode[] = [];
     let lastIndex = 0;
 
-    // 匹配程序名：括号中的内容，例如 (Chill With You.exe)
-    // 匹配格式: (程序名.exe)
-    const processNameRegex = /\(([^)]+\.exe)\)/gi;
-    let processMatch: RegExpExecArray | null;
+    // 匹配目标地址：--> 与 match 之间的 host:port，例如 audio-ak.spotifycdn.com:443
+    const destinationRegex = /-->\s*([^\s]+)\s+match/gi;
+    let destMatch: RegExpExecArray | null;
 
     // 匹配规则名称：RuleSet(规则名) 中的规则名
-    // 匹配格式: RuleSet(规则名) 或 RULE-SET(规则名) 等，提取括号内的规则名
     const ruleRegex = /(?:RuleSet|RULE-SET|rule-set)\s*\(([^)]+)\)/gi;
     let ruleMatch: RegExpExecArray | null;
 
-    // 收集所有匹配项及其位置
     const matches: Array<{
       start: number;
       end: number;
       text: string;
-      type: "process" | "rule";
+      type: "destination" | "rule";
     }> = [];
 
-    // 查找程序名
-    while ((processMatch = processNameRegex.exec(text)) !== null) {
+    // 查找目标地址
+    while ((destMatch = destinationRegex.exec(text)) !== null) {
+      const dest = destMatch[1]; // 例如 "audio-ak.spotifycdn.com:443"
+      const destStart = destMatch.index + destMatch[0].indexOf(dest);
       matches.push({
-        start: processMatch.index,
-        end: processMatch.index + processMatch[0].length,
-        text: processMatch[0],
-        type: "process",
+        start: destStart,
+        end: destStart + dest.length,
+        text: dest,
+        type: "destination",
       });
     }
 
@@ -115,7 +114,8 @@ const LogItem = ({ value, searchState }: Props) => {
       }
 
       // 添加标记的匹配文本
-      const className = match.type === "process" ? "process-name" : "rule-name";
+      const className =
+        match.type === "destination" ? "destination" : "rule-name";
       elements.push(
         <span
           key={`${match.type}-${match.start}`}
@@ -138,7 +138,7 @@ const LogItem = ({ value, searchState }: Props) => {
   };
 
   const renderHighlightText = (text: string) => {
-    // 先解析程序名和规则
+    // 先解析目标地址和规则名
     const parsedElements = parseLogText(text);
 
     // 如果没有搜索条件，直接返回解析后的元素
