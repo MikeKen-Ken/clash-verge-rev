@@ -9,35 +9,28 @@ import { useClashLog } from "./use-clash-log";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
 /**
- * Extract process name from log payload
- * Matches patterns like (xxx.exe) in log messages
- * Example: "[TCP] 198.18.0.1:10369(BaiduNetdiskUnite.exe) --> pan.baidu.com:443"
+ * Extract process name from log payload.
+ * Process name only appears as IP:port(processName), e.g. 198.18.0.1:52631(BaiduNetdisk.exe)
+ * Must not match RuleSet(name) or other (...) that are not after :port.
  */
 function extractProcessName(payload: string): string | undefined {
   if (!payload) return undefined;
 
-  // Match process name in parentheses, e.g., (BaiduNetdiskUnite.exe)
-  const processMatch = payload.match(/\(([^)]+\.exe)\)/i);
-  if (processMatch) {
-    return processMatch[1];
-  }
-
-  // Match macOS app bundles
-  const macMatch = payload.match(/\(([^)]+\.app)\)/i);
-  if (macMatch) {
-    return macMatch[1];
-  }
-
-  // Match process without extension in parentheses (Linux/macOS)
-  const linuxMatch = payload.match(/\(([a-zA-Z0-9_-]+)\)/);
-  if (linuxMatch) {
-    const name = linuxMatch[1];
-    // Filter out common non-process patterns
-    if (name.length > 2 && !name.includes('.') && !/^\d+$/.test(name)) {
-      return name;
+  // Only match (processName) when preceded by :port so we don't match RuleSet(proxy) etc.
+  const afterPort = /:\d+\(([^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = afterPort.exec(payload)) !== null) {
+    const inner = m[1];
+    if (/\.exe$/i.test(inner)) return inner;
+    if (/\.app$/i.test(inner)) return inner;
+    if (
+      inner.length > 2 &&
+      /^[a-zA-Z0-9_.-]+$/.test(inner) &&
+      !/^\d+$/.test(inner)
+    ) {
+      return inner;
     }
   }
-
   return undefined;
 }
 

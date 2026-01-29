@@ -12,12 +12,13 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   fontSize: "0.875rem",
   fontFamily: typography.fontFamily,
   userSelect: "text",
-  "& .time": {
+  "& .time, & .first-line-muted": {
     color: palette.text.secondary,
   },
   "& .type": {
     display: "inline-block",
-    marginLeft: 8,
+    marginLeft: 0,
+    marginRight: 8,
     textAlign: "center",
     borderRadius: 2,
     textTransform: "uppercase",
@@ -41,7 +42,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
     borderRadius: 2,
     padding: "0 2px",
   },
-  "& .rule-name, & .destination": {
+  "& .rule-name, & .destination, & .proxy-tag": {
     fontWeight: "bold",
     color: palette.primary.main,
   },
@@ -60,19 +61,42 @@ const LogItem = ({ value, searchState }: Props) => {
   const primaryColor = theme.palette.primary.main;
   const warningColor = theme.palette.warning.main;
 
-  // 解析日志文本，标记目标地址、规则名、以及 error / i/o timeout 等警告信息
+  // 解析日志文本，标记目标地址、规则名、代理标签、以及 error / i/o timeout 等警告信息
   const parseLogText = (text: string): ReactNode[] => {
+    // because ... failed ... active health check 整行用警告色
+    if (/because.*failed|active\s+health\s+check/i.test(text)) {
+      return [
+        <span key="warning-line" className="log-warning">
+          {text}
+        </span>,
+      ];
+    }
+
     const elements: ReactNode[] = [];
     let lastIndex = 0;
 
-    // 第二行格式：... --> host:port --> ruleName using ...
-    // 匹配目标地址：第一个 --> 后的 host:port
-    const destinationRegex = /\s-->\s+([^\s]+)\s+-->/gi;
+    // 第二行格式有两种：
+    // 1) ... --> host:port --> ruleName --> proxy
+    // 2) ... --> host:port match RuleSet --> proxy（无规则名时）
+    // 匹配目标地址：第一个 --> 后的 host:port（后面紧跟 --> 或 match）
+    const destinationRegex = /\s-->\s+([^\s]+)(?=\s+(?:-->|match))/gi;
     let destMatch: RegExpExecArray | null;
 
-    // 匹配规则名称：第二个 --> 与 using 之间的规则名
-    const ruleRegex = /-->\s+[^\s]+\s+-->\s+([^\s]+)\s+using/gi;
+    // 匹配规则名称：第二个 --> 后的规则名（到下一个 --> 或结尾）
+    const ruleRegex = /-->\s+[^\s]+\s+-->\s+([^\s]+)\s+-->/gi;
     let ruleMatch: RegExpExecArray | null;
+
+    // 匹配最后一个 --> 后的代理标签（如 ⬆️[DIRECT]）
+    const lastArrow = text.lastIndexOf(" --> ");
+    let proxyStart = -1;
+    let proxyText = "";
+    if (lastArrow !== -1) {
+      proxyStart = lastArrow + " --> ".length;
+      proxyText = text.slice(proxyStart);
+      if (proxyText.trim().length > 0) {
+        // 计入 matches，用 proxyStart 和 proxyStart + proxyText.length
+      }
+    }
 
     // 匹配 error（整词）和 i/o timeout，使用警告色
     const errorRegex = /\berror\b/gi;
@@ -84,8 +108,17 @@ const LogItem = ({ value, searchState }: Props) => {
       start: number;
       end: number;
       text: string;
-      type: "destination" | "rule" | "warning";
+      type: "destination" | "rule" | "proxy" | "warning";
     }> = [];
+
+    if (proxyStart !== -1 && proxyText.length > 0) {
+      matches.push({
+        start: proxyStart,
+        end: proxyStart + proxyText.length,
+        text: proxyText,
+        type: "proxy",
+      });
+    }
 
     // 查找目标地址
     while ((destMatch = destinationRegex.exec(text)) !== null) {
@@ -99,7 +132,7 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
-    // 查找规则名称（格式：--> host:port --> ruleName using）
+    // 查找规则名称（格式：--> host:port --> ruleName -->）
     while ((ruleMatch = ruleRegex.exec(text)) !== null) {
       const fullMatch = ruleMatch[0];
       const ruleName = ruleMatch[1];
@@ -146,7 +179,9 @@ const LogItem = ({ value, searchState }: Props) => {
           ? "destination"
           : match.type === "rule"
             ? "rule-name"
-            : "log-warning";
+            : match.type === "proxy"
+              ? "proxy-tag"
+              : "log-warning";
       const color = match.type === "warning" ? warningColor : primaryColor;
       elements.push(
         <span
@@ -265,23 +300,27 @@ const LogItem = ({ value, searchState }: Props) => {
       /\bmatch\s+RuleSet\s*\(([^)]+)\)/gi,
       "--> $1",
     );
+    // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]
+    secondLine = secondLine.replace(/\s+using\s+/, " --> ");
     return { protocol, secondLine };
   })();
 
   return (
     <Item>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {value.processName && (
-          <LogProcessIcon processName={value.processName} size={16} />
-        )}
-        <span className="time">{renderHighlightText(value.time || "")}</span>
         <span className="type" data-type={value.type.toLowerCase()}>
           {renderHighlightText(value.type)}
         </span>
-        {value.processName && <span className="data">{value.processName}</span>}
         {payloadLine.protocol && (
-          <span className="data">{payloadLine.protocol}</span>
+          <span className="first-line-muted">{payloadLine.protocol}</span>
         )}
+        {value.processName && (
+          <>
+            <LogProcessIcon processName={value.processName} size={16} />
+            <span className="first-line-muted">{value.processName}</span>
+          </>
+        )}
+        <span className="time">{renderHighlightText(value.time || "")}</span>
       </div>
       <div>
         <span className="data">
