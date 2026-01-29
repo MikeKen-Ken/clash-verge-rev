@@ -230,6 +230,8 @@ interface IConnectionsItem {
   chains: string[];
   rule: string;
   rulePayload: string;
+  /** 匹配到的具体规则内容，如 DOMAIN-SUFFIX,example.com（仅 RULE-SET 等有详情时存在） */
+  ruleDetail?: string;
   curUpload?: number; // upload speed, calculate at runtime
   curDownload?: number; // download speed, calculate at runtime
 }

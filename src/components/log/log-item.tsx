@@ -273,6 +273,11 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
+    // RULE-SET 带 ruleDetail：match RuleSet(name)[detail] 改为 --> name --> detail -->
+    secondLine = secondLine.replace(
+      /\s+match\s+RuleSet\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
+      " --> $1 --> $2 --> ",
+    );
     // match RuleSet(x) 改为 --> x，但若前面已有 --> x 则只删 match RuleSet(x)，避免规则名重复（如 cncn）
     secondLine = secondLine.replace(
       /\s+match\s+RuleSet\s*\(([^)]+)\)/gi,

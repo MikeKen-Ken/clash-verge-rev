@@ -63,10 +63,12 @@ interface InnerProps {
 
 const InnerConnectionDetail = ({ data, closed, onClose }: InnerProps) => {
   const { t } = useTranslation();
-  const { metadata, rulePayload } = data;
+  const { metadata, rulePayload, ruleDetail } = data;
   const theme = useTheme();
   const chains = [...data.chains].reverse().join(" / ");
-  const rule = rulePayload ? `${data.rule}(${rulePayload})` : data.rule;
+  const rule = rulePayload
+    ? `${data.rule}(${rulePayload})${ruleDetail ? ` [${ruleDetail}]` : ""}`
+    : data.rule;
   const host = metadata.host
     ? `${metadata.host}:${metadata.destinationPort}`
     : `${metadata.remoteDestination}:${metadata.destinationPort}`;

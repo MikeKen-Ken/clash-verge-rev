@@ -61,7 +61,7 @@ type ColumnField =
   | "type";
 
 const getConnectionCellValue = (field: ColumnField, each: IConnectionsItem) => {
-  const { metadata, rulePayload } = each;
+  const { metadata, rulePayload, ruleDetail } = each;
 
   switch (field) {
     case "host":
@@ -79,7 +79,9 @@ const getConnectionCellValue = (field: ColumnField, each: IConnectionsItem) => {
     case "chains":
       return [...each.chains].reverse().join(" / ");
     case "rule":
-      return rulePayload ? `${each.rule}(${rulePayload})` : each.rule;
+      return rulePayload
+        ? `${each.rule}(${rulePayload})${ruleDetail ? ` [${ruleDetail}]` : ""}`
+        : each.rule;
     case "process":
       return truncateStr(metadata.process || metadata.processPath);
     case "time":
