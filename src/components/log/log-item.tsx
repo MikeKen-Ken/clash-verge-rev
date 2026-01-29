@@ -42,7 +42,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
     borderRadius: 2,
     padding: "0 2px",
   },
-  "& .rule-name, & .destination, & .proxy-tag": {
+  "& .destination": {
     fontWeight: "bold",
     color: palette.primary.main,
   },
@@ -75,28 +75,11 @@ const LogItem = ({ value, searchState }: Props) => {
     const elements: ReactNode[] = [];
     let lastIndex = 0;
 
-    // 第二行格式有两种：
-    // 1) ... --> host:port --> ruleName --> proxy
-    // 2) ... --> host:port match RuleSet --> proxy（无规则名时）
+    // 第二行格式：... --> host:port [--> ruleName] [match RuleSet(x)] --> proxy
+    // 仅标记目标地址与警告词；规则名与代理标签使用默认样式
     // 匹配目标地址：第一个 --> 后的 host:port（后面紧跟 --> 或 match）
     const destinationRegex = /\s-->\s+([^\s]+)(?=\s+(?:-->|match))/gi;
     let destMatch: RegExpExecArray | null;
-
-    // 匹配规则名称：第二个 --> 后的规则名（到下一个 --> 或结尾）
-    const ruleRegex = /-->\s+[^\s]+\s+-->\s+([^\s]+)\s+-->/gi;
-    let ruleMatch: RegExpExecArray | null;
-
-    // 匹配最后一个 --> 后的代理标签（如 ⬆️[DIRECT]）
-    const lastArrow = text.lastIndexOf(" --> ");
-    let proxyStart = -1;
-    let proxyText = "";
-    if (lastArrow !== -1) {
-      proxyStart = lastArrow + " --> ".length;
-      proxyText = text.slice(proxyStart);
-      if (proxyText.trim().length > 0) {
-        // 计入 matches，用 proxyStart 和 proxyStart + proxyText.length
-      }
-    }
 
     // 匹配 error（整词）和 i/o timeout，使用警告色
     const errorRegex = /\berror\b/gi;
@@ -108,17 +91,8 @@ const LogItem = ({ value, searchState }: Props) => {
       start: number;
       end: number;
       text: string;
-      type: "destination" | "rule" | "proxy" | "warning";
+      type: "destination" | "warning";
     }> = [];
-
-    if (proxyStart !== -1 && proxyText.length > 0) {
-      matches.push({
-        start: proxyStart,
-        end: proxyStart + proxyText.length,
-        text: proxyText,
-        type: "proxy",
-      });
-    }
 
     // 查找目标地址
     while ((destMatch = destinationRegex.exec(text)) !== null) {
@@ -129,19 +103,6 @@ const LogItem = ({ value, searchState }: Props) => {
         end: destStart + dest.length,
         text: dest,
         type: "destination",
-      });
-    }
-
-    // 查找规则名称（格式：--> host:port --> ruleName -->）
-    while ((ruleMatch = ruleRegex.exec(text)) !== null) {
-      const fullMatch = ruleMatch[0];
-      const ruleName = ruleMatch[1];
-      const ruleStart = ruleMatch.index + fullMatch.indexOf(ruleName);
-      matches.push({
-        start: ruleStart,
-        end: ruleStart + ruleName.length,
-        text: ruleName,
-        type: "rule",
       });
     }
 
@@ -175,13 +136,7 @@ const LogItem = ({ value, searchState }: Props) => {
 
       // 添加标记的匹配文本
       const className =
-        match.type === "destination"
-          ? "destination"
-          : match.type === "rule"
-            ? "rule-name"
-            : match.type === "proxy"
-              ? "proxy-tag"
-              : "log-warning";
+        match.type === "destination" ? "destination" : "log-warning";
       const color = match.type === "warning" ? warningColor : primaryColor;
       elements.push(
         <span
@@ -296,9 +251,18 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
+    // match RuleSet(x) 改为 --> x，但若前面已有 --> x 则只删 match RuleSet(x)，避免规则名重复（如 cncn）
     secondLine = secondLine.replace(
-      /\bmatch\s+RuleSet\s*\(([^)]+)\)/gi,
-      "--> $1",
+      /\s+match\s+RuleSet\s*\(([^)]+)\)/gi,
+      (match, ruleName, offset) => {
+        const name = ruleName.trim();
+        const before = secondLine.slice(0, offset);
+        const lastArrow = before.lastIndexOf(" --> ");
+        const afterLast = before.slice(lastArrow + " --> ".length).trim();
+        const token = afterLast.split(/\s+/)[0] ?? "";
+        if (token === name) return ""; // 已有规则名，只删 match RuleSet(x)
+        return " --> " + name;
+      },
     );
     // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]
     secondLine = secondLine.replace(/\s+using\s+/, " --> ");
