@@ -47,6 +47,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
     color: palette.primary.main,
   },
   "& .log-warning": {
+    fontWeight: "bold",
     color: palette.warning.main,
   },
 }));
@@ -76,15 +77,21 @@ const LogItem = ({ value, searchState }: Props) => {
     let lastIndex = 0;
 
     // 第二行格式：... --> host:port [--> ruleName] [match RuleSet(x)] --> proxy
-    // 仅标记目标地址与警告词；规则名与代理标签使用默认样式
-    // 匹配目标地址：第一个 --> 后的 host:port（后面紧跟 --> 或 match）
-    const destinationRegex = /\s-->\s+([^\s]+)(?=\s+(?:-->|match))/gi;
-    let destMatch: RegExpExecArray | null;
+    // 仅标记第一个目标地址（host:port）与警告词；规则名（如 proxy）不标记
+    const destinationRegex = /\s-->\s+([^\s]+)(?=\s+(?:-->|match))/i;
+    const destExec = destinationRegex.exec(text);
+    const firstDest = destExec ? destExec[1] : null;
+    const firstDestStart =
+      destExec !== null
+        ? destExec.index + destExec[0].indexOf(destExec[1])
+        : -1;
 
-    // 匹配 error（整词）和 i/o timeout，使用警告色
-    const errorRegex = /\berror\b/gi;
+    // 匹配 error: 至行尾、整词 error、i/o timeout，使用警告色加粗
+    const errorToEolRegex = /\berror\s*:.*$/gim;
+    const errorWordRegex = /\berror\b/gi;
     const timeoutRegex = /i\/o timeout/gi;
-    let errMatch: RegExpExecArray | null;
+    let errToEolMatch: RegExpExecArray | null;
+    let errWordMatch: RegExpExecArray | null;
     let timeoutMatch: RegExpExecArray | null;
 
     const matches: Array<{
@@ -94,26 +101,41 @@ const LogItem = ({ value, searchState }: Props) => {
       type: "destination" | "warning";
     }> = [];
 
-    // 查找目标地址
-    while ((destMatch = destinationRegex.exec(text)) !== null) {
-      const dest = destMatch[1]; // 例如 "audio-ak.spotifycdn.com:443"
-      const destStart = destMatch.index + destMatch[0].indexOf(dest);
+    // 只标记第一个目标地址（host:port），不标记规则名（如 proxy）
+    if (firstDestStart >= 0 && firstDest) {
       matches.push({
-        start: destStart,
-        end: destStart + dest.length,
-        text: dest,
+        start: firstDestStart,
+        end: firstDestStart + firstDest.length,
+        text: firstDest,
         type: "destination",
       });
     }
 
-    // 查找 error、i/o timeout 等警告词
-    while ((errMatch = errorRegex.exec(text)) !== null) {
+    // 查找 error: 至行尾（优先）、整词 error、i/o timeout
+    while ((errToEolMatch = errorToEolRegex.exec(text)) !== null) {
       matches.push({
-        start: errMatch.index,
-        end: errMatch.index + errMatch[0].length,
-        text: errMatch[0],
+        start: errToEolMatch.index,
+        end: errToEolMatch.index + errToEolMatch[0].length,
+        text: errToEolMatch[0],
         type: "warning",
       });
+    }
+    while ((errWordMatch = errorWordRegex.exec(text)) !== null) {
+      // 若该 error 已包含在某个 error:... 段内则跳过，避免重复
+      const contained = matches.some(
+        (m) =>
+          m.type === "warning" &&
+          m.start <= errWordMatch!.index &&
+          m.end >= errWordMatch!.index + errWordMatch![0].length,
+      );
+      if (!contained) {
+        matches.push({
+          start: errWordMatch.index,
+          end: errWordMatch.index + errWordMatch[0].length,
+          text: errWordMatch[0],
+          type: "warning",
+        });
+      }
     }
     while ((timeoutMatch = timeoutRegex.exec(text)) !== null) {
       matches.push({
@@ -266,6 +288,11 @@ const LogItem = ({ value, searchState }: Props) => {
     );
     // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]
     secondLine = secondLine.replace(/\s+using\s+/, " --> ");
+    // dial ⬆️ (match RuleSet/games-cn) 改为 dial ⬆️ --> games-cn -->
+    secondLine = secondLine.replace(
+      /\s*\(?\s*match\s+RuleSet\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
+      " --> $1 --> ",
+    );
     return { protocol, secondLine };
   })();
 
@@ -275,14 +302,14 @@ const LogItem = ({ value, searchState }: Props) => {
         <span className="type" data-type={value.type.toLowerCase()}>
           {renderHighlightText(value.type)}
         </span>
-        {payloadLine.protocol && (
-          <span className="first-line-muted">{payloadLine.protocol}</span>
-        )}
         {value.processName && (
           <>
             <LogProcessIcon processName={value.processName} size={16} />
             <span className="first-line-muted">{value.processName}</span>
           </>
+        )}
+        {payloadLine.protocol && (
+          <span className="first-line-muted">{payloadLine.protocol}</span>
         )}
         <span className="time">{renderHighlightText(value.time || "")}</span>
       </div>
