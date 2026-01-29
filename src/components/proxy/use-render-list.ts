@@ -1,9 +1,8 @@
 import { useEffect, useMemo } from "react";
-import useSWR from "swr";
 
+import { useRuntimeConfig } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import { getRuntimeConfig } from "@/services/cmds";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
@@ -114,14 +113,7 @@ export const useRenderList = (
   const latencyTimeout = verge?.default_latency_timeout;
 
   // 获取运行时配置用于链式代理模式
-  const { data: runtimeConfig } = useSWR(
-    isChainMode ? "getRuntimeConfig" : null,
-    getRuntimeConfig,
-    {
-      revalidateOnFocus: false,
-      revalidateIfStale: true,
-    },
-  );
+  const { data: runtimeConfig } = useRuntimeConfig(!!isChainMode);
 
   // 计算列数
   const col = useMemo(
