@@ -42,7 +42,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
     borderRadius: 2,
     padding: "0 2px",
   },
-  "& .destination": {
+  "& .destination, & .rule-detail-value": {
     fontWeight: "bold",
     color: palette.primary.main,
   },
@@ -98,7 +98,7 @@ const LogItem = ({ value, searchState }: Props) => {
       start: number;
       end: number;
       text: string;
-      type: "destination" | "warning";
+      type: "destination" | "warning" | "rule-detail-value";
     }> = [];
 
     // 只标记第一个目标地址（host:port），不标记规则名（如 proxy）
@@ -109,6 +109,29 @@ const LogItem = ({ value, searchState }: Props) => {
         text: firstDest,
         type: "destination",
       });
+    }
+
+    // 规则详情段（最后一个 --> 前的段）中，高亮逗号后的匹配值（如 DOMAIN-SUFFIX,+..github.com 中的 +..github.com）
+    const lastArrow = text.lastIndexOf(" --> ");
+    if (lastArrow > 0) {
+      const secondLastArrow = text.lastIndexOf(" --> ", lastArrow - 1);
+      if (secondLastArrow >= 0) {
+        const ruleDetail = text.slice(secondLastArrow + 5, lastArrow).trim();
+        const commaIdx = ruleDetail.indexOf(",");
+        if (commaIdx >= 0) {
+          const valueStart = secondLastArrow + 5 + commaIdx + 1;
+          const valueEnd = secondLastArrow + 5 + ruleDetail.length;
+          const valueText = ruleDetail.slice(commaIdx + 1);
+          if (valueText.length > 0) {
+            matches.push({
+              start: valueStart,
+              end: valueEnd,
+              text: valueText,
+              type: "rule-detail-value",
+            });
+          }
+        }
+      }
     }
 
     // 查找 error: 至行尾（优先）、整词 error、i/o timeout
@@ -158,7 +181,11 @@ const LogItem = ({ value, searchState }: Props) => {
 
       // 添加标记的匹配文本
       const className =
-        match.type === "destination" ? "destination" : "log-warning";
+        match.type === "destination"
+          ? "destination"
+          : match.type === "rule-detail-value"
+            ? "rule-detail-value"
+            : "log-warning";
       const color = match.type === "warning" ? warningColor : primaryColor;
       elements.push(
         <span
@@ -273,10 +300,10 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
-    // RULE-SET 带 ruleDetail：match RuleSet(name)[detail] 改为 --> name --> detail -->
+    // RULE-SET 带 ruleDetail：match RuleSet(name)[detail] 改为 --> name --> detail（末尾不补 --> 或空格，避免 --> --> proxy）
     secondLine = secondLine.replace(
       /\s+match\s+RuleSet\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
-      " --> $1 --> $2 --> ",
+      " --> $1 --> $2",
     );
     // match RuleSet(x) 改为 --> x，但若前面已有 --> x 则只删 match RuleSet(x)，避免规则名重复（如 cncn）
     secondLine = secondLine.replace(
