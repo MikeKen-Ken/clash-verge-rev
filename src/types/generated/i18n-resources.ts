@@ -1011,6 +1011,7 @@ export interface TranslationResources {
         };
         tun: {
           fields: {
+            enableTunOverride: string;
             autoDetectInterface: string;
             autoRedirect: string;
             autoRoute: string;
@@ -1026,6 +1027,7 @@ export interface TranslationResources {
           };
           title: string;
           tooltips: {
+            enableTunOverride: string;
             autoRedirect: string;
             dnsHijack: string;
           };

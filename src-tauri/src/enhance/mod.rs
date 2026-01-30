@@ -29,6 +29,7 @@ struct ConfigValues {
     clash_config: Mapping,
     clash_core: Option<String>,
     enable_tun: bool,
+    enable_tun_override: bool,
     enable_builtin: bool,
     socks_enabled: bool,
     http_enabled: bool,
@@ -101,6 +102,7 @@ async fn get_config_values() -> ConfigValues {
     let verge_arc = verge.latest_arc();
     let IVerge {
         ref enable_tun_mode,
+        ref enable_tun_override,
         ref enable_builtin_enhanced,
         ref verge_socks_enabled,
         ref verge_http_enabled,
@@ -108,9 +110,10 @@ async fn get_config_values() -> ConfigValues {
         ..
     } = *verge_arc;
 
-    let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
+    let (clash_core, enable_tun, enable_tun_override, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
         enable_tun_mode.unwrap_or(false),
+        enable_tun_override.unwrap_or(true),
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
         verge_http_enabled.unwrap_or(false),
@@ -130,6 +133,7 @@ async fn get_config_values() -> ConfigValues {
         clash_config,
         clash_core,
         enable_tun,
+        enable_tun_override,
         enable_builtin,
         socks_enabled,
         http_enabled,
@@ -381,6 +385,7 @@ fn process_profile_items(
 async fn merge_default_config(
     mut config: Mapping,
     clash_config: Mapping,
+    enable_tun_override: bool,
     socks_enabled: bool,
     http_enabled: bool,
     #[cfg(not(target_os = "windows"))] redir_enabled: bool,
@@ -388,14 +393,16 @@ async fn merge_default_config(
 ) -> Mapping {
     for (key, value) in clash_config.into_iter() {
         if key.as_str() == Some("tun") {
-            let mut tun = config.get_mut("tun").map_or_else(Mapping::new, |val| {
-                val.as_mapping().cloned().unwrap_or_else(Mapping::new)
-            });
-            let patch_tun = value.as_mapping().cloned().unwrap_or_else(Mapping::new);
-            for (key, value) in patch_tun.into_iter() {
-                tun.insert(key, value);
+            if enable_tun_override {
+                let mut tun = config.get_mut("tun").map_or_else(Mapping::new, |val| {
+                    val.as_mapping().cloned().unwrap_or_else(Mapping::new)
+                });
+                let patch_tun = value.as_mapping().cloned().unwrap_or_else(Mapping::new);
+                for (key, value) in patch_tun.into_iter() {
+                    tun.insert(key, value);
+                }
+                config.insert("tun".into(), tun.into());
             }
-            config.insert("tun".into(), tun.into());
         } else {
             if key.as_str() == Some("socks-port") && !socks_enabled {
                 config.remove("socks-port");
@@ -598,6 +605,7 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         clash_config,
         clash_core,
         enable_tun,
+        enable_tun_override,
         enable_builtin,
         socks_enabled,
         http_enabled,
@@ -640,6 +648,7 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     let config = merge_default_config(
         config,
         clash_config,
+        enable_tun_override,
         socks_enabled,
         http_enabled,
         #[cfg(not(target_os = "windows"))]
@@ -654,7 +663,9 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
 
     config = cleanup_proxy_groups(config);
 
-    config = use_tun(config, enable_tun);
+    if enable_tun_override {
+        config = use_tun(config, enable_tun);
+    }
     config = use_sort(config);
 
     // dns settings

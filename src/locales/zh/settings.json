@@ -467,6 +467,7 @@
     "tun": {
       "title": "虚拟网卡模式",
       "fields": {
+        "enableTunOverride": "TUN 覆写",
         "stack": "TUN 模式堆栈",
         "device": "虚拟网卡名称",
         "autoRoute": "自动设置全局路由",
@@ -478,6 +479,7 @@
         "autoRedirect": "自动重定向"
       },
       "tooltips": {
+        "enableTunOverride": "关闭后不修改配置文件中的 TUN 相关设置，完全使用订阅/配置内的 TUN 配置",
         "dnsHijack": "多个 DNS 服务器请使用 , 分隔",
         "autoRedirect": "自动配置 nftables/iptables 的 TCP 重定向"
       },

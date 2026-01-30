@@ -467,6 +467,7 @@
     "tun": {
       "title": "虛擬網路介面卡模式",
       "fields": {
+        "enableTunOverride": "TUN 覆寫",
         "stack": "虛擬網路介面卡模式堆疊",
         "device": "Device Name",
         "autoRoute": "自動設定全域路由",
@@ -478,6 +479,7 @@
         "autoRedirect": "自動重導"
       },
       "tooltips": {
+        "enableTunOverride": "關閉後不修改設定檔中的 TUN 相關設定，完全使用訂閱/設定內的 TUN 設定",
         "dnsHijack": "請用半形逗號來區隔多個 DNS 伺服器",
         "autoRedirect": "自動配置 nftables/iptables 的 TCP 重導"
       },

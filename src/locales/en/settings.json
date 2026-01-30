@@ -467,6 +467,7 @@
     "tun": {
       "title": "Tun Mode",
       "fields": {
+        "enableTunOverride": "TUN Override",
         "stack": "Tun Stack",
         "device": "Device Name",
         "autoRoute": "Auto Route",
@@ -478,6 +479,7 @@
         "autoRedirect": "Auto Redirect"
       },
       "tooltips": {
+        "enableTunOverride": "When off, TUN settings from profile/config are used as-is; app will not merge or override tun",
         "dnsHijack": "Please use , to separate multiple DNS servers",
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },

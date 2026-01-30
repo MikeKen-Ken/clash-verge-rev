@@ -248,7 +248,10 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
             <MenuItem value={6} key={6}>
               {t("settings.modals.misc.options.proxyLayoutColumns.auto")}
             </MenuItem>
-            {[1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((i) => (
+            {[
+              1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+              20,
+            ].map((i) => (
               <MenuItem value={i} key={i}>
                 {i}
               </MenuItem>

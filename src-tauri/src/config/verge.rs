@@ -82,6 +82,9 @@ pub struct IVerge {
     /// clash tun mode
     pub enable_tun_mode: Option<bool>,
 
+    /// enable tun override (merge app tun config and use_tun; when false, profile tun is used as-is)
+    pub enable_tun_override: Option<bool>,
+
     /// can the app auto startup
     pub enable_auto_launch: Option<bool>,
 
@@ -414,6 +417,7 @@ impl IVerge {
             enable_hover_jump_navigator: Some(true),
             hover_jump_navigator_delay: Some(280),
             enable_tun_mode: Some(true),
+            enable_tun_override: Some(true),
             enable_system_proxy: Some(false),
             proxy_auto_config: Some(false),
             pac_file_content: Some(DEFAULT_PAC.into()),
@@ -500,6 +504,7 @@ impl IVerge {
         patch!(tun_tray_icon);
 
         patch!(enable_tun_mode);
+        patch!(enable_tun_override);
         patch!(enable_auto_launch);
         patch!(enable_silent_start);
         patch!(enable_hover_jump_navigator);

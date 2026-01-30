@@ -20,6 +20,7 @@ import {
   Switch,
 } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
 import { enhanceProfiles } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import getSystem from "@/utils/get-system";
@@ -38,6 +39,7 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
 
   const { clash, mutateClash, patchClash } = useClash();
+  const { verge, mutateVerge, patchVerge } = useVerge();
 
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState({
@@ -177,6 +179,21 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
       onOk={onSave}
     >
       <List>
+        <ListItem sx={{ padding: "5px 2px" }}>
+          <ListItemText
+            primary={t("settings.modals.tun.fields.enableTunOverride")}
+            secondary={t("settings.modals.tun.tooltips.enableTunOverride")}
+          />
+          <Switch
+            edge="end"
+            checked={verge?.enable_tun_override ?? true}
+            onChange={async (_, c) => {
+              mutateVerge({ ...verge, enable_tun_override: c }, false);
+              await patchVerge({ enable_tun_override: c });
+            }}
+          />
+        </ListItem>
+
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("settings.modals.tun.fields.stack")} />
           <StackModeSwitch
