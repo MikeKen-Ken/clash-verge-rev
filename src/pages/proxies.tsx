@@ -36,8 +36,11 @@ const isMode = (value: unknown): value is Mode =>
 const ProxyPage = () => {
   const { t } = useTranslation();
 
-  const { clashConfig, refreshClashConfig, proxies: proxiesData } =
-    useAppData();
+  const {
+    clashConfig,
+    refreshClashConfig,
+    proxies: proxiesData,
+  } = useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { clash, patchClash, mutateClash } = useClash();
   const { isTunModeAvailable } = useSystemState();
@@ -103,8 +106,8 @@ const ProxyPage = () => {
 
   const currentGroupLabel =
     curMode === "rule" && selectedGroup
-      ? availableGroups.find((g: any) => g.name === selectedGroup)?.name ??
-        selectedGroup
+      ? (availableGroups.find((g: any) => g.name === selectedGroup)?.name ??
+        selectedGroup)
       : null;
 
   return (
@@ -139,7 +142,11 @@ const ProxyPage = () => {
                   valueProps="checked"
                   onFormat={(_, v) => v}
                   onGuard={async (v) => {
-                    mutateClash({ ...clash, "allow-lan": v }, false);
+                    mutateClash(
+                      (prev) =>
+                        prev != null ? { ...prev, "allow-lan": v } : prev,
+                      false,
+                    );
                     await patchClash({ "allow-lan": v });
                   }}
                 >
