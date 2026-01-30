@@ -143,7 +143,6 @@
         "healthCheckUrl": "Health Check Url",
         "expectedStatus": "Expected Status",
         "interval": "Interval",
-        "selectedTimeout": "Selected Node Timeout",
         "maxFailedTimes": "Max Failed Times",
         "interfaceName": "Interface Name",
         "routingMark": "Routing Mark",

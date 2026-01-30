@@ -158,13 +158,12 @@ export const GroupsEditorViewer = (props: Props) => {
   const [visualization, setVisualization] = useState(true);
   const [match, setMatch] = useState(() => (_: string) => true);
   const [interfaceNameList, setInterfaceNameList] = useState<string[]>([]);
-  const { control, watch, ...formIns } = useForm<IProxyGroupConfig>({
+  const { control, ...formIns } = useForm<IProxyGroupConfig>({
     defaultValues: {
       type: "select",
       name: "",
       interval: 300,
       timeout: 5000,
-      "selected-timeout": 0,
       "max-failed-times": 5,
       lazy: true,
     },
@@ -692,44 +691,6 @@ export const GroupsEditorViewer = (props: Props) => {
                     </Item>
                   )}
                 />
-                {watch("type") === "fallback" && (
-                  <Controller
-                    name="selected-timeout"
-                    control={control}
-                    render={({ field }) => (
-                      <Item>
-                        <ListItemText
-                          primary={t(
-                            "profiles.modals.groupsEditor.fields.selectedTimeout",
-                          )}
-                        />
-                        <TextField
-                          autoComplete="new-password"
-                          placeholder="0"
-                          type="number"
-                          size="small"
-                          sx={{ width: "calc(100% - 150px)" }}
-                          value={field.value ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            field.onChange(
-                              v === "" ? undefined : parseInt(v, 10),
-                            );
-                          }}
-                          slotProps={{
-                            input: {
-                              endAdornment: (
-                                <InputAdornment position="end">
-                                  {t("shared.units.milliseconds")}
-                                </InputAdornment>
-                              ),
-                            },
-                          }}
-                        />
-                      </Item>
-                    )}
-                  />
-                )}
                 <Controller
                   name="max-failed-times"
                   control={control}

@@ -143,7 +143,6 @@
         "healthCheckUrl": "健康检查测试地址",
         "expectedStatus": "期望状态码",
         "interval": "检查间隔",
-        "selectedTimeout": "选定节点超时",
         "maxFailedTimes": "最大失败次数",
         "interfaceName": "出站接口",
         "routingMark": "路由标记",
