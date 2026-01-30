@@ -1,12 +1,10 @@
-import React, { useRef } from "react";
+import React from "react";
 import { useTranslation } from "react-i18next";
 
-import { DialogRef } from "@/components/base";
 import ProxyControlSwitches from "@/components/shared/proxy-control-switches";
 
 import SettingClash from "./setting-clash";
 import { SettingList } from "./mods/setting-comp";
-import { TunViewer } from "./mods/tun-viewer";
 import SettingVergeAdvanced from "./setting-verge-advanced";
 import SettingVergeBasic from "./setting-verge-basic";
 
@@ -17,16 +15,9 @@ interface Props {
 const SettingSystem = ({ onError }: Props) => {
   const { t } = useTranslation();
 
-  const tunRef = useRef<DialogRef>(null);
-
   return (
     <SettingList title={t("settings.sections.system.title")}>
-      <TunViewer ref={tunRef} />
-
-      <ProxyControlSwitches
-        label={t("settings.sections.system.toggles.tunMode")}
-        onError={onError}
-      />
+      <ProxyControlSwitches onError={onError} />
 
       <SettingClash onError={onError ?? (() => {})} embedded />
       <SettingVergeBasic onError={onError} embedded />

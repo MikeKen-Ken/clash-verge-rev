@@ -1,4 +1,4 @@
-import { LanRounded, SettingsRounded } from "@mui/icons-material";
+import { SettingsRounded } from "@mui/icons-material";
 import { TextField, Typography } from "@mui/material";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +29,7 @@ const SettingClash = ({ onError, embedded }: Props) => {
   const { clash, version, mutateClash, patchClash } = useClash();
   const { verge } = useVerge();
 
-  const { ipv6, "allow-lan": allowLan } = clash ?? {};
+  const { ipv6 } = clash ?? {};
 
   const { verge_mixed_port } = verge ?? {};
 
@@ -48,31 +48,6 @@ const SettingClash = ({ onError, embedded }: Props) => {
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
       <TunnelsViewer ref={tunnelRef} />
-      <SettingItem
-        label={t("settings.sections.clash.form.fields.allowLan")}
-        extra={
-          <TooltipIcon
-            title={t("settings.sections.clash.form.tooltips.networkInterface")}
-            color={"inherit"}
-            icon={LanRounded}
-            onClick={() => {
-              networkRef.current?.open();
-            }}
-          />
-        }
-      >
-        <GuardState
-          value={allowLan ?? false}
-          valueProps="checked"
-          onCatch={onError}
-          onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ "allow-lan": e })}
-          onGuard={(e) => patchClash({ "allow-lan": e })}
-        >
-          <Switch edge="end" />
-        </GuardState>
-      </SettingItem>
-
       <SettingItem label={t("settings.sections.clash.form.fields.ipv6")}>
         <GuardState
           value={ipv6 ?? false}
