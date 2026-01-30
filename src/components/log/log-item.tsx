@@ -111,22 +111,39 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
-    // 规则详情段：高亮逗号后的匹配值（如 DOMAIN-SUFFIX,+..github.com 中的 +..github.com、+.cursor.sh 等）
+    // 规则详情段：高亮所有 (RuleType,value) 或 [RuleType,value] 中的 value，仅 value 部分（不含右侧的 ) 或 ]）
     const lastArrow = text.lastIndexOf(" --> ");
     let ruleDetailValueAdded = false;
     if (lastArrow > 0) {
       const secondLastArrow = text.lastIndexOf(" --> ", lastArrow - 1);
       if (secondLastArrow >= 0) {
-        const ruleDetail = text.slice(secondLastArrow + 5, lastArrow).trim();
-        const commaIdx = ruleDetail.indexOf(",");
-        if (commaIdx >= 0) {
-          const valueStart = secondLastArrow + 5 + commaIdx + 1;
-          const valueEnd = secondLastArrow + 5 + ruleDetail.length;
-          const valueText = ruleDetail.slice(commaIdx + 1);
+        const ruleDetail = text.slice(secondLastArrow + 5, lastArrow);
+        const baseOffset = secondLastArrow + 5;
+        // 匹配 (xxx,value) 中的 value（value 到 ) 前结束）
+        const parenRegex = /\([^,(]+,([^)]+)\)/g;
+        // 匹配 [xxx,value] 中的 value（value 到 ] 前结束）
+        const bracketRegex = /\[[^,\[]+,([^\]]+)\]/g;
+        let m: RegExpExecArray | null;
+        while ((m = parenRegex.exec(ruleDetail)) !== null) {
+          const valueText = m[1];
           if (valueText.length > 0) {
+            const valueStartInMatch = m[0].length - valueText.length - 1;
             matches.push({
-              start: valueStart,
-              end: valueEnd,
+              start: baseOffset + m.index + valueStartInMatch,
+              end: baseOffset + m.index + valueStartInMatch + valueText.length,
+              text: valueText,
+              type: "rule-detail-value",
+            });
+            ruleDetailValueAdded = true;
+          }
+        }
+        while ((m = bracketRegex.exec(ruleDetail)) !== null) {
+          const valueText = m[1];
+          if (valueText.length > 0) {
+            const valueStartInMatch = m[0].length - valueText.length - 1;
+            matches.push({
+              start: baseOffset + m.index + valueStartInMatch,
+              end: baseOffset + m.index + valueStartInMatch + valueText.length,
               text: valueText,
               type: "rule-detail-value",
             });
@@ -135,14 +152,14 @@ const LogItem = ({ value, searchState }: Props) => {
         }
       }
     }
-    // 若未从「最后一个 --> 前一段」解析到规则值，则整行匹配规则类型,值（如 DOMAIN-SUFFIX,+.cursor.sh），高亮值部分
+    // 若未从「最后一个 --> 前一段」解析到规则值，则整行匹配规则类型,值（如 DOMAIN-SUFFIX,+.cursor.sh），高亮值部分（值不含 ] )）
     if (!ruleDetailValueAdded) {
       const ruleValueRegex =
-        /(DOMAIN-SUFFIX|GEOIP|IP-CIDR|IP-CIDR6|MATCH|RULE-SET|SUB-RULE|PROCESS-NAME|DST-PORT|SRC-PORT),([^\s-->]+)/gi;
+        /(DOMAIN-SUFFIX|GEOIP|IP-CIDR|IP-CIDR6|MATCH|RULE-SET|SUB-RULE|PROCESS-NAME|DST-PORT|SRC-PORT),([^\s\]\)-->]+)/gi;
       let ruleValueMatch: RegExpExecArray | null;
       while ((ruleValueMatch = ruleValueRegex.exec(text)) !== null) {
         const valueStart = ruleValueMatch.index + ruleValueMatch[1].length + 1;
-        const valueEnd = ruleValueMatch.index + ruleValueMatch[0].length;
+        const valueEnd = valueStart + ruleValueMatch[2].length;
         const valueText = ruleValueMatch[2];
         if (valueText.length > 0) {
           matches.push({
@@ -321,10 +338,10 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
-    // RULE-SET 带 ruleDetail：match RULE-SET(name)[detail] 改为 --> name --> detail
+    // RULE-SET 带 ruleDetail：match RULE-SET(name)[detail] 改为 --> name --> [detail]
     secondLine = secondLine.replace(
       /\s+match\s+RULE-SET\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
-      " --> $1 --> $2",
+      " --> $1 --> [$2]",
     );
     // match RULE-SET(x) 改为 --> x，但若前面已有 --> x 则只删 match RULE-SET(x)，避免规则名重复
     secondLine = secondLine.replace(
