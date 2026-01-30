@@ -191,6 +191,7 @@ export const translationKeys = [
   "profiles.modals.groupsEditor.fields.healthCheckUrl",
   "profiles.modals.groupsEditor.fields.expectedStatus",
   "profiles.modals.groupsEditor.fields.interval",
+  "profiles.modals.groupsEditor.fields.selectedTimeout",
   "profiles.modals.groupsEditor.fields.maxFailedTimes",
   "profiles.modals.groupsEditor.fields.interfaceName",
   "profiles.modals.groupsEditor.fields.routingMark",

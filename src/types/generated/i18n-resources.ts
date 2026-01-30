@@ -292,6 +292,7 @@ export interface TranslationResources {
             provider: string;
             proxies: string;
             routingMark: string;
+            selectedTimeout: string;
             type: string;
           };
           title: string;

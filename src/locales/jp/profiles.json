@@ -143,6 +143,7 @@
         "healthCheckUrl": "ヘルスチェックURL",
         "expectedStatus": "期待するステータスコード",
         "interval": "チェック間隔",
+        "selectedTimeout": "選択ノードタイムアウト",
         "maxFailedTimes": "最大失敗回数",
         "interfaceName": "出力インターフェース",
         "routingMark": "ルーティングマーク",

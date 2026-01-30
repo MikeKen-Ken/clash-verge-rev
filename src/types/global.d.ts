@@ -350,6 +350,7 @@ interface IProxyGroupConfig {
   interval?: number;
   lazy?: boolean;
   timeout?: number;
+  "selected-timeout"?: number;
   "max-failed-times"?: number;
   "disable-udp"?: boolean;
   "interface-name": string;
