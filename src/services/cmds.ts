@@ -234,11 +234,13 @@ export async function calcuProxies(): Promise<{
     all: global?.all?.map((item) => generateItem(item)) || [],
   }) as IProxyGroupItem;
 
-  const records: Record<string, IProxyItem> = { ...proxyRecord };
-  for (const name of Object.keys(records)) {
-    const r = records[name];
-    if (r?.all) {
-      records[name] = mergeGroupConfig(name, r) as IProxyItem;
+  const records: Record<string, IProxyItem> = {};
+  for (const name of Object.keys(proxyRecord)) {
+    const r = proxyRecord[name];
+    if (r) {
+      records[name] = r.all
+        ? (mergeGroupConfig(name, r) as IProxyItem)
+        : (r as IProxyItem);
     }
   }
 

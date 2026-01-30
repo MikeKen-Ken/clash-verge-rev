@@ -19,7 +19,7 @@ import {
   TextSnippetOutlined,
 } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
-import { Box, Divider, Grid, IconButton, Stack } from "@mui/material";
+import { Box, Button, Divider, Grid, IconButton, Stack } from "@mui/material";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";

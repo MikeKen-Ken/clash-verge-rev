@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { useRuntimeConfig } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import delayManager from "@/services/delay";
+import delayManager, { DEFAULT_GROUP_TIMEOUT_MS } from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
 import { filterSort } from "./use-filter-sort";
@@ -51,6 +51,7 @@ type ProxyGroup = {
   icon?: string;
   testUrl?: string;
   provider?: string;
+  timeout?: number;
 };
 
 export interface IRenderItem {
@@ -398,7 +399,7 @@ export const useRenderList = (
           group.name,
           headState.filterText,
           headState.sortType,
-          group?.timeout ?? 5000,
+          group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS,
           {
             matchCase: headState.filterMatchCase,
             matchWholeWord: headState.filterMatchWholeWord,
@@ -458,7 +459,6 @@ export const useRenderList = (
     isChainMode,
     runtimeConfig,
     selectedGroup,
-    latencyTimeout,
   ]);
 
   return {

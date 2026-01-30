@@ -165,6 +165,8 @@ export const useCloseAllWithDelayCheck = () => {
         if (!group.all || group.all.length === 0) continue;
         if (!["URLTest", "Fallback"].includes(group.type)) continue;
 
+        const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
+
         // 按照组中节点的原始顺序（group.all）查找第一个连接成功的节点
         // 这样可以确保选择的是排序最靠前的成功节点
         let firstSuccessProxy: string | null = null;
