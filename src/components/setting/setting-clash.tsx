@@ -11,21 +11,19 @@ import getSystem from "@/utils/get-system";
 
 import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { ClashPortViewer } from "./mods/clash-port-viewer";
-import { ControllerViewer } from "./mods/controller-viewer";
-import { HeaderConfiguration } from "./mods/external-controller-cors";
 import { GuardState } from "./mods/guard-state";
 import { NetworkInterfaceViewer } from "./mods/network-interface-viewer";
 import { SettingItem, SettingList } from "./mods/setting-comp";
 import { TunnelsViewer } from "./mods/tunnels-viewer";
-import { WebUIViewer } from "./mods/web-ui-viewer";
 
 const isWIN = getSystem() === "windows";
 
 interface Props {
   onError: (err: Error) => void;
+  embedded?: boolean;
 }
 
-const SettingClash = ({ onError }: Props) => {
+const SettingClash = ({ onError, embedded }: Props) => {
   const { t } = useTranslation();
 
   const { clash, version, mutateClash, patchClash } = useClash();
@@ -35,26 +33,20 @@ const SettingClash = ({ onError }: Props) => {
 
   const { verge_mixed_port } = verge ?? {};
 
-  const webRef = useRef<DialogRef>(null);
   const portRef = useRef<DialogRef>(null);
-  const ctrlRef = useRef<DialogRef>(null);
   const coreRef = useRef<DialogRef>(null);
   const networkRef = useRef<DialogRef>(null);
-  const corsRef = useRef<DialogRef>(null);
   const tunnelRef = useRef<DialogRef>(null);
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
   const onChangeData = (patch: Partial<IConfigData>) => {
     mutateClash((old) => ({ ...old!, ...patch }), false);
   };
-  return (
-    <SettingList title={t("settings.sections.clash.title")}>
-      <WebUIViewer ref={webRef} />
+  const content = (
+    <>
       <ClashPortViewer ref={portRef} />
-      <ControllerViewer ref={ctrlRef} />
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
-      <HeaderConfiguration ref={corsRef} />
       <TunnelsViewer ref={tunnelRef} />
       <SettingItem
         label={t("settings.sections.clash.form.fields.allowLan")}
@@ -109,28 +101,6 @@ const SettingClash = ({ onError }: Props) => {
       </SettingItem>
 
       <SettingItem
-        label={t("settings.sections.clash.form.fields.external")}
-        extra={
-          <TooltipIcon
-            title={t("settings.sections.externalCors.tooltips.open")}
-            icon={SettingsRounded}
-            onClick={(e) => {
-              e.stopPropagation();
-              corsRef.current?.open();
-            }}
-          />
-        }
-        onClick={() => {
-          ctrlRef.current?.open();
-        }}
-      />
-
-      <SettingItem
-        onClick={() => webRef.current?.open()}
-        label={t("settings.sections.clash.form.fields.webUI")}
-      />
-
-      <SettingItem
         label={t("settings.sections.clash.form.fields.clashCore")}
         extra={
           <TooltipIcon
@@ -159,6 +129,13 @@ const SettingClash = ({ onError }: Props) => {
         label={t("settings.sections.clash.form.fields.tunnels.title")}
         onClick={() => tunnelRef.current?.open()}
       />
+    </>
+  );
+
+  if (embedded) return content;
+  return (
+    <SettingList title={t("settings.sections.clash.title")}>
+      {content}
     </SettingList>
   );
 };
