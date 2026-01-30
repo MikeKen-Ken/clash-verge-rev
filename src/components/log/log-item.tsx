@@ -338,21 +338,21 @@ const LogItem = ({ value, searchState }: Props) => {
       const esc = value.processName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       secondLine = secondLine.replace(new RegExp(`\\(${esc}\\)`, "gi"), "");
     }
-    // RULE-SET 带 ruleDetail：match RULE-SET(name)[detail] 改为 --> name --> [detail]
+    // RULE-SET/RuleSet 带 ruleDetail：match RuleSet(name)[detail] 改为 --> name --> [detail]
     secondLine = secondLine.replace(
-      /\s+match\s+RULE-SET\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
+      /\s+match\s+(?:RULE-SET|RuleSet)\s*\(([^)]+)\)\s*\[([^\]]*)\]\s*/gi,
       " --> $1 --> [$2]",
     );
-    // match RULE-SET(x) 改为 --> x，但若前面已有 --> x 则只删 match RULE-SET(x)，避免规则名重复
+    // match RULE-SET(x)/RuleSet(x) 改为 --> x，但若前面已有 --> x 则只删 match，避免规则名重复
     secondLine = secondLine.replace(
-      /\s+match\s+RULE-SET\s*\(([^)]+)\)/gi,
+      /\s+match\s+(?:RULE-SET|RuleSet)\s*\(([^)]+)\)/gi,
       (match, ruleName, offset) => {
         const name = ruleName.trim();
         const before = secondLine.slice(0, offset);
         const lastArrow = before.lastIndexOf(" --> ");
         const afterLast = before.slice(lastArrow + " --> ".length).trim();
         const token = afterLast.split(/\s+/)[0] ?? "";
-        if (token === name) return ""; // 已有规则名，只删 match RULE-SET(x)
+        if (token === name) return ""; // 已有规则名，只删 match RuleSet(x)
         return " --> " + name;
       },
     );
@@ -370,7 +370,7 @@ const LogItem = ({ value, searchState }: Props) => {
     secondLine = secondLine.replace(/\s+using\s+/, " --> ");
     // dial ⬆️ (match RULE-SET/games-cn) 改为 dial ⬆️ --> games-cn -->
     secondLine = secondLine.replace(
-      /\s*\(?\s*match\s+RULE-SET\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
+      /\s*\(?\s*match\s+(?:RULE-SET|RuleSet)\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
       " --> $1 --> ",
     );
     return { protocol, secondLine };
