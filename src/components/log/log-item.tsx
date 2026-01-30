@@ -111,60 +111,39 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
-    // 规则详情段：高亮所有 (RuleType,value) 或 [RuleType,value] 中的 value，仅 value 部分（不含右侧的 ) 或 ]）
-    const lastArrow = text.lastIndexOf(" --> ");
-    let ruleDetailValueAdded = false;
-    if (lastArrow > 0) {
-      const secondLastArrow = text.lastIndexOf(" --> ", lastArrow - 1);
-      if (secondLastArrow >= 0) {
-        const ruleDetail = text.slice(secondLastArrow + 5, lastArrow);
-        const baseOffset = secondLastArrow + 5;
-        // 匹配 (xxx,value) 中的 value（value 到 ) 前结束）
-        const parenRegex = /\([^,(]+,([^)]+)\)/g;
-        // 匹配 [xxx,value] 中的 value（value 到 ] 前结束）
-        const bracketRegex = /\[[^,\[]+,([^\]]+)\]/g;
-        let m: RegExpExecArray | null;
-        while ((m = parenRegex.exec(ruleDetail)) !== null) {
-          const valueText = m[1];
-          if (valueText.length > 0) {
-            const valueStartInMatch = m[0].length - valueText.length - 1;
-            matches.push({
-              start: baseOffset + m.index + valueStartInMatch,
-              end: baseOffset + m.index + valueStartInMatch + valueText.length,
-              text: valueText,
-              type: "rule-detail-value",
-            });
-            ruleDetailValueAdded = true;
-          }
-        }
-        while ((m = bracketRegex.exec(ruleDetail)) !== null) {
-          const valueText = m[1];
-          if (valueText.length > 0) {
-            const valueStartInMatch = m[0].length - valueText.length - 1;
-            matches.push({
-              start: baseOffset + m.index + valueStartInMatch,
-              end: baseOffset + m.index + valueStartInMatch + valueText.length,
-              text: valueText,
-              type: "rule-detail-value",
-            });
-            ruleDetailValueAdded = true;
-          }
-        }
-      }
-    }
-    // 若未从「最后一个 --> 前一段」解析到规则值，则整行匹配规则类型,值（如 DOMAIN-SUFFIX,+.cursor.sh），高亮值部分（值不含 ] )）
-    if (!ruleDetailValueAdded) {
-      const ruleValueRegex =
-        /(DOMAIN-SUFFIX|GEOIP|IP-CIDR|IP-CIDR6|MATCH|RULE-SET|SUB-RULE|PROCESS-NAME|DST-PORT|SRC-PORT),([^\s\]\)-->]+)/gi;
-      let ruleValueMatch: RegExpExecArray | null;
-      while ((ruleValueMatch = ruleValueRegex.exec(text)) !== null) {
-        const valueStart = ruleValueMatch.index + ruleValueMatch[1].length + 1;
-        const valueEnd = valueStart + ruleValueMatch[2].length;
-        const valueText = ruleValueMatch[2];
+    // 规则详情段：高亮所有 (RuleType,value) 或 [RuleType,value] 中的 value，仅 value 部分
+    // 扫描整行文本，匹配所有规则类型,值模式
+    {
+      // 匹配 (RuleType,value) 中的 value
+      const parenRuleRegex =
+        /\((DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|ProcessName|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH|DomainSuffix|DomainKeyword),([^)]+)\)/gi;
+      // 匹配 [RuleType,value] 中的 value
+      const bracketRuleRegex =
+        /\[(DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|ProcessName|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH|DomainSuffix|DomainKeyword),([^\]]+)\]/gi;
+      let m: RegExpExecArray | null;
+      while ((m = parenRuleRegex.exec(text)) !== null) {
+        const ruleType = m[1];
+        const valueText = m[2];
         if (valueText.length > 0) {
+          // value 在匹配中的位置：( + ruleType + , 之后
+          const valueStart = m.index + 1 + ruleType.length + 1;
           matches.push({
             start: valueStart,
-            end: valueEnd,
+            end: valueStart + valueText.length,
+            text: valueText,
+            type: "rule-detail-value",
+          });
+        }
+      }
+      while ((m = bracketRuleRegex.exec(text)) !== null) {
+        const ruleType = m[1];
+        const valueText = m[2];
+        if (valueText.length > 0) {
+          // value 在匹配中的位置：[ + ruleType + , 之后
+          const valueStart = m.index + 1 + ruleType.length + 1;
+          matches.push({
+            start: valueStart,
+            end: valueStart + valueText.length,
             text: valueText,
             type: "rule-detail-value",
           });
@@ -366,8 +345,8 @@ const LogItem = ({ value, searchState }: Props) => {
         return ` --> ${ruleType},${payload}`;
       },
     );
-    // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]
-    secondLine = secondLine.replace(/\s+using\s+/, " --> ");
+    // applications using ⬆️[DIRECT] 改为 applications --> ⬆️[DIRECT]（using 前可能没有空格）
+    secondLine = secondLine.replace(/\s*using\s+/, " --> ");
     // dial ⬆️ (match RULE-SET/games-cn) 改为 dial ⬆️ --> games-cn -->
     secondLine = secondLine.replace(
       /\s*\(?\s*match\s+(?:RULE-SET|RuleSet)\s*[\/\s]\s*([^\s)]+)\s*\)?\s*/gi,
