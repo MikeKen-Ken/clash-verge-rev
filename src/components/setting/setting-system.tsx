@@ -1,8 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import ProxyControlSwitches from "@/components/shared/proxy-control-switches";
-
 import SettingClash from "./setting-clash";
 import { SettingList } from "./mods/setting-comp";
 import SettingVergeAdvanced from "./setting-verge-advanced";
@@ -17,8 +15,6 @@ const SettingSystem = ({ onError }: Props) => {
 
   return (
     <SettingList title={t("settings.sections.system.title")}>
-      <ProxyControlSwitches onError={onError} />
-
       <SettingClash onError={onError ?? (() => {})} embedded />
       <SettingVergeBasic onError={onError} embedded />
       <SettingVergeAdvanced onError={onError} embedded />

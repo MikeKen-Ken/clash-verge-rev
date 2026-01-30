@@ -113,7 +113,7 @@ async fn get_config_values() -> ConfigValues {
     let (clash_core, enable_tun, enable_tun_override, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
         enable_tun_mode.unwrap_or(false),
-        enable_tun_override.unwrap_or(true),
+        false, // TUN 覆写已取消，不再根据设置覆写 TUN 配置
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
         verge_http_enabled.unwrap_or(false),

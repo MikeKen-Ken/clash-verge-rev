@@ -11,7 +11,7 @@
     "system": {
       "title": "系統設定",
       "toggles": {
-        "tunMode": "虛擬網路介面卡模式",
+        "tunMode": "TUN 模式",
         "systemProxy": "系統代理"
       },
       "tooltips": {
@@ -23,16 +23,16 @@
       },
       "notifications": {
         "tunMode": {
-          "autoDisabled": "由於服務不可使用，虛擬網路介面卡模式已自動停用",
-          "autoDisableFailed": "自動停用虛擬網路介面卡模式失敗"
+          "autoDisabled": "由於服務不可使用，TUN 模式已自動停用",
+          "autoDisableFailed": "自動停用 TUN 模式失敗"
         }
       }
     },
     "proxyControl": {
       "tooltips": {
         "systemProxy": "修改作業系統的代理設定，如果開啟失敗，可手動修改作業系統的代理設定",
-        "tunMode": "TUN（虛擬網路介面卡）模式接管系統所有流量，啟用時無需開啟系統代理",
-        "tunUnavailable": "虛擬網路介面卡模式需要安裝服務模式或以系統管理員身分執行"
+        "tunMode": "TUN 模式接管系統所有流量，啟用時無需開啟系統代理",
+        "tunUnavailable": "TUN 模式需要安裝服務模式或以系統管理員身分執行"
       },
       "actions": {
         "installService": "安裝服務",
@@ -40,7 +40,7 @@
       },
       "fields": {
         "systemProxy": "系統代理",
-        "tunMode": "虛擬網路介面卡模式"
+        "tunMode": "TUN 模式"
       }
     },
     "externalController": {
@@ -238,7 +238,7 @@
           "showOutboundModesInline": "將出站模式顯示在系統匣一級選單",
           "commonTrayIcon": "一般系統匣圖示",
           "systemProxyTrayIcon": "系統代理系統匣圖示",
-          "tunTrayIcon": "虛擬網路介面卡模式系統匣圖示",
+          "tunTrayIcon": "TUN 模式系統匣圖示",
           "enableTrayIcon": "啟用系統匣圖示",
           "enableTraySpeed": "啟用系統匣速率"
         },
@@ -465,10 +465,10 @@
       }
     },
     "tun": {
-      "title": "虛擬網路介面卡模式",
+      "title": "TUN 模式",
       "fields": {
         "enableTunOverride": "TUN 覆寫",
-        "stack": "虛擬網路介面卡模式堆疊",
+        "stack": "TUN 模式堆疊",
         "device": "Device Name",
         "autoRoute": "自動設定全域路由",
         "routeExcludeAddress": "排除自訂網段",
@@ -602,7 +602,7 @@
         "global": "全域模式",
         "openOrCloseDashboard": "開啟/關閉儀表板",
         "toggleSystemProxy": "開啟/關閉系統代理",
-        "toggleTunMode": "開啟/關閉 虛擬網路介面卡模式",
+        "toggleTunMode": "開啟/關閉 TUN 模式",
         "entryLightweightMode": "進入輕量模式",
         "direct": "直連模式",
         "reactivateProfiles": "重新啟用訂閱",

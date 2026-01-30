@@ -67,7 +67,9 @@ const InnerConnectionDetail = ({ data, closed, onClose }: InnerProps) => {
   const theme = useTheme();
   const chains = [...data.chains].reverse().join(" / ");
   const rule = rulePayload
-    ? `${data.rule}(${rulePayload})${ruleDetail ? ` [${ruleDetail}]` : ""}`
+    ? ruleDetail
+      ? `${rulePayload} --> [${ruleDetail}]`
+      : rulePayload
     : data.rule;
   const host = metadata.host
     ? `${metadata.host}:${metadata.destinationPort}`

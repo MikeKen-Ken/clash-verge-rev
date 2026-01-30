@@ -11,7 +11,7 @@
     "system": {
       "title": "系统设置",
       "toggles": {
-        "tunMode": "虚拟网卡模式",
+        "tunMode": "TUN 模式",
         "systemProxy": "系统代理"
       },
       "tooltips": {
@@ -31,8 +31,8 @@
     "proxyControl": {
       "tooltips": {
         "systemProxy": "修改操作系统的代理设置，如果开启失败，可手动修改操作系统的代理设置",
-        "tunMode": "TUN（虚拟网卡）模式接管系统所有流量，启用时无须打开系统代理",
-        "tunUnavailable": "TUN 模式需要安装服务模式或管理员模式"
+        "tunMode": "TUN 模式接管系统所有流量，启用时无须打开系统代理",
+        "tunUnavailable": "TUN 模式需要安装服务或管理员权限"
       },
       "actions": {
         "installService": "安装服务",
@@ -40,7 +40,7 @@
       },
       "fields": {
         "systemProxy": "系统代理",
-        "tunMode": "虚拟网卡模式"
+        "tunMode": "TUN 模式"
       }
     },
     "externalController": {
@@ -465,11 +465,11 @@
       }
     },
     "tun": {
-      "title": "虚拟网卡模式",
+      "title": "TUN 模式",
       "fields": {
         "enableTunOverride": "TUN 覆写",
         "stack": "TUN 模式堆栈",
-        "device": "虚拟网卡名称",
+        "device": "TUN 设备名称",
         "autoRoute": "自动设置全局路由",
         "routeExcludeAddress": "排除自定义网段",
         "strictRoute": "严格路由",

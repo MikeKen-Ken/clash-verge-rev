@@ -79,9 +79,10 @@ const getConnectionCellValue = (field: ColumnField, each: IConnectionsItem) => {
     case "chains":
       return [...each.chains].reverse().join(" / ");
     case "rule":
-      return rulePayload
-        ? `${each.rule}(${rulePayload})${ruleDetail ? ` [${ruleDetail}]` : ""}`
-        : each.rule;
+      if (rulePayload) {
+        return ruleDetail ? `${rulePayload} --> [${ruleDetail}]` : rulePayload;
+      }
+      return each.rule;
     case "process":
       return truncateStr(metadata.process || metadata.processPath);
     case "time":

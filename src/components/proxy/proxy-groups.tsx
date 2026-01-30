@@ -37,9 +37,6 @@ interface Props {
   mode: string;
   isChainMode?: boolean;
   chainConfigData?: string | null;
-  /** When provided, rule group selection is controlled from parent (e.g. proxy page header). */
-  selectedGroup?: string | null;
-  onSelectedGroupChange?: (groupName: string) => void;
 }
 
 interface ProxyChainItem {
@@ -53,13 +50,7 @@ const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
-  const {
-    mode,
-    isChainMode = false,
-    chainConfigData,
-    selectedGroup: selectedGroupProp,
-    onSelectedGroupChange,
-  } = props;
+  const { mode, isChainMode = false, chainConfigData } = props;
   const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>(() => {
     try {
       const saved = localStorage.getItem("proxy-chain-items");
@@ -71,16 +62,7 @@ export const ProxyGroups = (props: Props) => {
     }
     return [];
   });
-  const [selectedGroupInternal, setSelectedGroupInternal] =
-    useState<string | null>(null);
-
-  const isControlled = selectedGroupProp !== undefined;
-  const selectedGroup = isControlled ? selectedGroupProp : selectedGroupInternal;
-  const setSelectedGroup = isControlled
-    ? (name: string | null) => {
-        if (name !== null) onSelectedGroupChange?.(name);
-      }
-    : setSelectedGroupInternal;
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
 
   useEffect(() => {
     if (proxyChain.length > 0) {
@@ -109,11 +91,11 @@ export const ProxyGroups = (props: Props) => {
   }, [groups, isChainMode]);
 
   const defaultRuleGroup = useMemo(() => {
-    if (mode === "rule" && availableGroups.length > 0) {
+    if (isChainMode && mode === "rule" && availableGroups.length > 0) {
       return availableGroups[0].name;
     }
     return null;
-  }, [availableGroups, mode]);
+  }, [availableGroups, isChainMode, mode]);
 
   const activeSelectedGroup = useMemo(
     () => selectedGroup ?? defaultRuleGroup,
@@ -262,11 +244,7 @@ export const ProxyGroups = (props: Props) => {
   };
 
   const handleGroupSelect = (groupName: string) => {
-    if (isControlled) {
-      onSelectedGroupChange?.(groupName);
-    } else {
-      setSelectedGroupInternal(groupName);
-    }
+    setSelectedGroup(groupName);
     handleGroupMenuClose();
 
     if (isChainMode && mode === "rule") {

@@ -375,16 +375,10 @@ export const useRenderList = (
 
     // 正常模式的渲染逻辑
     const useRule = mode === "rule" || mode === "script";
-    let renderGroups =
+    const renderGroups =
       useRule && proxiesData.groups.length
         ? proxiesData.groups
         : [proxiesData.global!];
-    if (!isChainMode && useRule && selectedGroup && renderGroups.length) {
-      const target = renderGroups.find(
-        (g: ProxyGroup) => g.name === selectedGroup,
-      );
-      renderGroups = target ? [target] : renderGroups;
-    }
 
     const retList = renderGroups.flatMap((group: ProxyGroup) => {
       const headState = headStates[group.name] || DEFAULT_STATE;

@@ -1,7 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import {
+  delayGroup,
   getBaseConfig,
   getRuleProviders,
   getRules,
@@ -16,6 +17,7 @@ import {
   getSystemProxy,
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
+import delayManager from "@/services/delay";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -56,6 +58,33 @@ export const AppDataProvider = ({
     getRules,
     SWR_MIHOMO,
   );
+
+  const hasTriggeredStartupFallback = useRef(false);
+
+  // 启动时触发 url-test/fallback 组的测速，让核心更新「当前节点」而非固定选第一个
+  useEffect(() => {
+    if (!proxiesData?.groups?.length || hasTriggeredStartupFallback.current) {
+      return;
+    }
+    hasTriggeredStartupFallback.current = true;
+    const groups = proxiesData.groups as IProxyGroupItem[];
+    const urlTestOrFallback = groups.filter(
+      (g) => g.type === "url-test" || g.type === "fallback",
+    );
+    if (urlTestOrFallback.length === 0) return;
+
+    const run = async () => {
+      await Promise.allSettled(
+        urlTestOrFallback.map((g) => {
+          const url = delayManager.getUrl(g.name);
+          const timeout = g.timeout ?? 5000;
+          return delayGroup(g.name, url, timeout);
+        }),
+      );
+      await refreshProxy();
+    };
+    void run();
+  }, [proxiesData, refreshProxy]);
 
   useEffect(() => {
     let lastProfileId: string | null = null;
@@ -119,6 +148,7 @@ export const AppDataProvider = ({
 
       lastProfileId = newProfileId;
       lastUpdateTime = now;
+      hasTriggeredStartupFallback.current = false;
 
       scheduleTimeout(() => {
         refreshRules().catch((error) =>
