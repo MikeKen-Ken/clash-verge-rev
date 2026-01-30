@@ -16,14 +16,28 @@ import {
   type SearchState,
 } from "@/components/base";
 import LogItem from "@/components/log/log-item";
+import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
 import { useLogData } from "@/hooks/use-log-data";
 
+const KERNEL_LOG_LEVELS = [
+  "debug",
+  "info",
+  "warning",
+  "error",
+  "silent",
+] as const;
+
 const LogPage = () => {
   const { t } = useTranslation();
+  const { clash, patchClash } = useClash();
   const [clashLog, setClashLog] = useClashLog();
   const enableLog = clashLog.enable;
   const logState = clashLog.logFilter;
+  const kernelLogLevel =
+    clash?.["log-level"] === "warn"
+      ? "warning"
+      : (clash?.["log-level"] ?? clashLog.logLevel ?? "info");
   const logOrder = clashLog.logOrder ?? "asc";
   const isDescending = logOrder === "desc";
 
@@ -60,8 +74,13 @@ const LogPage = () => {
     [filterLogs, isDescending],
   );
 
-  const handleLogLevelChange = (newLevel: string) => {
+  const handleLogFilterChange = (newLevel: string) => {
     setClashLog((pre: any) => ({ ...pre, logFilter: newLevel }));
+  };
+
+  const handleKernelLogLevelChange = async (newLevel: string) => {
+    setClashLog((pre: any) => ({ ...pre, logLevel: newLevel }));
+    await patchClash({ "log-level": newLevel });
   };
 
   const handleToggleLog = async () => {
@@ -147,11 +166,23 @@ const LogPage = () => {
           height: "39px",
           display: "flex",
           alignItems: "center",
+          gap: 1,
         }}
       >
         <BaseStyledSelect
+          value={kernelLogLevel}
+          onChange={(e) => handleKernelLogLevelChange(e.target.value as string)}
+          sx={{ minWidth: 100 }}
+        >
+          {KERNEL_LOG_LEVELS.map((level) => (
+            <MenuItem key={level} value={level}>
+              {t(`settings.sections.clash.form.options.logLevel.${level}`)}
+            </MenuItem>
+          ))}
+        </BaseStyledSelect>
+        <BaseStyledSelect
           value={logState}
-          onChange={(e) => handleLogLevelChange(e.target.value as LogFilter)}
+          onChange={(e) => handleLogFilterChange(e.target.value as LogFilter)}
         >
           <MenuItem value="all">{t("shared.filters.logLevels.all")}</MenuItem>
           <MenuItem value="debug">

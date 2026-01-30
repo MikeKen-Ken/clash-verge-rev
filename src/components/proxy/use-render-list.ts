@@ -110,7 +110,6 @@ export const useRenderList = (
   const { verge } = useVerge();
   const { width } = useWindowWidth();
   const [headStates, setHeadState] = useHeadStateNew();
-  const latencyTimeout = verge?.default_latency_timeout;
 
   // 获取运行时配置用于链式代理模式
   const { data: runtimeConfig } = useRuntimeConfig(!!isChainMode);
@@ -154,7 +153,7 @@ export const useRenderList = (
 
     const calculateDelays = async () => {
       try {
-        const timeout = verge?.default_latency_timeout || 10000;
+        const timeout = 5000;
         const proxyNames = allProxies.map((proxy) => proxy.name);
 
         debugLog(`[ChainMode] 开始计算 ${proxyNames.length} 个节点的延迟`);
@@ -174,12 +173,7 @@ export const useRenderList = (
       // 清理组监听器
       delayManager.removeGroupListener("chain-mode");
     };
-  }, [
-    isChainMode,
-    runtimeConfig,
-    verge?.default_latency_timeout,
-    refreshProxy,
-  ]);
+  }, [isChainMode, runtimeConfig, refreshProxy]);
 
   // 处理渲染列表
   const renderList: IRenderItem[] = useMemo(() => {
@@ -203,7 +197,7 @@ export const useRenderList = (
             targetGroup.name,
             "",
             0,
-            latencyTimeout,
+            targetGroup?.timeout ?? 5000,
           );
 
           if (col > 1) {
@@ -238,7 +232,7 @@ export const useRenderList = (
           firstGroup.name,
           "",
           0,
-          latencyTimeout,
+          firstGroup?.timeout ?? 5000,
         );
 
         if (col > 1) {
@@ -404,7 +398,7 @@ export const useRenderList = (
           group.name,
           headState.filterText,
           headState.sortType,
-          latencyTimeout,
+          group?.timeout ?? 5000,
           {
             matchCase: headState.filterMatchCase,
             matchWholeWord: headState.filterMatchWholeWord,

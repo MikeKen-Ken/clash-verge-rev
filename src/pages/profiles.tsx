@@ -13,18 +13,13 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import {
-  CheckBoxOutlineBlankRounded,
-  CheckBoxRounded,
   ClearRounded,
   ContentPasteRounded,
-  DeleteRounded,
-  IndeterminateCheckBoxRounded,
-  LocalFireDepartmentRounded,
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
-import { Box, Button, Divider, Grid, IconButton, Stack } from "@mui/material";
+import { Box, Divider, Grid, IconButton, Stack } from "@mui/material";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";
@@ -104,12 +99,6 @@ const ProfilePage = () => {
   const [disabled, setDisabled] = useState(false);
   const [activatings, setActivatings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // Batch selection states
-  const [batchMode, setBatchMode] = useState(false);
-  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(
-    () => new Set(),
-  );
 
   // 防止重复切换
   const switchingProfileRef = useRef<string | null>(null);
@@ -645,88 +634,6 @@ const ProfilePage = () => {
     if (text) setUrl(text);
   };
 
-  // Batch selection functions
-  const toggleBatchMode = () => {
-    setBatchMode(!batchMode);
-    if (!batchMode) {
-      // Entering batch mode - clear previous selections
-      setSelectedProfiles(new Set());
-    }
-  };
-
-  const toggleProfileSelection = (uid: string) => {
-    setSelectedProfiles((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(uid)) {
-        newSet.delete(uid);
-      } else {
-        newSet.add(uid);
-      }
-      return newSet;
-    });
-  };
-
-  const selectAllProfiles = () => {
-    setSelectedProfiles(new Set(profileItems.map((item) => item.uid)));
-  };
-
-  const clearAllSelections = () => {
-    setSelectedProfiles(new Set());
-  };
-
-  const isAllSelected = () => {
-    return (
-      profileItems.length > 0 && profileItems.length === selectedProfiles.size
-    );
-  };
-
-  const getSelectionState = () => {
-    if (selectedProfiles.size === 0) {
-      return "none"; // 无选择
-    } else if (selectedProfiles.size === profileItems.length) {
-      return "all"; // 全选
-    } else {
-      return "partial"; // 部分选择
-    }
-  };
-
-  const deleteSelectedProfiles = useLockFn(async () => {
-    if (selectedProfiles.size === 0) return;
-
-    try {
-      // Get all currently activating profiles
-      const currentActivating =
-        profiles.current && selectedProfiles.has(profiles.current)
-          ? [profiles.current]
-          : [];
-
-      setActivatings((prev) => [...new Set([...prev, ...currentActivating])]);
-
-      // Delete all selected profiles
-      for (const uid of selectedProfiles) {
-        await deleteProfile(uid);
-      }
-
-      await mutateProfiles();
-      await mutateLogs();
-
-      // If any deleted profile was current, enhance profiles
-      if (currentActivating.length > 0) {
-        await onEnhance(false);
-      }
-
-      // Clear selections and exit batch mode
-      setSelectedProfiles(new Set());
-      setBatchMode(false);
-
-      showNotice.success("profiles.page.feedback.notifications.batchDeleted");
-    } catch (err: any) {
-      showNotice.error(err);
-    } finally {
-      setActivatings([]);
-    }
-  });
-
   const mode = useThemeMode();
   const isLight = mode === "light";
   const dividercolor = isLight
@@ -803,107 +710,41 @@ const ProfilePage = () => {
       contentStyle={{ height: "100%" }}
       header={
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {!batchMode ? (
-            <>
-              {/* Batch mode toggle button */}
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t("profiles.page.batch.title")}
-                onClick={toggleBatchMode}
-              >
-                <CheckBoxOutlineBlankRounded />
-              </IconButton>
+          <IconButton
+            size="small"
+            color="inherit"
+            title={t("profiles.page.actions.updateAll")}
+            onClick={onUpdateAll}
+          >
+            <RefreshRounded />
+          </IconButton>
 
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t("profiles.page.actions.updateAll")}
-                onClick={onUpdateAll}
-              >
-                <RefreshRounded />
-              </IconButton>
+          <IconButton
+            size="small"
+            color="inherit"
+            title={t("profiles.page.actions.viewRuntimeConfig")}
+            onClick={() => configRef.current?.open()}
+          >
+            <TextSnippetOutlined />
+          </IconButton>
 
-              <IconButton
-                size="small"
-                color="inherit"
-                title={t("profiles.page.actions.viewRuntimeConfig")}
-                onClick={() => configRef.current?.open()}
-              >
-                <TextSnippetOutlined />
-              </IconButton>
-
-              <IconButton
-                size="small"
-                color="primary"
-                title={t("profiles.page.actions.reactivate")}
-                onClick={() => onEnhance(true)}
-              >
-                <LocalFireDepartmentRounded />
-              </IconButton>
-
-              {/* 故障检测和紧急恢复按钮 */}
-              {(error || isStale) && (
-                <IconButton
-                  size="small"
-                  color="warning"
-                  title="数据异常，点击强制刷新"
-                  onClick={onEmergencyRefresh}
-                  sx={{
-                    animation: "pulse 2s infinite",
-                    "@keyframes pulse": {
-                      "0%": { opacity: 1 },
-                      "50%": { opacity: 0.5 },
-                      "100%": { opacity: 1 },
-                    },
-                  }}
-                >
-                  <ClearRounded />
-                </IconButton>
-              )}
-            </>
-          ) : (
-            // Batch mode header
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton
-                size="small"
-                color="inherit"
-                title={
-                  isAllSelected()
-                    ? t("profiles.page.batch.actions.deselectAll")
-                    : t("profiles.page.batch.actions.selectAll")
-                }
-                onClick={
-                  isAllSelected() ? clearAllSelections : selectAllProfiles
-                }
-              >
-                {getSelectionState() === "all" ? (
-                  <CheckBoxRounded />
-                ) : getSelectionState() === "partial" ? (
-                  <IndeterminateCheckBoxRounded />
-                ) : (
-                  <CheckBoxOutlineBlankRounded />
-                )}
-              </IconButton>
-              <IconButton
-                size="small"
-                color="error"
-                title={t("profiles.page.batch.actions.delete")}
-                onClick={deleteSelectedProfiles}
-                disabled={selectedProfiles.size === 0}
-              >
-                <DeleteRounded />
-              </IconButton>
-              <Button size="small" variant="outlined" onClick={toggleBatchMode}>
-                {t("profiles.page.batch.actions.done")}
-              </Button>
-              <Box
-                sx={{ flex: 1, textAlign: "right", color: "text.secondary" }}
-              >
-                {t("profiles.page.batch.summary.selected")}{" "}
-                {selectedProfiles.size} {t("profiles.page.batch.summary.items")}
-              </Box>
-            </Box>
+          {(error || isStale) && (
+            <IconButton
+              size="small"
+              color="warning"
+              title="数据异常，点击强制刷新"
+              onClick={onEmergencyRefresh}
+              sx={{
+                animation: "pulse 2s infinite",
+                "@keyframes pulse": {
+                  "0%": { opacity: 1 },
+                  "50%": { opacity: 0.5 },
+                  "100%": { opacity: 1 },
+                },
+              }}
+            >
+              <ClearRounded />
+            </IconButton>
           )}
         </Box>
       }
@@ -1016,16 +857,10 @@ const ProfilePage = () => {
                           //   Notice.success(t("settings.feedback.notifications.clash.restartSuccess"), 1000);
                         }
                       }}
-                      onDelete={() => {
-                        if (batchMode) {
-                          toggleProfileSelection(item.uid);
-                        } else {
-                          onDelete(item.uid);
-                        }
-                      }}
-                      batchMode={batchMode}
-                      isSelected={selectedProfiles.has(item.uid)}
-                      onSelectionChange={() => toggleProfileSelection(item.uid)}
+                      onDelete={() => onDelete(item.uid)}
+                      batchMode={false}
+                      isSelected={false}
+                      onSelectionChange={() => {}}
                     />
                   </Grid>
                 ))}

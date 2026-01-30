@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
 
-import { useVerge } from "@/hooks/use-verge";
-import delayManager from "@/services/delay";
+import delayManager, {
+  DEFAULT_GROUP_TIMEOUT_MS,
+} from "@/services/delay";
 import { compileStringMatcher } from "@/utils/search-matcher";
 
 // default | delay | alphabet
@@ -19,8 +20,8 @@ export default function useFilterSort(
   filterText: string,
   sortType: ProxySortType,
   searchState?: ProxySearchState,
+  groupTimeout?: number,
 ) {
-  const { verge } = useVerge();
   const [_, bumpRefresh] = useReducer((count: number) => count + 1, 0);
   const lastInputRef = useRef<{ text: string; sort: ProxySortType } | null>(
     null,
@@ -50,7 +51,7 @@ export default function useFilterSort(
       fp,
       groupName,
       sortType,
-      verge?.default_latency_timeout,
+      groupTimeout ?? DEFAULT_GROUP_TIMEOUT_MS,
     );
     return sp;
   }, [
@@ -59,7 +60,7 @@ export default function useFilterSort(
     filterText,
     sortType,
     searchState,
-    verge?.default_latency_timeout,
+    groupTimeout,
   ]);
 
   const [result, setResult] = useReducer(
@@ -186,7 +187,7 @@ function sortProxies(
   const effectiveTimeout =
     typeof latencyTimeout === "number" && latencyTimeout > 0
       ? latencyTimeout
-      : 10000;
+      : DEFAULT_GROUP_TIMEOUT_MS;
 
   if (sortType === 1) {
     const categorizeDelay = (delay: number): [number, number] => {

@@ -111,6 +111,10 @@ interface IProxyItem {
 
 type IProxyGroupItem = Omit<IProxyItem, "all"> & {
   all: IProxyItem[];
+  /** 配置里的 timeout（毫秒），用于普通节点测速与 fallback */
+  timeout?: number;
+  /** 配置里的 selected-timeout（毫秒），用于选中节点测速与 fallback */
+  selectedTimeout?: number;
 };
 
 interface IProxyProviderItem {
@@ -956,7 +960,6 @@ interface IVergeConfig {
   auto_close_connection?: boolean;
   auto_check_update?: boolean;
   default_latency_test?: string;
-  default_latency_timeout?: number;
   enable_auto_delay_detection?: boolean;
   auto_delay_detection_interval_minutes?: number;
   enable_builtin_enhanced?: boolean;

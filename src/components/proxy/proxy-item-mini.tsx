@@ -5,8 +5,10 @@ import { useCallback, useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseLoading } from "@/components/base";
-import { useVerge } from "@/hooks/use-verge";
-import delayManager, { DelayUpdate } from "@/services/delay";
+import delayManager, {
+  getGroupDelayTimeout,
+  DelayUpdate,
+} from "@/services/delay";
 
 interface Props {
   group: IProxyGroupItem;
@@ -29,8 +31,7 @@ export const ProxyItemMini = (props: Props) => {
     (_: DelayUpdate, next: DelayUpdate) => next,
     { delay: -1, updatedAt: 0 },
   );
-  const { verge } = useVerge();
-  const timeout = verge?.default_latency_timeout || 10000;
+  const timeout = getGroupDelayTimeout(group, selected);
 
   useEffect(() => {
     if (isPreset) return;
@@ -102,15 +103,19 @@ export const ProxyItemMini = (props: Props) => {
           const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
           const showDelay = delayValue > 0;
           const selectColor = mode === "light" ? primary.main : primary.light;
-          
+
           // 判断节点是否测试成功（不是 T 或 E）
-          const delayText = delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
-          const isSuccess = delayText !== "T" && delayText !== "E" && delayText !== "-" && delayText !== "testing" && delayText !== "";
-          
+          const delayText =
+            delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
+          const isSuccess =
+            delayText !== "T" &&
+            delayText !== "E" &&
+            delayText !== "-" &&
+            delayText !== "testing" &&
+            delayText !== "";
+
           // 成功的节点使用浅绿色背景
-          const finalBgcolor = isSuccess 
-            ? alpha(success.main, 0.15)
-            : bgcolor;
+          const finalBgcolor = isSuccess ? alpha(success.main, 0.15) : bgcolor;
 
           return {
             "&:hover .the-check": { display: !showDelay ? "block" : "none" },

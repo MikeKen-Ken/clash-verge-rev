@@ -129,8 +129,6 @@ export const ProxyGroups = (props: Props) => {
     },
   });
 
-  const timeout = verge?.default_latency_timeout || 10000;
-
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollPositionRef = useRef<Record<string, number>>({});
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -298,9 +296,14 @@ export const ProxyGroups = (props: Props) => {
     [handleProxyGroupChange, isChainMode, t],
   );
 
-  // 测全部延迟
+  // 测全部延迟（使用配置里的 timeout）
   const handleCheckAll = useLockFn(async (groupName: string) => {
     debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
+
+    const group = availableGroups.find(
+      (g: IProxyGroupItem) => g.name === groupName,
+    );
+    const timeout = group?.timeout ?? 5000;
 
     const proxies = renderList
       .filter(

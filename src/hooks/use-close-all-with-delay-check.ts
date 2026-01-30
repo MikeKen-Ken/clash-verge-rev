@@ -3,8 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
-import { useVerge } from "@/hooks/use-verge";
-import delayManager from "@/services/delay";
+import delayManager, { DEFAULT_GROUP_TIMEOUT_MS } from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
@@ -15,7 +14,6 @@ import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify"
  */
 export const useCloseAllWithDelayCheck = () => {
   const { proxies: proxiesData } = useAppData();
-  const { verge } = useVerge();
 
   const handleCloseAllWithDelayCheck = useCallback(async () => {
     // 标记关闭连接开始，在此后 10 秒内禁用 fallback 切换通知
@@ -30,7 +28,6 @@ export const useCloseAllWithDelayCheck = () => {
 
       debugLog(`[CloseAll] Starting delay checks for ${proxiesData.groups.length} groups`);
 
-      const timeout = verge?.default_latency_timeout || 10000;
       const groups = proxiesData.groups;
 
       // Get all proxies and providers from all groups
@@ -92,6 +89,7 @@ export const useCloseAllWithDelayCheck = () => {
         }
 
         const url = delayManager.getUrl(group.name);
+        const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
         debugLog(
           `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
         );
@@ -246,7 +244,7 @@ export const useCloseAllWithDelayCheck = () => {
       console.error("[CloseAll] Error during close all connections:", error);
     }
     // 注意：不需要重置关闭连接状态，因为使用基于时间的冷却期（10秒）
-  }, [proxiesData, verge?.default_latency_timeout]);
+  }, [proxiesData]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;

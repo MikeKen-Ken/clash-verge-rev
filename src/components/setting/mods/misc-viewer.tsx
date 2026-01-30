@@ -32,7 +32,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
     autoDelayDetectionIntervalMinutes: 5,
     defaultLatencyTest: "",
     autoLogClean: 2,
-    defaultLatencyTimeout: 10000,
   });
 
   useImperativeHandle(ref, () => ({
@@ -51,7 +50,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
           verge?.auto_delay_detection_interval_minutes ?? 5,
         defaultLatencyTest: verge?.default_latency_test || "",
         autoLogClean: verge?.auto_log_clean || 0,
-        defaultLatencyTimeout: verge?.default_latency_timeout || 10000,
       });
     },
     close: () => setOpen(false),
@@ -71,7 +69,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
         auto_delay_detection_interval_minutes:
           values.autoDelayDetectionIntervalMinutes,
         default_latency_test: values.defaultLatencyTest,
-        default_latency_timeout: values.defaultLatencyTimeout,
         auto_log_clean: values.autoLogClean as any,
       });
       setOpen(false);
@@ -390,38 +387,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
             onChange={(e) =>
               setValues((v) => ({ ...v, defaultLatencyTest: e.target.value }))
             }
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText
-            primary={t("settings.modals.misc.fields.defaultLatencyTimeout")}
-          />
-          <TextField
-            autoComplete="new-password"
-            size="small"
-            type="number"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            sx={{ width: 250 }}
-            value={values.defaultLatencyTimeout}
-            placeholder="10000"
-            onChange={(e) =>
-              setValues((v) => ({
-                ...v,
-                defaultLatencyTimeout: parseInt(e.target.value),
-              }))
-            }
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    {t("shared.units.milliseconds")}
-                  </InputAdornment>
-                ),
-              },
-            }}
           />
         </ListItem>
       </List>

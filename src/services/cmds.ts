@@ -114,6 +114,25 @@ export async function syncTrayProxySelection() {
   return invoke<void>("sync_tray_proxy_selection");
 }
 
+/** 从 runtime config 的 proxy-groups 提取每组 timeout/selected-timeout（与 Android 一致，不依赖 core 返回） */
+function getGroupTimeoutMapFromConfig(
+  config: IConfigData | null | undefined,
+): Map<string, { timeout?: number; selectedTimeout?: number }> {
+  const map = new Map<string, { timeout?: number; selectedTimeout?: number }>();
+  const groups = config?.["proxy-groups"];
+  if (!Array.isArray(groups)) return map;
+  for (const g of groups) {
+    const name = (g as { name?: string }).name;
+    if (!name) continue;
+    const raw = g as { timeout?: number; "selected-timeout"?: number };
+    map.set(name, {
+      timeout: raw.timeout,
+      selectedTimeout: raw["selected-timeout"],
+    });
+  }
+  return map;
+}
+
 export async function calcuProxies(): Promise<{
   global: IProxyGroupItem;
   direct: IProxyItem;
@@ -121,13 +140,24 @@ export async function calcuProxies(): Promise<{
   records: Record<string, IProxyItem>;
   proxies: IProxyItem[];
 }> {
-  const [proxyResponse, providerResponse] = await Promise.all([
+  const [proxyResponse, providerResponse, runtimeConfig] = await Promise.all([
     getProxies(),
     calcuProxyProviders(),
+    getRuntimeConfig(),
   ]);
 
   const proxyRecord = proxyResponse.proxies;
   const providerRecord = providerResponse;
+  const groupTimeoutMap = getGroupTimeoutMapFromConfig(runtimeConfig ?? undefined);
+  const mergeGroupConfig = (name: string, obj: Record<string, any>) => {
+    const cfg = groupTimeoutMap.get(name);
+    if (!cfg) return obj;
+    return {
+      ...obj,
+      timeout: cfg.timeout,
+      selectedTimeout: cfg.selectedTimeout,
+    };
+  };
 
   // provider name map
   const providerMap = Object.fromEntries(
@@ -158,10 +188,12 @@ export async function calcuProxies(): Promise<{
     IProxyGroupItem[]
   >((acc, each) => {
     if (each?.name !== "GLOBAL" && each?.all) {
-      acc.push({
-        ...each,
-        all: each.all!.map((item) => generateItem(item)),
-      });
+      acc.push(
+        mergeGroupConfig(each.name, {
+          ...each,
+          all: each.all!.map((item) => generateItem(item)),
+        }) as IProxyGroupItem,
+      );
     }
 
     return acc;
@@ -172,10 +204,13 @@ export async function calcuProxies(): Promise<{
       IProxyGroupItem[]
     >((acc, name) => {
       if (proxyRecord[name]?.all) {
-        acc.push({
-          ...proxyRecord[name],
-          all: proxyRecord[name].all!.map((item) => generateItem(item)),
-        });
+        const g = proxyRecord[name];
+        acc.push(
+          mergeGroupConfig(g.name, {
+            ...g,
+            all: g.all!.map((item) => generateItem(item)),
+          }) as IProxyGroupItem,
+        );
       }
       return acc;
     }, []);
@@ -194,16 +229,24 @@ export async function calcuProxies(): Promise<{
     ),
   );
 
-  const _global = {
+  const _global = mergeGroupConfig("GLOBAL", {
     ...global,
     all: global?.all?.map((item) => generateItem(item)) || [],
-  };
+  }) as IProxyGroupItem;
+
+  const records: Record<string, IProxyItem> = { ...proxyRecord };
+  for (const name of Object.keys(records)) {
+    const r = records[name];
+    if (r?.all) {
+      records[name] = mergeGroupConfig(name, r) as IProxyItem;
+    }
+  }
 
   return {
-    global: _global as IProxyGroupItem,
+    global: _global,
     direct: direct as IProxyItem,
     groups,
-    records: proxyRecord as Record<string, IProxyItem>,
+    records,
     proxies: (proxies as IProxyItem[]) ?? [],
   };
 }

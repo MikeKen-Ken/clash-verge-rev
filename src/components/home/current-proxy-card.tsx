@@ -43,7 +43,10 @@ import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import delayManager from "@/services/delay";
+import delayManager, {
+  getGroupDelayTimeout,
+  DEFAULT_GROUP_TIMEOUT_MS,
+} from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
 // 本地存储的键名
@@ -110,7 +113,6 @@ export const CurrentProxyCard = () => {
   const { verge } = useVerge();
   const { current: currentProfile } = useProfiles();
   const autoDelayEnabled = verge?.enable_auto_delay_detection ?? false;
-  const defaultLatencyTimeout = verge?.default_latency_timeout;
   const autoDelayIntervalMs = useMemo(() => {
     const rawInterval = verge?.auto_delay_detection_interval_minutes;
     const intervalMinutes =
@@ -241,14 +243,7 @@ export const CurrentProxyCard = () => {
   });
 
   const autoCheckInProgressRef = useRef(false);
-  const latestTimeoutRef = useRef<number>(
-    verge?.default_latency_timeout || 10000,
-  );
   const latestProxyRecordRef = useRef<any | null>(null);
-
-  useEffect(() => {
-    latestTimeoutRef.current = verge?.default_latency_timeout || 10000;
-  }, [verge?.default_latency_timeout]);
 
   useEffect(() => {
     if (!state.selection.proxy) {
@@ -484,6 +479,70 @@ export const CurrentProxyCard = () => {
     [isGlobalMode, isDirectMode, writeProfileScopedItem],
   );
 
+  // 对指定节点做延迟检测；不传 override 时使用当前选中节点（供定时/自动检测用）
+  const checkCurrentProxyDelay = useCallback(
+    async (override?: {
+      groupName: string;
+      proxyName: string;
+      proxyRecord: any;
+    }) => {
+      if (autoCheckInProgressRef.current) return;
+      if (isDirectMode) return;
+
+      const groupName = override?.groupName ?? state.selection.group;
+      const proxyName = override?.proxyName ?? state.selection.proxy;
+      const proxyRecord = override?.proxyRecord ?? latestProxyRecordRef.current;
+
+      if (!groupName || !proxyName) return;
+
+      if (!proxyRecord) {
+        debugLog(
+          `[CurrentProxyCard] 延迟检测跳过，组: ${groupName}, 节点: ${proxyName} 未找到`,
+        );
+        return;
+      }
+
+      autoCheckInProgressRef.current = true;
+
+      const groupRecord = state.proxyData.records?.[groupName];
+      const isSelected =
+        proxyName === state.selection.proxy &&
+        groupName === state.selection.group;
+      const timeout = getGroupDelayTimeout(groupRecord, isSelected);
+
+      try {
+        debugLog(
+          `[CurrentProxyCard] 检测节点延迟，组: ${groupName}, 节点: ${proxyName}`,
+        );
+        if (proxyRecord.provider) {
+          await healthcheckProxyProvider(proxyRecord.provider);
+        } else {
+          await delayManager.checkDelay(proxyName, groupName, timeout);
+        }
+      } catch (error) {
+        console.error(
+          `[CurrentProxyCard] 检测节点延迟失败，组: ${groupName}, 节点: ${proxyName}`,
+          error,
+        );
+      } finally {
+        autoCheckInProgressRef.current = false;
+        refreshProxy();
+        if (sortType === 1) {
+          setDelaySortRefresh((prev) => prev + 1);
+        }
+      }
+    },
+    [
+      isDirectMode,
+      refreshProxy,
+      state.proxyData.records,
+      state.selection.group,
+      state.selection.proxy,
+      sortType,
+      setDelaySortRefresh,
+    ],
+  );
+
   // 处理代理节点变更
   const handleProxyChange = useCallback(
     (event: SelectChangeEvent<string>) => {
@@ -508,14 +567,26 @@ export const CurrentProxyCard = () => {
 
       const skipConfigSave = isGlobalMode || isDirectMode;
       handleSelectChange(currentGroup, previousProxy, skipConfigSave)(event);
+
+      // 手动切换节点后立即检测新节点延迟，以显示最新速度
+      const newProxyRecord = state.proxyData.records?.[newProxy] ?? null;
+      if (newProxyRecord) {
+        checkCurrentProxyDelay({
+          groupName: currentGroup,
+          proxyName: newProxy,
+          proxyRecord: newProxyRecord,
+        });
+      }
     },
     [
       isDirectMode,
       isGlobalMode,
       state.selection,
+      state.proxyData.records,
       debouncedSetState,
       handleSelectChange,
       writeProfileScopedItem,
+      checkCurrentProxyDelay,
     ],
   );
 
@@ -540,57 +611,6 @@ export const CurrentProxyCard = () => {
     currentProxy && state.selection.group
       ? getSignalIcon(currentDelay)
       : { icon: <SignalNone />, text: "未初始化", color: "text.secondary" };
-
-  const checkCurrentProxyDelay = useCallback(async () => {
-    if (autoCheckInProgressRef.current) return;
-    if (isDirectMode) return;
-
-    const groupName = state.selection.group;
-    const proxyName = state.selection.proxy;
-
-    if (!groupName || !proxyName) return;
-
-    const proxyRecord = latestProxyRecordRef.current;
-    if (!proxyRecord) {
-      debugLog(
-        `[CurrentProxyCard] 自动延迟检测跳过，组: ${groupName}, 节点: ${proxyName} 未找到`,
-      );
-      return;
-    }
-
-    autoCheckInProgressRef.current = true;
-
-    const timeout = latestTimeoutRef.current || 10000;
-
-    try {
-      debugLog(
-        `[CurrentProxyCard] 自动检测当前节点延迟，组: ${groupName}, 节点: ${proxyName}`,
-      );
-      if (proxyRecord.provider) {
-        await healthcheckProxyProvider(proxyRecord.provider);
-      } else {
-        await delayManager.checkDelay(proxyName, groupName, timeout);
-      }
-    } catch (error) {
-      console.error(
-        `[CurrentProxyCard] 自动检测当前节点延迟失败，组: ${groupName}, 节点: ${proxyName}`,
-        error,
-      );
-    } finally {
-      autoCheckInProgressRef.current = false;
-      refreshProxy();
-      if (sortType === 1) {
-        setDelaySortRefresh((prev) => prev + 1);
-      }
-    }
-  }, [
-    isDirectMode,
-    refreshProxy,
-    state.selection.group,
-    state.selection.proxy,
-    sortType,
-    setDelaySortRefresh,
-  ]);
 
   useEffect(() => {
     if (isDirectMode) return;
@@ -663,7 +683,10 @@ export const CurrentProxyCard = () => {
 
     debugLog(`[CurrentProxyCard] 开始测试所有延迟，组: ${groupName}`);
 
-    const timeout = verge?.default_latency_timeout || 10000;
+    const group =
+      state.proxyData.records?.[groupName] ??
+      state.proxyData.groups.find((g: any) => g.name === groupName);
+    const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
 
     // 获取当前组的所有代理
     const proxyNames: string[] = [];
@@ -751,10 +774,9 @@ export const CurrentProxyCard = () => {
 
       if (sortType === 1) {
         const refreshTick = delaySortRefresh;
+        const groupRecord = state.proxyData.records?.[state.selection.group];
         const effectiveTimeout =
-          typeof defaultLatencyTimeout === "number" && defaultLatencyTimeout > 0
-            ? defaultLatencyTimeout
-            : 10000;
+          getGroupDelayTimeout(groupRecord, false) || DEFAULT_GROUP_TIMEOUT_MS;
 
         const categorizeDelay = (delay: number): [number, number] => {
           if (!Number.isFinite(delay)) return [5, Number.MAX_SAFE_INTEGER];
@@ -827,7 +849,6 @@ export const CurrentProxyCard = () => {
     state.selection.group,
     sortType,
     delaySortRefresh,
-    defaultLatencyTimeout,
   ]);
 
   // 获取排序图标

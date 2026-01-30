@@ -194,155 +194,172 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
           />
         </ListItem>
 
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.stack")} />
-          <StackModeSwitch
-            value={values.stack}
-            onChange={(value) => {
-              setValues((v) => ({
-                ...v,
-                stack: value,
-              }));
-            }}
-          />
-        </ListItem>
+        {(verge?.enable_tun_override ?? true) && (
+          <>
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText primary={t("settings.modals.tun.fields.stack")} />
+              <StackModeSwitch
+                value={values.stack}
+                onChange={(value) => {
+                  setValues((v) => ({
+                    ...v,
+                    stack: value,
+                  }));
+                }}
+              />
+            </ListItem>
 
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.device")} />
-          <TextField
-            autoComplete="new-password"
-            size="small"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            sx={{ width: 250 }}
-            value={values.device}
-            placeholder="Mihomo"
-            onChange={(e) =>
-              setValues((v) => ({ ...v, device: e.target.value }))
-            }
-          />
-        </ListItem>
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText primary={t("settings.modals.tun.fields.device")} />
+              <TextField
+                autoComplete="new-password"
+                size="small"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                sx={{ width: 250 }}
+                value={values.device}
+                placeholder="Mihomo"
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, device: e.target.value }))
+                }
+              />
+            </ListItem>
 
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.autoRoute")} />
-          <Switch
-            edge="end"
-            checked={values.autoRoute}
-            onChange={(_, c) =>
-              setValues((v) => ({
-                ...v,
-                autoRoute: c,
-                autoRedirect: c ? v.autoRedirect : false,
-              }))
-            }
-          />
-        </ListItem>
-
-        {OS === "linux" && (
-          <ListItem sx={{ padding: "5px 2px" }}>
-            <ListItemText
-              primary={t("settings.modals.tun.fields.autoRedirect")}
-              sx={{ maxWidth: "fit-content" }}
-            />
-            <TooltipIcon
-              title={t("settings.modals.tun.tooltips.autoRedirect")}
-              sx={{ opacity: values.autoRoute ? 0.7 : 0.3 }}
-            />
-            <Switch
-              edge="end"
-              checked={values.autoRedirect}
-              onChange={(_, c) =>
-                setValues((v) => ({
-                  ...v,
-                  autoRedirect: v.autoRoute ? c : v.autoRedirect,
-                }))
-              }
-              disabled={!values.autoRoute}
-              sx={{ marginLeft: "auto" }}
-            />
-          </ListItem>
-        )}
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.strictRoute")} />
-          <Switch
-            edge="end"
-            checked={values.strictRoute}
-            onChange={(_, c) => setValues((v) => ({ ...v, strictRoute: c }))}
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText
-            primary={t("settings.modals.tun.fields.autoDetectInterface")}
-          />
-          <Switch
-            edge="end"
-            checked={values.autoDetectInterface}
-            onChange={(_, c) =>
-              setValues((v) => ({ ...v, autoDetectInterface: c }))
-            }
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.dnsHijack")} />
-          <TextField
-            autoComplete="new-password"
-            size="small"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            sx={{ width: 250 }}
-            value={values.dnsHijack.join(",")}
-            placeholder={t("settings.modals.tun.tooltips.dnsHijack")}
-            onChange={(e) =>
-              setValues((v) => ({ ...v, dnsHijack: e.target.value.split(",") }))
-            }
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("settings.modals.tun.fields.mtu")} />
-          <TextField
-            autoComplete="new-password"
-            size="small"
-            type="number"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            sx={{ width: 250 }}
-            value={values.mtu}
-            placeholder="1500"
-            onChange={(e) =>
-              setValues((v) => ({
-                ...v,
-                mtu: parseInt(e.target.value),
-              }))
-            }
-          />
-        </ListItem>
-
-        <BaseSplitChipEditor
-          value={values.routeExcludeAddress}
-          placeholder="192.168.0.0/16"
-          ariaLabel={t("settings.modals.tun.fields.routeExcludeAddress")}
-          disabled={!values.autoRoute}
-          onChange={(nextValue) =>
-            setValues((v) => ({ ...v, routeExcludeAddress: nextValue }))
-          }
-          renderHeader={(modeToggle) => (
             <ListItem sx={{ padding: "5px 2px" }}>
               <ListItemText
-                primary={t("settings.modals.tun.fields.routeExcludeAddress")}
+                primary={t("settings.modals.tun.fields.autoRoute")}
               />
-              {modeToggle ? (
-                <Box sx={{ marginLeft: "auto" }}>{modeToggle}</Box>
-              ) : null}
+              <Switch
+                edge="end"
+                checked={values.autoRoute}
+                onChange={(_, c) =>
+                  setValues((v) => ({
+                    ...v,
+                    autoRoute: c,
+                    autoRedirect: c ? v.autoRedirect : false,
+                  }))
+                }
+              />
             </ListItem>
-          )}
-        />
+
+            {OS === "linux" && (
+              <ListItem sx={{ padding: "5px 2px" }}>
+                <ListItemText
+                  primary={t("settings.modals.tun.fields.autoRedirect")}
+                  sx={{ maxWidth: "fit-content" }}
+                />
+                <TooltipIcon
+                  title={t("settings.modals.tun.tooltips.autoRedirect")}
+                  sx={{ opacity: values.autoRoute ? 0.7 : 0.3 }}
+                />
+                <Switch
+                  edge="end"
+                  checked={values.autoRedirect}
+                  onChange={(_, c) =>
+                    setValues((v) => ({
+                      ...v,
+                      autoRedirect: v.autoRoute ? c : v.autoRedirect,
+                    }))
+                  }
+                  disabled={!values.autoRoute}
+                  sx={{ marginLeft: "auto" }}
+                />
+              </ListItem>
+            )}
+
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText
+                primary={t("settings.modals.tun.fields.strictRoute")}
+              />
+              <Switch
+                edge="end"
+                checked={values.strictRoute}
+                onChange={(_, c) =>
+                  setValues((v) => ({ ...v, strictRoute: c }))
+                }
+              />
+            </ListItem>
+
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText
+                primary={t("settings.modals.tun.fields.autoDetectInterface")}
+              />
+              <Switch
+                edge="end"
+                checked={values.autoDetectInterface}
+                onChange={(_, c) =>
+                  setValues((v) => ({ ...v, autoDetectInterface: c }))
+                }
+              />
+            </ListItem>
+
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText
+                primary={t("settings.modals.tun.fields.dnsHijack")}
+              />
+              <TextField
+                autoComplete="new-password"
+                size="small"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                sx={{ width: 250 }}
+                value={values.dnsHijack.join(",")}
+                placeholder={t("settings.modals.tun.tooltips.dnsHijack")}
+                onChange={(e) =>
+                  setValues((v) => ({
+                    ...v,
+                    dnsHijack: e.target.value.split(","),
+                  }))
+                }
+              />
+            </ListItem>
+
+            <ListItem sx={{ padding: "5px 2px" }}>
+              <ListItemText primary={t("settings.modals.tun.fields.mtu")} />
+              <TextField
+                autoComplete="new-password"
+                size="small"
+                type="number"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                sx={{ width: 250 }}
+                value={values.mtu}
+                placeholder="1500"
+                onChange={(e) =>
+                  setValues((v) => ({
+                    ...v,
+                    mtu: parseInt(e.target.value),
+                  }))
+                }
+              />
+            </ListItem>
+
+            <BaseSplitChipEditor
+              value={values.routeExcludeAddress}
+              placeholder="192.168.0.0/16"
+              ariaLabel={t("settings.modals.tun.fields.routeExcludeAddress")}
+              disabled={!values.autoRoute}
+              onChange={(nextValue) =>
+                setValues((v) => ({ ...v, routeExcludeAddress: nextValue }))
+              }
+              renderHeader={(modeToggle) => (
+                <ListItem sx={{ padding: "5px 2px" }}>
+                  <ListItemText
+                    primary={t(
+                      "settings.modals.tun.fields.routeExcludeAddress",
+                    )}
+                  />
+                  {modeToggle ? (
+                    <Box sx={{ marginLeft: "auto" }}>{modeToggle}</Box>
+                  ) : null}
+                </ListItem>
+              )}
+            />
+          </>
+        )}
       </List>
     </BaseDialog>
   );
