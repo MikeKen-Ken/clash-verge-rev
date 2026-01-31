@@ -39,6 +39,7 @@ import { useNavigate } from "react-router";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { EnhancedCard } from "@/components/home/enhanced-card";
+import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
@@ -682,6 +683,8 @@ export const CurrentProxyCard = () => {
     if (!groupName || isDirectMode) return;
 
     debugLog(`[CurrentProxyCard] 开始测试所有延迟，组: ${groupName}`);
+    // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
+    markManualDelayCheckStarted();
 
     const group =
       state.proxyData.records?.[groupName] ??

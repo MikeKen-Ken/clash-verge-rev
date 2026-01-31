@@ -8,6 +8,7 @@ import {
   getRules,
 } from "tauri-plugin-mihomo-api";
 
+import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
 import { useVerge } from "@/hooks/use-verge";
 import {
   calcuProxies,
@@ -72,6 +73,9 @@ export const AppDataProvider = ({
       (g) => g.type === "url-test" || g.type === "fallback",
     );
     if (urlTestOrFallback.length === 0) return;
+
+    // 标记测速，在此后 10 秒内不发送 fallback 切换通知
+    markManualDelayCheckStarted();
 
     const run = async () => {
       await Promise.allSettled(
@@ -165,6 +169,8 @@ export const AppDataProvider = ({
       if (now - lastUpdateTime <= refreshThrottle) return;
 
       lastUpdateTime = now;
+      // 配置重载后需要重新触发 url-test/fallback 组的测速，以更新当前节点
+      hasTriggeredStartupFallback.current = false;
       scheduleTimeout(async () => {
         await Promise.all([
           refreshProxy().catch((error) =>

@@ -16,6 +16,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { BaseEmpty } from "@/components/base";
+import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
@@ -340,6 +341,8 @@ export const ProxyGroups = (props: Props) => {
   // 测全部延迟（使用配置里的 timeout）
   const handleCheckAll = useLockFn(async (groupName: string) => {
     debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
+    // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
+    markManualDelayCheckStarted();
 
     const group = availableGroups.find(
       (g: IProxyGroupItem) => g.name === groupName,
