@@ -107,7 +107,7 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
-  // 仅 Selector 组且该选择来自 profile 的 current.selected 时视为「手动选择」（参考安卓端 nowIsManual）
+  // 仅 Selector 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」（与安卓端 nowIsManual 对齐：仅当 core 与 profile 同步时显示）
   const getManualSelectionForGroup = useCallback(
     (groupName: string): string | undefined => {
       const group = groups?.find(
@@ -115,9 +115,12 @@ export const ProxyGroups = (props: Props) => {
       );
       if (group?.type !== "Selector") return undefined;
       const entry = (current?.selected ?? []).find((s) => s.name === groupName);
-      return entry?.now;
+      const profileNow = entry?.now;
+      if (profileNow == null) return undefined;
+      const coreNow = selectedByGroup.get(groupName);
+      return coreNow === profileNow ? profileNow : undefined;
     },
-    [groups, current?.selected],
+    [groups, current?.selected, selectedByGroup],
   );
 
   const availableGroups = useMemo(() => {

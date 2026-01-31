@@ -84,6 +84,7 @@ impl CoreManager {
         let path = dirs::path_to_str(&path)?;
         match self.reload_config(path).await {
             Ok(_) => {
+                Self::apply_profile_selected_to_core().await;
                 Config::runtime().await.apply();
                 logging!(info, Type::Core, "Configuration applied");
                 Ok(())
@@ -91,6 +92,38 @@ impl CoreManager {
             Err(err) => {
                 Config::runtime().await.discard();
                 Err(anyhow!("Failed to apply config: {}", err))
+            }
+        }
+    }
+
+    /// Apply current profile's selected proxy groups to core after config load (align with Android proxy-selections).
+    async fn apply_profile_selected_to_core() {
+        let draft = Config::profiles().await;
+        let arc = draft.latest_arc();
+        let selected = arc
+            .get_current()
+            .and_then(|uid| arc.get_item(uid).ok())
+            .and_then(|item| item.selected.clone());
+        drop(arc);
+        drop(draft);
+        let Some(selected) = selected else {
+            return;
+        };
+        let handle = handle::Handle::mihomo().await;
+        for s in &selected {
+            let (name, now) = match (&s.name, &s.now) {
+                (Some(n), Some(w)) if !n.is_empty() && !w.is_empty() => (n.as_str(), w.as_str()),
+                _ => continue,
+            };
+            if let Err(e) = handle.select_node_for_group(name, now).await {
+                logging!(
+                    warn,
+                    Type::Core,
+                    "Apply profile selected {} -> {} failed: {}",
+                    name,
+                    now,
+                    e
+                );
             }
         }
     }
