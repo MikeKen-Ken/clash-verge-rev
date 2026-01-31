@@ -86,16 +86,19 @@ export const ProxyGroups = (props: Props) => {
   const groups = proxiesData?.groups;
 
   // 使用核心返回的 group.now 标记每个组当前使用的节点
-  const selectedByGroup = useMemo(() => {
+  const selectedByGroup = useMemo((): Map<string, string> => {
     const g = groups;
     if (!g?.length) return new Map<string, string>();
-    return new Map(
+    return new Map<string, string>(
       g
         .filter(
           (x: { name?: string; now?: string }) =>
             x.name != null && x.now != null,
         )
-        .map((x: { name: string; now: string }) => [x.name, x.now]),
+        .map(
+          (x: { name: string; now: string }) =>
+            [x.name, x.now] as [string, string],
+        ),
     );
   }, [groups]);
 
