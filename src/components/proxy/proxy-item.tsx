@@ -1,4 +1,4 @@
-import { CheckCircleOutlineRounded } from "@mui/icons-material";
+import { CheckCircleOutlineRounded, LabelOutlined } from "@mui/icons-material";
 import {
   alpha,
   Box,
@@ -166,12 +166,19 @@ export const ProxyItem = (props: Props) => {
             <>
               <Box
                 sx={{
-                  display: "inline-block",
+                  display: "inline-flex",
+                  alignItems: "center",
                   marginRight: "8px",
                   fontSize: "14px",
                   color: "text.primary",
                 }}
               >
+                {selected && (
+                  <LabelOutlined
+                    sx={{ fontSize: 14, mr: 0.5, color: "primary.main" }}
+                    titleAccess="manual"
+                  />
+                )}
                 {proxy.name}
                 {showType && proxy.now && ` - ${proxy.now}`}
               </Box>

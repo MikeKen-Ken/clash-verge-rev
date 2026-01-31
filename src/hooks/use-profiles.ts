@@ -69,130 +69,25 @@ export const useProfiles = () => {
     }
   };
 
-  // 根据selected的节点选择
+  // 重新打开代理时清空手动选择，界面不显示「当前节点」；仅当用户手动选择后才显示
   const activateSelected = async () => {
     try {
-      debugLog("[ActivateSelected] 开始处理代理选择");
+      debugLog("[ActivateSelected] 清空该 profile 的手动选择（重新打开代理）");
 
-      const [proxiesData, profileData] = await Promise.all([
-        calcuProxies(),
-        getProfiles(),
-      ]);
-
-      if (!profileData || !proxiesData) {
-        debugLog("[ActivateSelected] 代理或配置数据不可用，跳过处理");
+      const profileData = await getProfiles();
+      if (!profileData?.current) {
+        debugLog("[ActivateSelected] 无当前 profile，跳过");
         return;
       }
 
-      const current = profileData.items?.find(
-        (e) => e && e.uid === profileData.current,
-      );
-
-      if (!current) {
-        debugLog("[ActivateSelected] 未找到当前profile配置");
-        return;
-      }
-
-      // 检查是否有saved的代理选择
-      const { selected = [] } = current;
-      if (selected.length === 0) {
-        debugLog("[ActivateSelected] 当前profile无保存的代理选择，跳过");
-        return;
-      }
-
-      debugLog(
-        `[ActivateSelected] 当前profile有 ${selected.length} 个代理选择配置`,
-      );
-
-      const selectedMap = Object.fromEntries(
-        selected.map((each) => [each.name!, each.now!]),
-      );
-
-      let hasChange = false;
-      const newSelected: typeof selected = [];
-      const { global, groups } = proxiesData;
-      const selectableTypes = new Set([
-        "Selector",
-        "URLTest",
-        "Fallback",
-        "LoadBalance",
-      ]);
-
-      // 处理所有代理组
-      [global, ...groups].forEach((group) => {
-        if (!group) {
-          return;
-        }
-
-        const { type, name, now } = group;
-        const savedProxy = selectedMap[name];
-        const availableProxies = Array.isArray(group.all) ? group.all : [];
-
-        if (!selectableTypes.has(type)) {
-          if (savedProxy != null || now != null) {
-            const preferredProxy = now ? now : savedProxy;
-            newSelected.push({ name, now: preferredProxy });
-          }
-          return;
-        }
-
-        if (savedProxy == null) {
-          if (now != null) {
-            newSelected.push({ name, now });
-          }
-          return;
-        }
-
-        const existsInGroup = availableProxies.some((proxy) => {
-          if (typeof proxy === "string") {
-            return proxy === savedProxy;
-          }
-
-          return proxy?.name === savedProxy;
-        });
-
-        if (!existsInGroup) {
-          console.warn(
-            `[ActivateSelected] 保存的代理 ${savedProxy} 不存在于代理组 ${name}`,
-          );
-          hasChange = true;
-          newSelected.push({ name, now: now ?? savedProxy });
-          return;
-        }
-
-        if (savedProxy !== now) {
-          debugLog(
-            `[ActivateSelected] 需要切换代理组 ${name}: ${now} -> ${savedProxy}`,
-          );
-          hasChange = true;
-          selectNodeForGroup(name, savedProxy);
-        }
-
-        newSelected.push({ name, now: savedProxy });
-      });
-
-      if (!hasChange) {
-        debugLog("[ActivateSelected] 所有代理选择已经是目标状态，无需更新");
-        return;
-      }
-
-      debugLog(`[ActivateSelected] 完成代理切换，保存新的选择配置`);
-
-      try {
-        await patchProfile(profileData.current!, { selected: newSelected });
-        debugLog("[ActivateSelected] 代理选择配置保存成功");
-
-        setTimeout(() => {
-          mutate("getProxies", calcuProxies());
-        }, 100);
-      } catch (error: any) {
-        console.error(
-          "[ActivateSelected] 保存代理选择配置失败:",
-          error.message,
-        );
-      }
+      await patchProfile(profileData.current, { selected: [] });
+      debugLog("[ActivateSelected] 已清空 selected");
+      mutateProfiles();
+      setTimeout(() => {
+        mutate("getProxies", calcuProxies());
+      }, 100);
     } catch (error: any) {
-      console.error("[ActivateSelected] 处理代理选择失败:", error.message);
+      console.error("[ActivateSelected] 清空选择失败:", error.message);
     }
   };
 

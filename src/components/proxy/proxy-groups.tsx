@@ -16,6 +16,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { BaseEmpty } from "@/components/base";
+import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
@@ -81,7 +82,23 @@ export const ProxyGroups = (props: Props) => {
 
   const { verge } = useVerge();
   const { proxies: proxiesData } = useAppData();
+  const { current, patchCurrent, mutateProfiles } = useProfiles();
   const groups = proxiesData?.groups;
+
+  // 仅当节点在 profile.selected 中保存时才显示为「当前使用」
+  const selectedByGroup = useMemo(() => {
+    const s = current?.selected ?? [];
+    return new Map(
+      s
+        .filter((x) => x.name != null && x.now != null)
+        .map((x) => [x.name!, x.now!]),
+    );
+  }, [current?.selected]);
+
+  const getSelectedForGroup = useCallback(
+    (groupName: string) => selectedByGroup.get(groupName),
+    [selectedByGroup],
+  );
   const availableGroups = useMemo(() => {
     if (!groups) return [];
     // 在链式代理模式下，仅显示支持选择节点的 Selector 代理组
@@ -346,6 +363,17 @@ export const ProxyGroups = (props: Props) => {
     } catch (error) {
       console.error(`[ProxyGroups] 延迟测试出错，组: ${groupName}`, error);
     } finally {
+      // 测速后清空该组的手动选择，界面不再显示「当前节点」
+      if (current) {
+        const next = (current.selected ?? []).filter(
+          (s) => s.name !== groupName,
+        );
+        if (next.length !== (current.selected ?? []).length) {
+          patchCurrent({ selected: next })
+            .then(() => mutateProfiles())
+            .catch(() => {});
+        }
+      }
       const headState = getGroupHeadState(groupName);
       if (headState?.sortType === 1) {
         onHeadState(groupName, { sortType: headState.sortType });
@@ -633,6 +661,7 @@ export const ProxyGroups = (props: Props) => {
             onCheckAll={handleCheckAll}
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}
+            getSelectedForGroup={getSelectedForGroup}
           />
         )}
       />

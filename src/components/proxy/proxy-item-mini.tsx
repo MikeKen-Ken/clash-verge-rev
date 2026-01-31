@@ -1,4 +1,4 @@
-import { CheckCircleOutlineRounded } from "@mui/icons-material";
+import { CheckCircleOutlineRounded, LabelOutlined } from "@mui/icons-material";
 import { alpha, Box, ListItemButton, styled, Typography } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useReducer } from "react";
@@ -151,13 +151,25 @@ export const ProxyItemMini = (props: Props) => {
           component="div"
           color="text.primary"
           sx={{
-            display: "block",
+            display: "flex",
+            alignItems: "center",
             textOverflow: "ellipsis",
             wordBreak: "break-all",
             overflow: "hidden",
             whiteSpace: "nowrap",
           }}
         >
+          {selected && (
+            <LabelOutlined
+              sx={{
+                fontSize: 14,
+                mr: 0.5,
+                flexShrink: 0,
+                color: "primary.main",
+              }}
+              titleAccess="manual"
+            />
+          )}
           {proxy.name}
         </Typography>
 

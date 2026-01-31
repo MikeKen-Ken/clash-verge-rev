@@ -76,7 +76,7 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
         });
     }
 
-    // 更新TUN配置
+    // 仅设置 tun.enable（开关），保留订阅/配置中的 stack、device 等
     revise!(tun_val, "enable", enable);
     revise!(config, "tun", tun_val);
 

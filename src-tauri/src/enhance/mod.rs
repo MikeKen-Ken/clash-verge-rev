@@ -663,9 +663,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
 
     config = cleanup_proxy_groups(config);
 
-    if enable_tun_override {
-        config = use_tun(config, enable_tun);
-    }
+    // 只根据「TUN 模式」开关设置 tun.enable，不覆写订阅/配置里的 TUN 配置（stack、device 等）
+    config = use_tun(config, enable_tun);
     config = use_sort(config);
 
     // dns settings

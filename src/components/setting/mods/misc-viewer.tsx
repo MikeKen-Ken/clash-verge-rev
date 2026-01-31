@@ -30,7 +30,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
     proxyLayoutColumn: 6,
     enableAutoDelayDetection: false,
     autoDelayDetectionIntervalMinutes: 5,
-    defaultLatencyTest: "",
     autoLogClean: 2,
   });
 
@@ -48,7 +47,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
         enableAutoDelayDetection: verge?.enable_auto_delay_detection ?? false,
         autoDelayDetectionIntervalMinutes:
           verge?.auto_delay_detection_interval_minutes ?? 5,
-        defaultLatencyTest: verge?.default_latency_test || "",
         autoLogClean: verge?.auto_log_clean || 0,
       });
     },
@@ -68,7 +66,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
         enable_auto_delay_detection: values.enableAutoDelayDetection,
         auto_delay_detection_interval_minutes:
           values.autoDelayDetectionIntervalMinutes,
-        default_latency_test: values.defaultLatencyTest,
         auto_log_clean: values.autoLogClean as any,
       });
       setOpen(false);
@@ -363,30 +360,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
                 ),
               },
             }}
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText
-            primary={t("settings.modals.misc.fields.defaultLatencyTest")}
-            sx={{ maxWidth: "fit-content" }}
-          />
-          <TooltipIcon
-            title={t("settings.modals.misc.tooltips.defaultLatencyTest")}
-            sx={{ opacity: "0.7" }}
-          />
-          <TextField
-            autoComplete="new-password"
-            size="small"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            sx={{ width: 250, marginLeft: "auto" }}
-            value={values.defaultLatencyTest}
-            placeholder="https://cp.cloudflare.com/generate_204"
-            onChange={(e) =>
-              setValues((v) => ({ ...v, defaultLatencyTest: e.target.value }))
-            }
           />
         </ListItem>
       </List>

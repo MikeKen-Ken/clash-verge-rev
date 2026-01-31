@@ -37,6 +37,8 @@ interface RenderProps {
     group: IRenderItem["group"],
     proxy: IRenderItem["proxy"] & { name: string },
   ) => void;
+  /** 仅当返回值等于节点名时显示为「当前使用」（手动选择） */
+  getSelectedForGroup?: (groupName: string) => string | undefined;
 }
 
 export const ProxyRender = (props: RenderProps) => {
@@ -48,6 +50,7 @@ export const ProxyRender = (props: RenderProps) => {
     onCheckAll,
     onHeadState,
     onChangeProxy,
+    getSelectedForGroup,
     isChainMode: _ = false,
   } = props;
   const { type, group, headState, proxy, proxyCol } = item;
@@ -67,17 +70,28 @@ export const ProxyRender = (props: RenderProps) => {
       return null;
     }
 
+    const selectedName = getSelectedForGroup?.(group.name);
     return proxyCol.map((proxyItem) => (
       <ProxyItemMini
         key={`${item.key}-${proxyItem?.name ?? "unknown"}`}
         group={group}
         proxy={proxyItem!}
-        selected={group.now === proxyItem?.name}
+        selected={
+          selectedName != null ? selectedName === proxyItem?.name : false
+        }
         showType={headState?.showType}
         onClick={() => onChangeProxy(group, proxyItem!)}
       />
     ));
-  }, [type, proxyCol, item.key, group, headState, onChangeProxy]);
+  }, [
+    type,
+    proxyCol,
+    item.key,
+    group,
+    headState,
+    onChangeProxy,
+    getSelectedForGroup,
+  ]);
 
   if (type === 0) {
     return (
@@ -177,11 +191,12 @@ export const ProxyRender = (props: RenderProps) => {
   }
 
   if (type === 2) {
+    const selectedName = getSelectedForGroup?.(group.name);
     return (
       <ProxyItem
         group={group}
         proxy={proxy!}
-        selected={group.now === proxy?.name}
+        selected={selectedName != null ? selectedName === proxy?.name : false}
         showType={headState?.showType}
         sx={{ py: 0, pl: 2 }}
         onClick={() => onChangeProxy(group, proxy!)}

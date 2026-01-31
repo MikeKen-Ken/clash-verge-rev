@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppData } from "@/providers/app-data-context";
+import { useProfiles } from "@/hooks/use-profiles";
 import { debugLog } from "@/utils/debug";
 
 // 关闭连接操作的时间戳（此后一段时间内不发送 fallback 切换通知）
@@ -64,7 +65,8 @@ export const isInNotifyCooldown = () => {
  */
 export const useFallbackSwitchNotify = () => {
   const { proxies: proxiesData } = useAppData();
-  
+  const { current, patchCurrent, mutateProfiles } = useProfiles();
+
   // 保存上一次的代理组状态
   const previousGroupsRef = useRef<Map<string, string>>(new Map());
   // 是否已初始化（跳过首次加载）
@@ -74,7 +76,7 @@ export const useFallbackSwitchNotify = () => {
     if (!proxiesData?.groups) return;
 
     const currentGroups = new Map<string, string>();
-    
+
     // 收集当前所有 Fallback 和 URLTest 类型组的 now 值
     for (const group of proxiesData.groups) {
       if (["URLTest", "Fallback"].includes(group.type) && group.now) {
@@ -92,21 +94,31 @@ export const useFallbackSwitchNotify = () => {
 
     // 检测变化
     const previousGroups = previousGroupsRef.current;
-    
+
     for (const [groupName, currentNow] of currentGroups) {
       const previousNow = previousGroups.get(groupName);
-      
+
       // 检测到节点切换
       if (previousNow && previousNow !== currentNow) {
         debugLog(
-          `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`
+          `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`,
         );
-        
+
+        // fallback 触发：清空该组的手动选择，界面不再显示「当前节点」
+        if (current) {
+          const next = (current.selected ?? []).filter((s) => s.name !== groupName);
+          if (next.length !== (current.selected ?? []).length) {
+            patchCurrent({ selected: next })
+              .then(() => mutateProfiles())
+              .catch(() => {});
+          }
+        }
+
         // 检查是否在冷却期内
         const cooldownStatus = isInNotifyCooldown();
         if (cooldownStatus.inCooldown) {
           debugLog(
-            `[FallbackNotify] Skipping notification (${cooldownStatus.reason}, ${cooldownStatus.elapsed}ms elapsed)`
+            `[FallbackNotify] Skipping notification (${cooldownStatus.reason}, ${cooldownStatus.elapsed}ms elapsed)`,
           );
         } else {
           // 发送 fallback 切换通知
@@ -127,5 +139,5 @@ export const useFallbackSwitchNotify = () => {
 
     // 更新保存的状态
     previousGroupsRef.current = currentGroups;
-  }, [proxiesData?.groups]);
+  }, [proxiesData?.groups, current, patchCurrent, mutateProfiles]);
 };

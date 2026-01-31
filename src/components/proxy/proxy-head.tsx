@@ -16,7 +16,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseSearchBox } from "@/components/base";
-import { useVerge } from "@/hooks/use-verge";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
@@ -64,14 +63,10 @@ export const ProxyHead = ({
     return () => clearTimeout(timer);
   }, []);
 
-  const { verge } = useVerge();
-  const defaultLatencyUrl =
-    verge?.default_latency_test?.trim() ||
-    "https://cp.cloudflare.com/generate_204";
-
   useEffect(() => {
-    delayManager.setUrl(groupName, testUrl?.trim() || url || defaultLatencyUrl);
-  }, [groupName, testUrl, defaultLatencyUrl, url]);
+    // 仅使用代理组配置的 testUrl 或用户输入的 testUrl，不覆写配置文件
+    delayManager.setUrl(groupName, testUrl?.trim() || url || "");
+  }, [groupName, testUrl, url]);
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ...sx }}>
