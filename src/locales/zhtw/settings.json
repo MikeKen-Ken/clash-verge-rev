@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "系統代理",
-        "tunMode": "TUN 模式"
+        "tunMode": "TUN 模式",
+        "tunModeRequiresAdmin": "（需管理員權限或安裝服務）"
       }
     },
     "externalController": {

@@ -1174,6 +1174,7 @@ export interface TranslationResources {
           fields: {
             systemProxy: string;
             tunMode: string;
+            tunModeRequiresAdmin: string;
           };
           tooltips: {
             systemProxy: string;

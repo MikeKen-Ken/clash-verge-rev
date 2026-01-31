@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "システムプロキシ",
-        "tunMode": "仮想ネットワークカードモード"
+        "tunMode": "仮想ネットワークカードモード",
+        "tunModeRequiresAdmin": "（管理者権限またはサービスのインストールが必要）"
       }
     },
     "externalController": {

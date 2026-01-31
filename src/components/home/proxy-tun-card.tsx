@@ -205,7 +205,13 @@ export const ProxyTunCard: FC = () => {
           isActive={activeTab === "tun"}
           onClick={() => handleTabChange("tun")}
           icon={TroubleshootRounded}
-          label={t("settings.sections.system.toggles.tunMode")}
+          label={
+            t("settings.sections.system.toggles.tunMode") +
+            (!isTunModeAvailable
+              ? " " +
+                t("settings.sections.proxyControl.fields.tunModeRequiresAdmin")
+              : "")
+          }
           hasIndicator={enable_tun_mode && isTunModeAvailable}
         />
       </Stack>
@@ -239,7 +245,13 @@ export const ProxyTunCard: FC = () => {
           label={
             activeTab === "system"
               ? t("settings.sections.system.toggles.systemProxy")
-              : t("settings.sections.system.toggles.tunMode")
+              : t("settings.sections.system.toggles.tunMode") +
+                (!isTunModeAvailable
+                  ? " " +
+                    t(
+                      "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                    )
+                  : "")
           }
           noRightPadding={true}
         />

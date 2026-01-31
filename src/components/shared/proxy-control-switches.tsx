@@ -185,7 +185,13 @@ const ProxyControlSwitches = ({
 
       {isTunMode && (
         <SwitchRow
-          label={t("settings.sections.proxyControl.fields.tunMode")}
+          label={
+            t("settings.sections.proxyControl.fields.tunMode") +
+            (!isTunModeAvailable
+              ? " " +
+                t("settings.sections.proxyControl.fields.tunModeRequiresAdmin")
+              : "")
+          }
           active={enable_tun_mode || false}
           infoTitle={t("settings.sections.proxyControl.tooltips.tunMode")}
           onInfoClick={() => tunRef.current?.open()}

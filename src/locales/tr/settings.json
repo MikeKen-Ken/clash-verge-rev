@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Sistem Vekil'i",
-        "tunMode": "Tun Modu"
+        "tunMode": "Tun Modu",
+        "tunModeRequiresAdmin": " (yönetici veya hizmet gerekli)"
       }
     },
     "externalController": {

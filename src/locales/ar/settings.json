@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "وكيل النظام",
-        "tunMode": "وضع TUN"
+        "tunMode": "وضع TUN",
+        "tunModeRequiresAdmin": " (يتطلب صلاحيات المسؤول أو الخدمة)"
       }
     },
     "externalController": {

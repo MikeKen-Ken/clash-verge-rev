@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "시스템 프록시",
-        "tunMode": "TUN 모드"
+        "tunMode": "TUN 모드",
+        "tunModeRequiresAdmin": "（관리자 권한 또는 서비스 설치 필요）"
       }
     },
     "externalController": {

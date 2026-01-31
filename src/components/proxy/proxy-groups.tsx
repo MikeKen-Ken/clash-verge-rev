@@ -85,15 +85,19 @@ export const ProxyGroups = (props: Props) => {
   const { current, patchCurrent, mutateProfiles } = useProfiles();
   const groups = proxiesData?.groups;
 
-  // 仅当节点在 profile.selected 中保存时才显示为「当前使用」
+  // 使用核心返回的 group.now 标记每个组当前使用的节点
   const selectedByGroup = useMemo(() => {
-    const s = current?.selected ?? [];
+    const g = groups;
+    if (!g?.length) return new Map<string, string>();
     return new Map(
-      s
-        .filter((x) => x.name != null && x.now != null)
-        .map((x) => [x.name!, x.now!]),
+      g
+        .filter(
+          (x: { name?: string; now?: string }) =>
+            x.name != null && x.now != null,
+        )
+        .map((x: { name: string; now: string }) => [x.name, x.now]),
     );
-  }, [current?.selected]);
+  }, [groups]);
 
   const getSelectedForGroup = useCallback(
     (groupName: string) => selectedByGroup.get(groupName),

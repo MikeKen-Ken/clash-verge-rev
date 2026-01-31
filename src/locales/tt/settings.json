@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Системалы прокси",
-        "tunMode": "Tun режимы (виртуаль челтәр адаптеры)"
+        "tunMode": "Tun режимы (виртуаль челтәр адаптеры)",
+        "tunModeRequiresAdmin": " (админ яки хезмәт кирәк)"
       }
     },
     "externalController": {

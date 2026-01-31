@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "System Proxy",
-        "tunMode": "Tun Mode"
+        "tunMode": "Tun Mode",
+        "tunModeRequiresAdmin": " (requires admin or service)"
       }
     },
     "externalController": {

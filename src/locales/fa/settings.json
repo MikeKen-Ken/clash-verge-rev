@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "پراکسی سیستم",
-        "tunMode": "Tun (کارت شبکه مجازی)"
+        "tunMode": "Tun (کارت شبکه مجازی)",
+        "tunModeRequiresAdmin": " (نیاز به دسترسی مدیر یا سرویس)"
       }
     },
     "externalController": {

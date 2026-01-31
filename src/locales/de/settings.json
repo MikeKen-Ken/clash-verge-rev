@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Systemproxy",
-        "tunMode": "Virtual Network Interface-Modus"
+        "tunMode": "Virtual Network Interface-Modus",
+        "tunModeRequiresAdmin": " (Admin oder Dienst erforderlich)"
       }
     },
     "externalController": {

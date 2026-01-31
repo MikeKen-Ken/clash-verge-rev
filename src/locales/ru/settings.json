@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Системный прокси",
-        "tunMode": "Режим TUN"
+        "tunMode": "Режим TUN",
+        "tunModeRequiresAdmin": " (требуется права администратора или служба)"
       }
     },
     "externalController": {

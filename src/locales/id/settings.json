@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Proksi Sistem",
-        "tunMode": "Mode Tun (NIC Virtual)"
+        "tunMode": "Mode Tun (NIC Virtual)",
+        "tunModeRequiresAdmin": " (memerlukan admin atau layanan)"
       }
     },
     "externalController": {

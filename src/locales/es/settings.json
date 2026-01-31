@@ -40,7 +40,8 @@
       },
       "fields": {
         "systemProxy": "Proxy del sistema",
-        "tunMode": "Modo de interfaz virtual (TUN)"
+        "tunMode": "Modo de interfaz virtual (TUN)",
+        "tunModeRequiresAdmin": " (requiere administrador o servicio)"
       }
     },
     "externalController": {
