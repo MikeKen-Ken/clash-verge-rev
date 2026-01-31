@@ -100,7 +100,7 @@ export const ProxyGroups = (props: Props) => {
   }, [groups]);
 
   const getSelectedForGroup = useCallback(
-    (groupName: string) => selectedByGroup.get(groupName),
+    (groupName: string): string | undefined => selectedByGroup.get(groupName),
     [selectedByGroup],
   );
   const availableGroups = useMemo(() => {
