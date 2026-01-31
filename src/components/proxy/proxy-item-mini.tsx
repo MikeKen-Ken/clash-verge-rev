@@ -14,13 +14,22 @@ interface Props {
   group: IProxyGroupItem;
   proxy: IProxyItem;
   selected: boolean;
+  /** 仅当为 true 时显示「手动选择」图标（Selector 组且来自 profile 选择；Fallback/URLTest 不显示） */
+  showManualIcon?: boolean;
   showType?: boolean;
   onClick?: (name: string) => void;
 }
 
 // 多列布局
 export const ProxyItemMini = (props: Props) => {
-  const { group, proxy, selected, showType = true, onClick } = props;
+  const {
+    group,
+    proxy,
+    selected,
+    showManualIcon = false,
+    showType = true,
+    onClick,
+  } = props;
 
   const { t } = useTranslation();
 
@@ -159,7 +168,7 @@ export const ProxyItemMini = (props: Props) => {
             whiteSpace: "nowrap",
           }}
         >
-          {selected && (
+          {showManualIcon && (
             <LabelOutlined
               sx={{
                 fontSize: 14,

@@ -23,6 +23,8 @@ interface Props {
   group: IProxyGroupItem;
   proxy: IProxyItem;
   selected: boolean;
+  /** 仅当为 true 时显示「手动选择」图标（Selector 组且来自 profile 选择；Fallback/URLTest 不显示） */
+  showManualIcon?: boolean;
   showType?: boolean;
   sx?: SxProps<Theme>;
   onClick?: (name: string) => void;
@@ -47,7 +49,15 @@ const TypeBox = styled("span")(({ theme }) => ({
 }));
 
 export const ProxyItem = (props: Props) => {
-  const { group, proxy, selected, showType = true, sx, onClick } = props;
+  const {
+    group,
+    proxy,
+    selected,
+    showManualIcon = false,
+    showType = true,
+    sx,
+    onClick,
+  } = props;
 
   const presetList = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"];
   const isPreset = presetList.includes(proxy.name);
@@ -173,7 +183,7 @@ export const ProxyItem = (props: Props) => {
                   color: "text.primary",
                 }}
               >
-                {selected && (
+                {showManualIcon && (
                   <LabelOutlined
                     sx={{ fontSize: 14, mr: 0.5, color: "primary.main" }}
                     titleAccess="manual"

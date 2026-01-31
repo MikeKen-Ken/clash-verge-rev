@@ -106,6 +106,20 @@ export const ProxyGroups = (props: Props) => {
     (groupName: string): string | undefined => selectedByGroup.get(groupName),
     [selectedByGroup],
   );
+
+  // 仅 Selector 组且该选择来自 profile 的 current.selected 时视为「手动选择」（参考安卓端 nowIsManual）
+  const getManualSelectionForGroup = useCallback(
+    (groupName: string): string | undefined => {
+      const group = groups?.find(
+        (g: { name: string; type: string }) => g.name === groupName,
+      );
+      if (group?.type !== "Selector") return undefined;
+      const entry = (current?.selected ?? []).find((s) => s.name === groupName);
+      return entry?.now;
+    },
+    [groups, current?.selected],
+  );
+
   const availableGroups = useMemo(() => {
     if (!groups) return [];
     // 在链式代理模式下，仅显示支持选择节点的 Selector 代理组
@@ -544,6 +558,8 @@ export const ProxyGroups = (props: Props) => {
                   onCheckAll={handleCheckAll}
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
+                  getSelectedForGroup={getSelectedForGroup}
+                  getManualSelectionForGroup={getManualSelectionForGroup}
                   isChainMode={isChainMode}
                 />
               )}

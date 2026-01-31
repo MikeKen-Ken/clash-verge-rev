@@ -50,7 +50,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [verge?.auto_close_connection, enableConnectionCleanup],
   );
 
-  // 切换节点
+  // 切换节点（参考安卓端：先调 core 再更 UI，profile 保存并行或延后以提升响应）
   const changeProxy = useLockFn(
     async (
       groupName: string,
@@ -60,25 +60,28 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     ) => {
       debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
 
-      try {
-        if (current && !skipConfigSave) {
-          const selected = current.selected ? [...current.selected] : [];
-          const index = selected.findIndex((item) => item.name === groupName);
-
-          if (index < 0) {
-            selected.push({ name: groupName, now: proxyName });
-          } else {
-            selected[index] = { name: groupName, now: proxyName };
-          }
-          await patchCurrent({ selected });
+      const doPatchCurrent = async () => {
+        if (!current || skipConfigSave) return;
+        const selected = current.selected ? [...current.selected] : [];
+        const index = selected.findIndex((item) => item.name === groupName);
+        if (index < 0) {
+          selected.push({ name: groupName, now: proxyName });
+        } else {
+          selected[index] = { name: groupName, now: proxyName };
         }
+        await patchCurrent({ selected });
+      };
 
-        await selectNodeForGroup(groupName, proxyName);
+      try {
+        // 参考安卓端：core 切换与 profile 保存并行，再托盘同步并刷新 UI，缩短等待
+        await Promise.all([
+          selectNodeForGroup(groupName, proxyName),
+          doPatchCurrent(),
+        ]);
         await syncTrayProxySelection();
         debugLog(
           `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
         );
-
         onSuccess?.();
 
         if (
@@ -98,6 +101,9 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           await selectNodeForGroup(groupName, proxyName);
           await syncTrayProxySelection();
           onSuccess?.();
+          void doPatchCurrent().catch((e) => {
+            console.warn("[ProxySelection] profile 保存失败", e);
+          });
           debugLog(
             `[ProxySelection] 代理切换回退成功: ${groupName} -> ${proxyName}`,
           );

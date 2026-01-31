@@ -37,8 +37,10 @@ interface RenderProps {
     group: IRenderItem["group"],
     proxy: IRenderItem["proxy"] & { name: string },
   ) => void;
-  /** 仅当返回值等于节点名时显示为「当前使用」（手动选择） */
+  /** 当前使用的节点名（用于高亮） */
   getSelectedForGroup?: (groupName: string) => string | undefined;
+  /** 仅当返回值等于节点名时显示「手动选择」图标（仅 Selector 组，Fallback/URLTest 不显示） */
+  getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
 
 export const ProxyRender = (props: RenderProps) => {
@@ -51,6 +53,7 @@ export const ProxyRender = (props: RenderProps) => {
     onHeadState,
     onChangeProxy,
     getSelectedForGroup,
+    getManualSelectionForGroup,
     isChainMode: _ = false,
   } = props;
   const { type, group, headState, proxy, proxyCol } = item;
@@ -71,6 +74,7 @@ export const ProxyRender = (props: RenderProps) => {
     }
 
     const selectedName = getSelectedForGroup?.(group.name);
+    const manualName = getManualSelectionForGroup?.(group.name);
     return proxyCol.map((proxyItem) => (
       <ProxyItemMini
         key={`${item.key}-${proxyItem?.name ?? "unknown"}`}
@@ -79,6 +83,7 @@ export const ProxyRender = (props: RenderProps) => {
         selected={
           selectedName != null ? selectedName === proxyItem?.name : false
         }
+        showManualIcon={manualName != null && manualName === proxyItem?.name}
         showType={headState?.showType}
         onClick={() => onChangeProxy(group, proxyItem!)}
       />
@@ -91,6 +96,7 @@ export const ProxyRender = (props: RenderProps) => {
     headState,
     onChangeProxy,
     getSelectedForGroup,
+    getManualSelectionForGroup,
   ]);
 
   if (type === 0) {
@@ -192,11 +198,13 @@ export const ProxyRender = (props: RenderProps) => {
 
   if (type === 2) {
     const selectedName = getSelectedForGroup?.(group.name);
+    const manualName = getManualSelectionForGroup?.(group.name);
     return (
       <ProxyItem
         group={group}
         proxy={proxy!}
         selected={selectedName != null ? selectedName === proxy?.name : false}
+        showManualIcon={manualName != null && manualName === proxy?.name}
         showType={headState?.showType}
         sx={{ py: 0, pl: 2 }}
         onClick={() => onChangeProxy(group, proxy!)}
