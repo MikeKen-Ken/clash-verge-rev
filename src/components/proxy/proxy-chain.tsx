@@ -38,6 +38,7 @@ import {
   selectNodeForGroup,
 } from "tauri-plugin-mihomo-api";
 
+import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-notify";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
 import { debugLog } from "@/utils/debug";
@@ -283,6 +284,7 @@ export const ProxyChain = ({
             : selectedGroup || localStorage.getItem("proxy-chain-group");
 
         if (targetGroup) {
+          markManualProxySelectionStarted();
           try {
             await selectNodeForGroup(targetGroup, "DIRECT");
           } catch {
@@ -337,6 +339,7 @@ export const ProxyChain = ({
 
       const targetGroup = mode === "global" ? "GLOBAL" : selectedGroup;
 
+      markManualProxySelectionStarted();
       await selectNodeForGroup(targetGroup || "GLOBAL", lastNode.name);
       localStorage.setItem("proxy-chain-group", targetGroup || "GLOBAL");
       localStorage.setItem("proxy-chain-exit-node", lastNode.name);

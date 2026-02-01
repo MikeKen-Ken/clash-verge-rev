@@ -13,6 +13,9 @@ let proxyModeChangeTimestamp = 0;
 // 手动测速操作的时间戳
 let manualDelayCheckTimestamp = 0;
 
+// 手动选择节点操作的时间戳
+let manualProxySelectionTimestamp = 0;
+
 // 关闭连接后禁用通知的时长（毫秒）
 const CLOSE_CONNECTIONS_NOTIFY_COOLDOWN = 10000; // 10秒
 
@@ -21,6 +24,9 @@ const PROXY_MODE_CHANGE_NOTIFY_COOLDOWN = 60000; // 1分钟
 
 // 手动测速后禁用通知的时长（毫秒）
 const MANUAL_DELAY_CHECK_NOTIFY_COOLDOWN = 10000; // 10秒
+
+// 手动选择节点后禁用通知的时长（毫秒）
+const MANUAL_PROXY_SELECTION_NOTIFY_COOLDOWN = 10000; // 10秒
 
 /**
  * 标记关闭连接操作开始
@@ -50,6 +56,15 @@ export const markManualDelayCheckStarted = () => {
 };
 
 /**
+ * 标记手动选择节点操作开始
+ * 在此后 10 秒内，fallback 切换不会发送通知（避免误报「节点自动切换」）
+ */
+export const markManualProxySelectionStarted = () => {
+  manualProxySelectionTimestamp = Date.now();
+  debugLog(`[FallbackNotify] Manual proxy selection started at ${manualProxySelectionTimestamp}`);
+};
+
+/**
  * 检查是否在任何冷却期内
  */
 export const isInNotifyCooldown = () => {
@@ -76,6 +91,14 @@ export const isInNotifyCooldown = () => {
     const delayElapsed = now - manualDelayCheckTimestamp;
     if (delayElapsed < MANUAL_DELAY_CHECK_NOTIFY_COOLDOWN) {
       return { inCooldown: true, reason: "manual_delay_check", elapsed: delayElapsed };
+    }
+  }
+  
+  // 检查手动选择节点冷却期（10秒）
+  if (manualProxySelectionTimestamp > 0) {
+    const selectionElapsed = now - manualProxySelectionTimestamp;
+    if (selectionElapsed < MANUAL_PROXY_SELECTION_NOTIFY_COOLDOWN) {
+      return { inCooldown: true, reason: "manual_proxy_selection", elapsed: selectionElapsed };
     }
   }
   

@@ -6,6 +6,7 @@ import {
   selectNodeForGroup,
 } from "tauri-plugin-mihomo-api";
 
+import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useVerge } from "@/hooks/use-verge";
 import { syncTrayProxySelection } from "@/services/cmds";
@@ -59,6 +60,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       skipConfigSave: boolean = false,
     ) => {
       debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
+      // 标记手动选择节点，在此后 10 秒内不发送 fallback 切换通知
+      markManualProxySelectionStarted();
 
       const doPatchCurrent = async () => {
         if (!current || skipConfigSave) return;
@@ -73,16 +76,18 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       };
 
       try {
-        // 参考安卓端：core 切换与 profile 保存并行，再托盘同步并刷新 UI，缩短等待
+        // 参考安卓端：core 与 profile 并行，成功后立即刷新 UI，托盘后台同步不阻塞
         await Promise.all([
           selectNodeForGroup(groupName, proxyName),
           doPatchCurrent(),
         ]);
-        await syncTrayProxySelection();
         debugLog(
           `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
         );
         onSuccess?.();
+        void syncTrayProxySelection().catch((e) => {
+          debugLog("[ProxySelection] 托盘同步延后完成或失败", e);
+        });
 
         if (
           config.enableConnectionCleanup &&
@@ -99,8 +104,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
         try {
           await selectNodeForGroup(groupName, proxyName);
-          await syncTrayProxySelection();
           onSuccess?.();
+          void syncTrayProxySelection().catch(() => {});
           void doPatchCurrent().catch((e) => {
             console.warn("[ProxySelection] profile 保存失败", e);
           });

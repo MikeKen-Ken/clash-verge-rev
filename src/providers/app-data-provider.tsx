@@ -8,7 +8,10 @@ import {
   getRules,
 } from "tauri-plugin-mihomo-api";
 
-import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
+import {
+  markManualDelayCheckStarted,
+  markManualProxySelectionStarted,
+} from "@/hooks/use-fallback-switch-notify";
 import { useVerge } from "@/hooks/use-verge";
 import {
   calcuProxies,
@@ -188,6 +191,8 @@ export const AppDataProvider = ({
       if (now - lastUpdateTime <= refreshThrottle) return;
 
       lastUpdateTime = now;
+      // 该事件由托盘切换节点成功时发出，标记为手动选择以抑制 fallback 切换通知
+      markManualProxySelectionStarted();
       scheduleTimeout(() => {
         refreshProxy().catch((error) =>
           console.warn("[DataProvider] Proxy refresh failed:", error),
