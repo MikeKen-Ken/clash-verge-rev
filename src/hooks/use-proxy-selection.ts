@@ -1,4 +1,3 @@
-import { useLockFn } from "ahooks";
 import { useCallback, useMemo } from "react";
 import {
   closeConnection,
@@ -51,8 +50,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [verge?.auto_close_connection, enableConnectionCleanup],
   );
 
-  // 切换节点（参考安卓端：先调 core 再更 UI，profile 保存并行或延后以提升响应）
-  const changeProxy = useLockFn(
+  // 切换节点（参考安卓端：立即切换，后台同步，不使用锁以保证响应灵敏）
+  const changeProxy = useCallback(
     async (
       groupName: string,
       proxyName: string,
@@ -76,19 +75,25 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       };
 
       try {
-        // 参考安卓端：core 与 profile 并行，成功后立即刷新 UI，托盘后台同步不阻塞
-        await Promise.all([
-          selectNodeForGroup(groupName, proxyName),
-          doPatchCurrent(),
-        ]);
-        debugLog(
-          `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
-        );
+        // 立即调用核心切换（同步阻塞，确保核心状态立即生效）
+        await selectNodeForGroup(groupName, proxyName);
+        
+        // 立即触发 UI 刷新回调（让界面立即响应）
         onSuccess?.();
-        void syncTrayProxySelection().catch((e) => {
-          debugLog("[ProxySelection] 托盘同步延后完成或失败", e);
+        
+        // 后台异步执行其他操作（不阻塞下一次点击）
+        Promise.all([
+          doPatchCurrent(),
+          syncTrayProxySelection(),
+        ]).then(() => {
+          debugLog(
+            `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
+          );
+        }).catch((err) => {
+          console.warn("[ProxySelection] 后台同步失败:", err);
         });
 
+        // 后台清理连接（异步，不阻塞）
         if (
           config.enableConnectionCleanup &&
           config.autoCloseConnection &&
@@ -105,9 +110,11 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         try {
           await selectNodeForGroup(groupName, proxyName);
           onSuccess?.();
-          void syncTrayProxySelection().catch(() => {});
-          void doPatchCurrent().catch((e) => {
-            console.warn("[ProxySelection] profile 保存失败", e);
+          void Promise.all([
+            doPatchCurrent(),
+            syncTrayProxySelection(),
+          ]).catch((e) => {
+            console.warn("[ProxySelection] 回退后同步失败", e);
           });
           debugLog(
             `[ProxySelection] 代理切换回退成功: ${groupName} -> ${proxyName}`,
@@ -121,6 +128,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         }
       }
     },
+    [current, patchCurrent, config, onSuccess, onError],
   );
 
   const handleSelectChange = useCallback(
