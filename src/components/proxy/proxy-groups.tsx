@@ -108,6 +108,22 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
+  // 当 group.now 是子分组名时，解析出该子分组当前使用的节点名，用于组头显示「分组名 (实际节点)」
+  const getDisplayNowForGroup = useCallback(
+    (group: { name: string; now?: string | null }): string => {
+      if (group.now == null || group.now === "") return "";
+      let current: string = group.now;
+      while (selectedByGroup.has(current)) {
+        const next = selectedByGroup.get(current)!;
+        if (next === current) break;
+        current = next;
+      }
+      if (current === group.now) return group.now;
+      return `${group.now} (${current})`;
+    },
+    [selectedByGroup],
+  );
+
   // 仅 Selector 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」（与安卓端 nowIsManual 对齐：仅当 core 与 profile 同步时显示）
   const getManualSelectionForGroup = useCallback(
     (groupName: string): string | undefined => {
@@ -573,6 +589,7 @@ export const ProxyGroups = (props: Props) => {
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
+                  getDisplayNowForGroup={getDisplayNowForGroup}
                   getManualSelectionForGroup={getManualSelectionForGroup}
                   isChainMode={isChainMode}
                 />
@@ -699,6 +716,7 @@ export const ProxyGroups = (props: Props) => {
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
+            getDisplayNowForGroup={getDisplayNowForGroup}
           />
         )}
       />

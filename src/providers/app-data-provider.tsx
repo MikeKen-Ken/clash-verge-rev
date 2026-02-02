@@ -64,21 +64,44 @@ export const AppDataProvider = ({
   );
 
   const hasTriggeredStartupFallback = useRef(false);
+  /** 启动轮询时记录的 url-test/fallback 各组初始 now，用于判断核心是否已更新 */
+  const initialNowByGroupRef = useRef<Map<string, string> | null>(null);
+  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollingCountRef = useRef(0);
 
-  // 启动时触发 url-test/fallback 组的测速，让核心更新「当前节点」而非固定选第一个
+  const POLL_INTERVAL_MS = 1500;
+  const POLL_MAX_COUNT = 16;
+
+  // 启动时触发 url-test/fallback 组的测速，然后轮询代理数据直到各组的 now 已更新或达到最大次数
   useEffect(() => {
     if (!proxiesData?.groups?.length || hasTriggeredStartupFallback.current) {
       return;
     }
-    hasTriggeredStartupFallback.current = true;
     const groups = proxiesData.groups as IProxyGroupItem[];
     const urlTestOrFallback = groups.filter(
       (g) => g.type === "url-test" || g.type === "fallback",
     );
     if (urlTestOrFallback.length === 0) return;
 
+    hasTriggeredStartupFallback.current = true;
+    initialNowByGroupRef.current = new Map(
+      urlTestOrFallback.map((g) => [g.name, g.now ?? ""]),
+    );
+    pollingCountRef.current = 0;
+
     // 标记测速，在此后 10 秒内不发送 fallback 切换通知
     markManualDelayCheckStarted();
+
+    const scheduleNextPoll = () => {
+      pollingTimerRef.current = setTimeout(() => {
+        pollingTimerRef.current = null;
+        pollingCountRef.current += 1;
+        refreshProxy().catch(() => {});
+        if (pollingCountRef.current < POLL_MAX_COUNT) {
+          scheduleNextPoll();
+        }
+      }, POLL_INTERVAL_MS);
+    };
 
     const run = async () => {
       await Promise.allSettled(
@@ -89,9 +112,41 @@ export const AppDataProvider = ({
         }),
       );
       await refreshProxy();
+      pollingCountRef.current += 1;
+      scheduleNextPoll();
     };
     void run();
+
+    return () => {
+      if (pollingTimerRef.current != null) {
+        clearTimeout(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    };
   }, [proxiesData, refreshProxy]);
+
+  // 每次代理数据更新后检查：若所有 url-test/fallback 的 now 已相对初始值变化，或已达最大轮询次数，则停止轮询
+  useEffect(() => {
+    const initial = initialNowByGroupRef.current;
+    if (initial == null || !proxiesData?.groups?.length) return;
+
+    const groups = proxiesData.groups as IProxyGroupItem[];
+    const urlTestOrFallback = groups.filter(
+      (g) => g.type === "url-test" || g.type === "fallback",
+    );
+    const allUpdated = urlTestOrFallback.every(
+      (g) => (g.now ?? "") !== initial.get(g.name),
+    );
+    const overLimit = pollingCountRef.current >= POLL_MAX_COUNT;
+
+    if (allUpdated || overLimit) {
+      initialNowByGroupRef.current = null;
+      if (pollingTimerRef.current != null) {
+        clearTimeout(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    }
+  }, [proxiesData]);
 
   useEffect(() => {
     let lastProfileId: string | null = null;

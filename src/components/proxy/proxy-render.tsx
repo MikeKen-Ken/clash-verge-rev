@@ -39,6 +39,11 @@ interface RenderProps {
   ) => void;
   /** 当前使用的节点名（用于高亮） */
   getSelectedForGroup?: (groupName: string) => string | undefined;
+  /** 组头显示的「当前节点」文案；当 now 为子分组时会解析为「子分组名 (实际节点)」 */
+  getDisplayNowForGroup?: (group: {
+    name: string;
+    now?: string | null;
+  }) => string;
   /** 仅当返回值等于节点名时显示「手动选择」图标（仅 Selector 组，Fallback/URLTest 不显示） */
   getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
@@ -53,6 +58,7 @@ export const ProxyRender = (props: RenderProps) => {
     onHeadState,
     onChangeProxy,
     getSelectedForGroup,
+    getDisplayNowForGroup,
     getManualSelectionForGroup,
     isChainMode: _ = false,
   } = props;
@@ -151,7 +157,9 @@ export const ProxyRender = (props: RenderProps) => {
               <Box component="span" sx={{ marginTop: "2px" }}>
                 <StyledTypeBox>{group.type}</StyledTypeBox>
                 <StyledSubtitle sx={{ color: "text.secondary" }}>
-                  {group.now}
+                  {getDisplayNowForGroup
+                    ? getDisplayNowForGroup(group)
+                    : group.now ?? ""}
                 </StyledSubtitle>
               </Box>
             </Box>

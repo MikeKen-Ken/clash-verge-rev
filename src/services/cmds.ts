@@ -184,15 +184,13 @@ export async function calcuProxies(): Promise<{
 
   const { GLOBAL: global, DIRECT: direct, REJECT: reject } = proxyRecord;
 
-  // 使用 key 作为 group 名称：core 返回的 group 对象可能不含 name（如 Selector 的 MarshalJSON）
-  let groups: IProxyGroupItem[] = Object.entries(proxyRecord).reduce<
+  let groups: IProxyGroupItem[] = Object.values(proxyRecord).reduce<
     IProxyGroupItem[]
-  >((acc, [groupName, each]) => {
-    if (groupName !== "GLOBAL" && each?.all) {
+  >((acc, each) => {
+    if (each?.name !== "GLOBAL" && each?.all) {
       acc.push(
-        mergeGroupConfig(groupName, {
+        mergeGroupConfig(each.name, {
           ...each,
-          name: each?.name ?? groupName,
           all: each.all!.map((item) => generateItem(item)),
         }) as IProxyGroupItem,
       );
@@ -204,13 +202,12 @@ export async function calcuProxies(): Promise<{
   if (global?.all) {
     const globalGroups: IProxyGroupItem[] = global.all.reduce<
       IProxyGroupItem[]
-    >((acc, groupName) => {
-      if (proxyRecord[groupName]?.all) {
-        const g = proxyRecord[groupName];
+    >((acc, name) => {
+      if (proxyRecord[name]?.all) {
+        const g = proxyRecord[name];
         acc.push(
-          mergeGroupConfig(groupName, {
+          mergeGroupConfig(g.name, {
             ...g,
-            name: g?.name ?? groupName,
             all: g.all!.map((item) => generateItem(item)),
           }) as IProxyGroupItem,
         );

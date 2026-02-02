@@ -50,7 +50,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [verge?.auto_close_connection, enableConnectionCleanup],
   );
 
-  // 切换节点（对齐安卓端：乐观更新 UI，后台同步核心状态）
+  // 切换节点：先等核心与 profile 同步完成，再刷新代理列表，避免过早刷新拿到旧 now 导致界面「选不上」
   const changeProxy = useCallback(
     async (
       groupName: string,
@@ -74,10 +74,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         await patchCurrent({ selected });
       };
 
-      // 1. 立即触发 UI 刷新（乐观更新，与安卓端逻辑一致）
-      onSuccess?.();
-
-      // 2. 后台异步执行所有操作（不阻塞 UI）
+      // 先完成核心切换与 profile 写入，再刷新代理列表；不在切换前刷新，否则会拿到旧 now 导致界面显示旧节点
       Promise.all([
         selectNodeForGroup(groupName, proxyName),
         doPatchCurrent(),
@@ -87,12 +84,10 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-          // 同步完成后再次刷新，确保延迟等数据更新
           onSuccess?.();
         })
         .catch((err) => {
           console.warn("[ProxySelection] 后台同步失败:", err);
-          // 失败时也刷新 UI，让用户看到真实状态
           onSuccess?.();
         });
 
