@@ -112,7 +112,7 @@ export const CurrentProxyCard = () => {
   const theme = useTheme();
   const { proxies, clashConfig, refreshProxy, rules } = useAppData();
   const { verge } = useVerge();
-  const { current: currentProfile } = useProfiles();
+  const { current: currentProfile, patchCurrent } = useProfiles();
   const autoDelayEnabled = verge?.enable_auto_delay_detection ?? false;
   const autoDelayIntervalMs = useMemo(() => {
     const rawInterval = verge?.auto_delay_detection_interval_minutes;
@@ -687,9 +687,11 @@ export const CurrentProxyCard = () => {
     markManualDelayCheckStarted();
     
     // 测速时清空该组的手动选择（对齐安卓端：后端会调用 ClearManualSelection）
-    if (current) {
-      const next = (current.selected ?? []).filter((s) => s.name !== groupName);
-      if (next.length !== (current.selected ?? []).length) {
+    if (currentProfile) {
+      const next = (currentProfile.selected ?? []).filter(
+        (s: { name?: string }) => s.name !== groupName,
+      );
+      if (next.length !== (currentProfile.selected ?? []).length) {
         patchCurrent({ selected: next }).catch(() => {});
       }
     }
