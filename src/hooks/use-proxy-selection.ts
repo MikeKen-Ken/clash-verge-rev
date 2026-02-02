@@ -58,12 +58,24 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       previousProxy?: string,
       skipConfigSave: boolean = false,
     ) => {
+      console.log("[ProxySelection] 开始切换:", {
+        groupName,
+        proxyName,
+        previousProxy,
+        skipConfigSave,
+        hasCurrent: !!current,
+      });
       debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
       // 标记手动选择节点，在此后 10 秒内不发送 fallback 切换通知
       markManualProxySelectionStarted();
 
       const doPatchCurrent = async () => {
-        if (!current || skipConfigSave) return;
+        if (!current || skipConfigSave) {
+          console.log("[ProxySelection] doPatchCurrent 跳过:", {
+            reason: !current ? "无 current" : "skipConfigSave",
+          });
+          return;
+        }
         const selected = current.selected ? [...current.selected] : [];
         const index = selected.findIndex((item) => item.name === groupName);
         if (index < 0) {
@@ -71,23 +83,25 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         } else {
           selected[index] = { name: groupName, now: proxyName };
         }
+        console.log("[ProxySelection] 保存 selected 到 Profile:", selected);
         await patchCurrent({ selected });
       };
 
-      // 1. 立即触发 UI 刷新（乐观更新，与安卓端逻辑一致）
-      onSuccess?.();
+      // 不在此处调用 onSuccess()，避免 refreshProxy 过早拉取到未更新的 core 数据导致选择被覆盖
+      // UI 由调用方 handleProxyChange 的本地 setState 立即更新；完成后在 .then() 里再刷新
 
-      // 2. 后台异步执行所有操作（不阻塞 UI）
+      // 后台异步执行所有操作（不阻塞 UI）
       Promise.all([
         selectNodeForGroup(groupName, proxyName),
         doPatchCurrent(),
         syncTrayProxySelection(),
       ])
         .then(() => {
+          console.log("[ProxySelection] 后台同步成功:", groupName, "->", proxyName);
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-          // 同步完成后再次刷新，确保延迟等数据更新
+          // 同步完成后刷新，确保延迟等数据更新
           onSuccess?.();
         })
         .catch((err) => {
@@ -96,7 +110,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           onSuccess?.();
         });
 
-      // 3. 后台清理连接（异步，不阻塞）
+      // 后台清理连接（异步，不阻塞）
       if (
         config.enableConnectionCleanup &&
         config.autoCloseConnection &&

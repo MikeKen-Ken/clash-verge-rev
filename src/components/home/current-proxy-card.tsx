@@ -409,6 +409,14 @@ export const CurrentProxyCard = () => {
         }
       }
 
+      console.log("[CurrentProxyCard] proxies 更新 state:", {
+        fromProxies: true,
+        newGroup,
+        newProxy,
+        prevGroup: prev.selection.group,
+        prevProxy: prev.selection.proxy,
+      });
+
       return {
         proxyData: {
           groups: filteredGroups,
@@ -553,7 +561,14 @@ export const CurrentProxyCard = () => {
       const currentGroup = state.selection.group;
       const previousProxy = state.selection.proxy;
 
-      debouncedSetState((prev: ProxyState) => ({
+      console.log("[CurrentProxyCard] handleProxyChange:", {
+        currentGroup,
+        newProxy,
+        previousProxy,
+      });
+
+      // 立即更新本地状态（不用 debounce），避免后续 refreshProxy 拉取到未更新数据时覆盖选择
+      setState((prev: ProxyState) => ({
         ...prev,
         selection: {
           ...prev.selection,
@@ -584,7 +599,7 @@ export const CurrentProxyCard = () => {
       isGlobalMode,
       state.selection,
       state.proxyData.records,
-      debouncedSetState,
+      setState,
       handleSelectChange,
       writeProfileScopedItem,
       checkCurrentProxyDelay,
@@ -1018,7 +1033,7 @@ export const CurrentProxyCard = () => {
               />
             )}
           </Box>
-          {/* 代理组选择器 */}
+          {/* 代理组选择器：选项需包含当前 value（如 DIRECT/GLOBAL），否则 MUI 无法匹配会显示空白 */}
           <FormControl
             fullWidth
             variant="outlined"
@@ -1034,12 +1049,51 @@ export const CurrentProxyCard = () => {
               onChange={handleGroupChange}
               label={t("home.components.currentProxy.labels.group")}
               disabled={isGlobalMode || isDirectMode}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    minWidth: "max-content",
+                    maxHeight: 400,
+                    "& .MuiMenuItem-root": {
+                      whiteSpace: "normal",
+                      overflow: "visible",
+                      textOverflow: "clip",
+                    },
+                  },
+                },
+              }}
+              renderValue={(value) => (
+                <Typography
+                  component="span"
+                  sx={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    display: "block",
+                  }}
+                >
+                  {value || ""}
+                </Typography>
+              )}
             >
-              {state.proxyData.groups.map((group) => (
-                <MenuItem key={group.name} value={group.name}>
-                  {group.name}
-                </MenuItem>
-              ))}
+              {(() => {
+                const currentValue = state.selection.group;
+                const hasCurrentInList = state.proxyData.groups.some(
+                  (g: { name: string }) => g.name === currentValue,
+                );
+                const options =
+                  hasCurrentInList || !currentValue
+                    ? state.proxyData.groups
+                    : [
+                        { name: currentValue, now: "", all: [] as string[] },
+                        ...state.proxyData.groups,
+                      ];
+                return options.map((group: { name: string }) => (
+                  <MenuItem key={group.name} value={group.name}>
+                    {group.name}
+                  </MenuItem>
+                ));
+              })()}
             </Select>
           </FormControl>
 
