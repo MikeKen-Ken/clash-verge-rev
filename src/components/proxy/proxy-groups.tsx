@@ -343,6 +343,14 @@ export const ProxyGroups = (props: Props) => {
     debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
     // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
     markManualDelayCheckStarted();
+    
+    // 测速时清空该组的手动选择（对齐安卓端：后端会调用 ClearManualSelection）
+    if (current) {
+      const next = (current.selected ?? []).filter((s) => s.name !== groupName);
+      if (next.length !== (current.selected ?? []).length) {
+        patchCurrent({ selected: next }).catch(() => {});
+      }
+    }
 
     const group = availableGroups.find(
       (g: IProxyGroupItem) => g.name === groupName,

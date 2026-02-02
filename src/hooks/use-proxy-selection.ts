@@ -50,7 +50,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [verge?.auto_close_connection, enableConnectionCleanup],
   );
 
-  // 切换节点（参考安卓端：立即切换，后台同步，不使用锁以保证响应灵敏）
+  // 切换节点（对齐安卓端：乐观更新 UI，后台同步核心状态）
   const changeProxy = useCallback(
     async (
       groupName: string,
@@ -74,58 +74,35 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         await patchCurrent({ selected });
       };
 
-      try {
-        // 立即调用核心切换（同步阻塞，确保核心状态立即生效）
-        await selectNodeForGroup(groupName, proxyName);
-        
-        // 立即触发 UI 刷新回调（让界面立即响应）
-        onSuccess?.();
-        
-        // 后台异步执行其他操作（不阻塞下一次点击）
-        Promise.all([
-          doPatchCurrent(),
-          syncTrayProxySelection(),
-        ]).then(() => {
+      // 1. 立即触发 UI 刷新（乐观更新，与安卓端逻辑一致）
+      onSuccess?.();
+
+      // 2. 后台异步执行所有操作（不阻塞 UI）
+      Promise.all([
+        selectNodeForGroup(groupName, proxyName),
+        doPatchCurrent(),
+        syncTrayProxySelection(),
+      ])
+        .then(() => {
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-        }).catch((err) => {
+          // 同步完成后再次刷新，确保延迟等数据更新
+          onSuccess?.();
+        })
+        .catch((err) => {
           console.warn("[ProxySelection] 后台同步失败:", err);
+          // 失败时也刷新 UI，让用户看到真实状态
+          onSuccess?.();
         });
 
-        // 后台清理连接（异步，不阻塞）
-        if (
-          config.enableConnectionCleanup &&
-          config.autoCloseConnection &&
-          previousProxy
-        ) {
-          setTimeout(() => cleanupConnections(previousProxy), 0);
-        }
-      } catch (error) {
-        console.error(
-          `[ProxySelection] 代理切换失败: ${groupName} -> ${proxyName}`,
-          error,
-        );
-
-        try {
-          await selectNodeForGroup(groupName, proxyName);
-          onSuccess?.();
-          void Promise.all([
-            doPatchCurrent(),
-            syncTrayProxySelection(),
-          ]).catch((e) => {
-            console.warn("[ProxySelection] 回退后同步失败", e);
-          });
-          debugLog(
-            `[ProxySelection] 代理切换回退成功: ${groupName} -> ${proxyName}`,
-          );
-        } catch (fallbackError) {
-          console.error(
-            `[ProxySelection] 代理切换回退也失败: ${groupName} -> ${proxyName}`,
-            fallbackError,
-          );
-          onError?.(fallbackError);
-        }
+      // 3. 后台清理连接（异步，不阻塞）
+      if (
+        config.enableConnectionCleanup &&
+        config.autoCloseConnection &&
+        previousProxy
+      ) {
+        setTimeout(() => cleanupConnections(previousProxy), 0);
       }
     },
     [current, patchCurrent, config, onSuccess, onError],
