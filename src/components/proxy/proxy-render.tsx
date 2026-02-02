@@ -44,7 +44,7 @@ interface RenderProps {
     name: string;
     now?: string | null;
   }) => string;
-  /** 仅当返回值等于节点名时显示「手动选择」图标（仅 Selector 组，Fallback/URLTest 不显示） */
+  /** 仅当返回值等于节点名时显示「手动选择」图标（Selector/URLTest/Fallback 组） */
   getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
 

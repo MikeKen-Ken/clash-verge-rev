@@ -23,7 +23,7 @@ interface Props {
   group: IProxyGroupItem;
   proxy: IProxyItem;
   selected: boolean;
-  /** 仅当为 true 时显示「手动选择」图标（Selector 组且来自 profile 选择；Fallback/URLTest 不显示） */
+  /** 仅当为 true 时显示「手动选择」图标（Selector/URLTest/Fallback 组且 profile 与 core 一致时） */
   showManualIcon?: boolean;
   showType?: boolean;
   sx?: SxProps<Theme>;
@@ -66,7 +66,7 @@ export const ProxyItem = (props: Props) => {
     (_: DelayUpdate, next: DelayUpdate) => next,
     { delay: -1, updatedAt: 0 },
   );
-  const timeout = getGroupDelayTimeout(group, selected);
+  const timeout = getGroupDelayTimeout(group, showManualIcon);
 
   useEffect(() => {
     if (isPreset) return;
@@ -127,7 +127,7 @@ export const ProxyItem = (props: Props) => {
         selected={selected}
         onClick={() => onClick?.(proxy.name)}
         sx={[
-          { borderRadius: 1 },
+          { borderRadius: 1, position: "relative" },
           ({ palette: { mode, primary, success } }) => {
             const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
             const selectColor = mode === "light" ? primary.main : primary.light;
@@ -154,6 +154,12 @@ export const ProxyItem = (props: Props) => {
               "&:hover .the-check": { display: !showDelay ? "block" : "none" },
               "&:hover .the-delay": { display: showDelay ? "block" : "none" },
               "&:hover .the-icon": { display: "none" },
+              "& .the-pin": {
+                position: "absolute",
+                fontSize: "12px",
+                top: "-5px",
+                right: "-5px",
+              },
               "&.Mui-selected": {
                 width: `calc(100% + 3px)`,
                 marginLeft: `-3px`,
@@ -183,7 +189,7 @@ export const ProxyItem = (props: Props) => {
                   color: "text.primary",
                 }}
               >
-                {showManualIcon && (
+                {showManualIcon && group.type !== "Fallback" && (
                   <LabelOutlined
                     sx={{ fontSize: 14, mr: 0.5, color: "primary.main" }}
                     titleAccess="manual"
@@ -265,6 +271,11 @@ export const ProxyItem = (props: Props) => {
             />
           )}
         </ListItemIcon>
+        {showManualIcon && group.type === "Fallback" && (
+          <span className="the-pin" title="manual">
+            📌
+          </span>
+        )}
       </ListItemButton>
     </ListItem>
   );

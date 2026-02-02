@@ -506,10 +506,14 @@ export const CurrentProxyCard = () => {
       autoCheckInProgressRef.current = true;
 
       const groupRecord = state.proxyData.records?.[groupName];
-      const isSelected =
-        proxyName === state.selection.proxy &&
-        groupName === state.selection.group;
-      const timeout = getGroupDelayTimeout(groupRecord, isSelected);
+      const isManualSelection =
+        groupRecord &&
+        (currentProfile?.selected ?? []).some(
+          (s: { name?: string; now?: string }) =>
+            s.name === groupName && s.now === proxyName,
+        ) &&
+        groupRecord.now === proxyName;
+      const timeout = getGroupDelayTimeout(groupRecord, isManualSelection);
 
       try {
         debugLog(
@@ -541,6 +545,7 @@ export const CurrentProxyCard = () => {
       state.selection.proxy,
       sortType,
       setDelaySortRefresh,
+      currentProfile?.selected,
     ],
   );
 

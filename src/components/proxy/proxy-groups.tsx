@@ -124,13 +124,17 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
-  // 仅 Selector 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」（与安卓端 nowIsManual 对齐：仅当 core 与 profile 同步时显示）
+  // Selector / URLTest / Fallback 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」
   const getManualSelectionForGroup = useCallback(
     (groupName: string): string | undefined => {
       const group = groups?.find(
         (g: { name: string; type: string }) => g.name === groupName,
       );
-      if (group?.type !== "Selector") return undefined;
+      if (
+        !group ||
+        !["Selector", "URLTest", "Fallback"].includes(group.type)
+      )
+        return undefined;
       const entry = (current?.selected ?? []).find((s) => s.name === groupName);
       const profileNow = entry?.now;
       if (profileNow == null) return undefined;

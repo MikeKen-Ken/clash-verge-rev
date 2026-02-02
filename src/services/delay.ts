@@ -8,14 +8,14 @@ const hashKey = (name: string, group: string) => `${group ?? ""}::${name}`;
 export const DEFAULT_GROUP_TIMEOUT_MS = 5000;
 
 /**
- * 从代理组配置取测速超时：选中节点用 selected-timeout，否则用 timeout。
+ * 从代理组配置取测速超时：仅当该节点为「手动选择」时用 selected-timeout，否则用 timeout。
  */
 export function getGroupDelayTimeout(
   group: { timeout?: number; selectedTimeout?: number } | null | undefined,
-  isSelectedNode: boolean,
+  isManualSelection: boolean,
 ): number {
   if (!group) return DEFAULT_GROUP_TIMEOUT_MS;
-  if (isSelectedNode && group.selectedTimeout != null && group.selectedTimeout > 0) {
+  if (isManualSelection && group.selectedTimeout != null && group.selectedTimeout > 0) {
     return group.selectedTimeout;
   }
   return group.timeout != null && group.timeout > 0
