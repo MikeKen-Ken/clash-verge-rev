@@ -367,7 +367,7 @@ export const CurrentProxyCard = () => {
       }
 
       (proxies.groups || [])
-        .filter((g: { type?: string }) => g?.type === "Selector")
+        .filter((g: { type?: string }) => ["Selector", "URLTest", "Fallback"].includes(g?.type || ""))
         .forEach((selectorGroup: any) => registerGroup(selectorGroup));
 
       const filteredGroups = Array.from(groupsMap.values());
