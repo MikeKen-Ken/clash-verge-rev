@@ -85,7 +85,9 @@ const ProxyPage = () => {
         localStorage.getItem(STORAGE_KEY_AUTO_REFRESH_INTERVAL) ?? "10",
         10,
       );
-      return AUTO_REFRESH_INTERVALS.includes(v) ? v : 10;
+      return (
+        (AUTO_REFRESH_INTERVALS as readonly number[]).includes(v) ? v : 10
+      );
     } catch {
       return 10;
     }
