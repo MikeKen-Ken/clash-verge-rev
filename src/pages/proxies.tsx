@@ -79,7 +79,7 @@ const ProxyPage = () => {
       return false;
     }
   });
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => {
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(() => {
     try {
       const v = parseInt(
         localStorage.getItem(STORAGE_KEY_AUTO_REFRESH_INTERVAL) ?? "10",
@@ -221,7 +221,7 @@ const ProxyPage = () => {
                 value={autoRefreshInterval}
                 label={t("proxies.page.labels.autoRefreshInterval")}
                 onChange={(e) =>
-                  setAutoRefreshInterval(Number(e.target.value) as 5 | 10 | 30 | 60)
+                  setAutoRefreshInterval(Number(e.target.value))
                 }
               >
                 {AUTO_REFRESH_INTERVALS.map((s) => (
