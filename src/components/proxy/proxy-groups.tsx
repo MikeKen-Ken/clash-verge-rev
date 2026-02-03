@@ -90,7 +90,7 @@ export const ProxyGroups = (props: Props) => {
   const selectedByGroup = useMemo((): Map<string, string> => {
     const g = groups;
     if (!g?.length) return new Map<string, string>();
-    return new Map<string, string>(
+    const map = new Map<string, string>(
       g
         .filter(
           (x: { name?: string; now?: string }) =>
@@ -101,7 +101,15 @@ export const ProxyGroups = (props: Props) => {
             [x.name, x.now] as [string, string],
         ),
     );
-  }, [groups]);
+    // 诊断：每次代理列表更新后打印，便于定位「选中/图钉不更新」问题（构建后也可在控制台查看）
+    console.log("=== [数据更新] 代理列表已刷新 ===", {
+      时间戳: Date.now(),
+      组总数: map.size,
+      "核心返回的各组 now（组名 -> 当前节点）": Object.fromEntries(map),
+      "profile.selected（手动选择记录）": current?.selected ?? [],
+    });
+    return map;
+  }, [groups, current?.selected]);
 
   const getSelectedForGroup = useCallback(
     (groupName: string): string | undefined => selectedByGroup.get(groupName),
@@ -140,18 +148,19 @@ export const ProxyGroups = (props: Props) => {
       const entry = (current?.selected ?? []).find((s) => s.name === groupName);
       const profileNow = entry?.now;
       const coreNow = selectedByGroup.get(groupName);
-      const result =
-        coreNow === profileNow && profileNow != null ? profileNow : undefined;
+      const shouldShow = coreNow === profileNow && profileNow != null;
+      const result = shouldShow ? profileNow : undefined;
 
-      // 调试：Selector/URLTest/Fallback 组渲染时打印，便于确认是否被调用及 match 结果
+      // 调试：每次判断图钉都打印完整信息
       if (["selector", "url-test", "fallback"].includes(typeLower ?? "")) {
-        console.log("[ManualPin] getManualSelectionForGroup", {
-          groupName,
-          groupType: group?.type,
-          profileNow,
-          coreNow,
-          match: coreNow === profileNow,
-          result: result ?? "(不显示图钉)",
+        console.log("[ManualPin] 图钉判断", {
+          组名: groupName,
+          组类型: group?.type,
+          "profile.selected 里该组的 now": profileNow ?? "(无)",
+          "核心返回的 now": coreNow ?? "(无)",
+          "两者是否相等": coreNow === profileNow,
+          "profileNow 非空": profileNow != null,
+          "最终结果(显示图钉的节点名)": result ?? "(不显示)",
         });
       }
 
@@ -342,7 +351,16 @@ export const ProxyGroups = (props: Props) => {
 
   const handleChangeProxy = useCallback(
     (group: IProxyGroupItem, proxy: IProxyItem) => {
+      console.log("[UI] handleChangeProxy 被调用", {
+        isChainMode,
+        组名: group.name,
+        组类型: group.type,
+        节点名: proxy.name,
+        时间戳: Date.now(),
+      });
+      
       if (isChainMode) {
+        console.log("[UI] 链式模式，添加到 chain");
         // 使用函数式更新来避免状态延迟问题
         setProxyChain((prev) => {
           // 检查是否已经存在相同名称的代理，防止重复添加
@@ -374,12 +392,19 @@ export const ProxyGroups = (props: Props) => {
       }
 
       const groupTypeLower = group.type?.toLowerCase();
+      console.log("[UI] 组类型检查", {
+        groupTypeLower,
+        "是否为可切换类型": ["selector", "url-test", "fallback"].includes(groupTypeLower ?? ""),
+      });
       if (
         !groupTypeLower ||
         !["selector", "url-test", "fallback"].includes(groupTypeLower)
-      )
+      ) {
+        console.warn("[UI] 组类型不支持切换，忽略", { 组类型: group.type });
         return;
+      }
 
+      console.log("[UI] 调用 handleProxyGroupChange");
       handleProxyGroupChange(group, proxy);
     },
     [handleProxyGroupChange, isChainMode, t],
