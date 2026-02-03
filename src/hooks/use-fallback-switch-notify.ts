@@ -150,14 +150,23 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`,
         );
 
-        // 始终同步 profile.selected：核心已切走则清空该组的手动选择，使 UI 显示真实当前节点（含手动选择失败后核心切走的情况）
-        if (current) {
+        // 仅当「核心当前节点」与 profile 里该组的手动选择不一致时，才清空该组手动选择（避免用户刚选上就被刷新清掉图钉）
+        const selectedNow = current?.selected?.find(
+          (s: { name?: string }) => s.name === groupName,
+        )?.now;
+        if (selectedNow === currentNow) {
+          // 本次切换就是用户手动选择生效，不要清空
+          debugLog(
+            `[FallbackNotify] 切换与 profile 一致，保留手动选择: ${groupName} -> ${currentNow}`,
+          );
+        } else if (current) {
           const selected = current.selected ?? [];
           const next = selected.filter((s: { name?: string }) => s.name !== groupName);
           if (next.length !== selected.length) {
             console.log("[FallbackNotify] 核心已切换，清空该组手动选择记录以更新 UI", {
               组名: groupName,
               "核心当前节点": currentNow,
+              "profile 手动选择": selectedNow ?? "(无)",
             });
             patchCurrent({ selected: next })
               .then(() => mutateProfiles())

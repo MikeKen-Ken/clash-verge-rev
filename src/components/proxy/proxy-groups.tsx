@@ -22,7 +22,7 @@ import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
-import delayManager from "@/services/delay";
+import delayManager, { getGroupDelayTimeout } from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
 import { ScrollTopButton } from "../layout/scroll-top-button";
@@ -265,6 +265,13 @@ export const ProxyGroups = (props: Props) => {
     onError: (error) => {
       console.error("代理切换失败", error);
       onProxies();
+    },
+    onRefreshSelectedNodeOnly: (groupName, proxyName) => {
+      const group = groups?.find((g: { name?: string }) => g.name === groupName);
+      const timeout = getGroupDelayTimeout(group ?? null, true) || 5000;
+      void delayManager.checkDelay(proxyName, groupName, timeout, {
+        silentGlobal: true,
+      });
     },
   });
 

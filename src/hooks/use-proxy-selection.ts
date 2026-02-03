@@ -31,6 +31,8 @@ const cleanupConnections = async (previousProxy: string) => {
 interface ProxySelectionOptions {
   onSuccess?: () => void;
   onError?: (error: any) => void;
+  /** 仅刷新当前选中节点的延迟（不触发全量 refreshProxy）；轮询 1～10s 时若提供则调用此项 */
+  onRefreshSelectedNodeOnly?: (groupName: string, proxyName: string) => void | Promise<void>;
   enableConnectionCleanup?: boolean;
 }
 
@@ -39,7 +41,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   const { current, patchCurrent } = useProfiles();
   const { verge } = useVerge();
 
-  const { onSuccess, onError, enableConnectionCleanup = true } = options;
+  const { onSuccess, onError, onRefreshSelectedNodeOnly, enableConnectionCleanup = true } = options;
 
   // 缓存
   const config = useMemo(
@@ -149,7 +151,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-          console.log("=== [ProxySelection] 三个后端调用全部完成 ===", {
+          console.log("=== [ProxySelection] 三个后端调用全部完成  ===", {
             组名: groupName,
             目标节点: proxyName,
             "耗时(ms)": Date.now() - timestamp,
@@ -163,14 +165,23 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
             });
             onSuccess?.();
           };
+          // 仅刷新当前选中节点延迟（不触发全量 refreshProxy），若未提供则走全量刷新
+          const runRefreshSelectedNodeOnly = (label: string, t: number) => {
+            debugLog(`[ProxySelection] ${label} 仅刷新选中节点延迟`);
+            if (onRefreshSelectedNodeOnly) {
+              void onRefreshSelectedNodeOnly(groupName, proxyName);
+            } else {
+              onSuccess?.();
+            }
+          };
           setTimeout(() => runRefresh("首次", delayMs), delayMs);
           setTimeout(() => runRefresh("二次", delayMs2), delayMs2);
           setTimeout(() => runRefresh("三次(兜底)", delayMs3), delayMs3);
 
-          // 选择后连续 10s 轮询刷新，使测速/健康检测结果及失败后核心切走都能及时更新到 UI
+          // 选择后连续 10s 轮询：若提供 onRefreshSelectedNodeOnly 则只刷新当前节点延迟，否则全量刷新
           for (let i = 1; i <= 10; i++) {
             setTimeout(
-              () => runRefresh(`轮询(${i}s)`, 1000 * i),
+              () => runRefreshSelectedNodeOnly(`轮询(${i}s)`, 1000 * i),
               1000 * i,
             );
           }
@@ -199,7 +210,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         setTimeout(() => cleanupConnections(previousProxy), 0);
       }
     },
-    [current, patchCurrent, config, onSuccess, onError],
+    [current, patchCurrent, config, onSuccess, onError, onRefreshSelectedNodeOnly],
   );
 
   const handleSelectChange = useCallback(

@@ -199,7 +199,7 @@ class DelayManager {
     name: string,
     group: string,
     delay: number,
-    meta?: { elapsed?: number },
+    meta?: { elapsed?: number; /** 为 true 时不触发全量刷新，仅通知该节点的监听器 */ silentGlobal?: boolean },
   ): DelayUpdate {
     const key = hashKey(name, group);
     debugLog(
@@ -220,7 +220,9 @@ class DelayManager {
       this.pendingItemUpdates.set(key, [update]);
     }
     this.scheduleItemFlush();
-    this.scheduleGlobalFlush();
+    if (!meta?.silentGlobal) {
+      this.scheduleGlobalFlush();
+    }
 
     return update;
   }
@@ -264,13 +266,15 @@ class DelayManager {
     name: string,
     group: string,
     timeout: number,
+    options?: { /** 为 true 时仅更新该节点延迟，不触发全量 refreshProxy */ silentGlobal?: boolean },
   ): Promise<DelayUpdate> {
     debugLog(
       `[DelayManager] 开始测试延迟，代理: ${name}, 组: ${group}, 超时: ${timeout}ms`,
     );
 
+    const silent = options?.silentGlobal ?? false;
     // 先将状态设置为测试中
-    this.setDelay(name, group, -2);
+    this.setDelay(name, group, -2, { silentGlobal: silent });
 
     let delay = -1;
     let elapsed = 0;
@@ -303,7 +307,7 @@ class DelayManager {
       elapsed = Date.now() - startTime;
     }
 
-    return this.setDelay(name, group, delay, { elapsed });
+    return this.setDelay(name, group, delay, { elapsed, silentGlobal: silent });
   }
 
   async checkListDelay(

@@ -174,6 +174,15 @@ export const CurrentProxyCard = () => {
       console.error("代理切换失败", error);
       refreshProxy();
     },
+    onRefreshSelectedNodeOnly: (groupName, proxyName) => {
+      const groupRecord = state.proxyData.records?.[groupName];
+      const timeout =
+        getGroupDelayTimeout(groupRecord ?? null, true) ||
+        DEFAULT_GROUP_TIMEOUT_MS;
+      void delayManager.checkDelay(proxyName, groupName, timeout, {
+        silentGlobal: true,
+      });
+    },
   });
 
   // 判断模式
