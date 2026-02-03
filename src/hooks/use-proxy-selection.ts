@@ -108,14 +108,33 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         "1_selectNodeForGroup": `${groupName} -> ${proxyName}`,
         "2_patchCurrent": "更新 profile.selected",
         "3_syncTray": "同步托盘",
+        "调用时间": Date.now(),
       });
       
       Promise.all([
         selectNodeForGroup(groupName, proxyName).then((result) => {
-          console.log("[ProxySelection] selectNodeForGroup 完成", { result });
+          console.log("=== [核心切换] selectNodeForGroup 调用完成 ===", {
+            组名: groupName,
+            节点名: proxyName,
+            "返回值": result,
+            "返回值类型": typeof result,
+            "调用成功": true,
+            时间戳: Date.now(),
+          });
+          // 立即刷新一次，确认核心是否更新了 now
+          console.log("[核心切换] 立即刷新代理数据，验证核心是否更新");
+          setTimeout(() => onSuccess?.(), 50);
           return result;
         }).catch((err) => {
-          console.error("[ProxySelection] selectNodeForGroup 失败", err);
+          console.error("=== [核心切换] selectNodeForGroup 调用失败 ===", {
+            组名: groupName,
+            节点名: proxyName,
+            错误: err,
+            "错误信息": err?.message || String(err),
+            "错误堆栈": err?.stack,
+            调用失败: true,
+            时间戳: Date.now(),
+          });
           throw err;
         }),
         doPatchCurrent().catch((err) => {
@@ -147,6 +166,12 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => runRefresh("首次", delayMs), delayMs);
           setTimeout(() => runRefresh("二次", delayMs2), delayMs2);
           setTimeout(() => runRefresh("三次(兜底)", delayMs3), delayMs3);
+          
+          // 最后兜底：如果 3 秒后核心还没更新，说明切换失败，回退 profile.selected
+          setTimeout(async () => {
+            // 这里无法直接获取最新的 proxies 数据，只能依赖后续的 fallback notify 清理
+            console.log("[ProxySelection] 兜底检查：如果核心切换失败，请等待 FallbackNotify 自动清理不匹配的记录");
+          }, delayMs3 + 500);
         })
         .catch((err) => {
           console.error("=== [ProxySelection] 后端同步失败 ===", {

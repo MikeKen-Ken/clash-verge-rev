@@ -830,6 +830,7 @@ export const ProxyGroups = (props: Props) => {
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
             getDisplayNowForGroup={getDisplayNowForGroup}
+            getManualSelectionForGroup={getManualSelectionForGroup}
           />
         )}
       />
