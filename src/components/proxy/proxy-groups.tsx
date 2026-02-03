@@ -101,15 +101,61 @@ export const ProxyGroups = (props: Props) => {
             [x.name, x.now] as [string, string],
         ),
     );
+    
     // 诊断：每次代理列表更新后打印，便于定位「选中/图钉不更新」问题（构建后也可在控制台查看）
     console.log("=== [数据更新] 代理列表已刷新 ===", {
       时间戳: Date.now(),
       组总数: map.size,
       "核心返回的各组 now（组名 -> 当前节点）": Object.fromEntries(map),
+      "核心返回的所有组名": g?.map((x: any) => x.name) ?? [],
       "profile.selected（手动选择记录）": current?.selected ?? [],
+      "不匹配的组（profile 有但核心没有）": (current?.selected ?? [])
+        .map((s: any) => s.name)
+        .filter((name: string) => !map.has(name)),
     });
     return map;
   }, [groups, current?.selected]);
+
+  // 自动清理：删除 profile.selected 里核心不存在的组（旧配置遗留的记录）
+  const lastCleanupRef = useRef<string>("");
+  useEffect(() => {
+    if (!current?.selected?.length || !groups?.length) return;
+    
+    const validGroupNames = new Set(
+      (groups as any[]).map((g: any) => g.name).filter(Boolean)
+    );
+    const invalidGroups = (current.selected ?? [])
+      .map((s: any) => s.name)
+      .filter((name: string) => !validGroupNames.has(name));
+    
+    if (invalidGroups.length > 0) {
+      const cleanupKey = invalidGroups.sort().join(",");
+      // 避免重复清理同一批记录
+      if (lastCleanupRef.current === cleanupKey) return;
+      lastCleanupRef.current = cleanupKey;
+      
+      console.log("=== [清理] 发现过期的手动选择记录 ===", {
+        "过期组名": invalidGroups,
+        "将自动删除": true,
+      });
+      const validSelected = (current.selected ?? []).filter(
+        (s: any) => validGroupNames.has(s.name)
+      );
+      // 异步清理，不阻塞渲染
+      patchCurrent({ selected: validSelected })
+        .then(() => {
+          console.log("=== [清理] 过期记录已删除 ===", {
+            "原数量": current.selected?.length ?? 0,
+            "新数量": validSelected.length,
+            "删除数量": invalidGroups.length,
+          });
+          mutateProfiles();
+        })
+        .catch((err) => {
+          console.warn("[清理] 删除过期记录失败", err);
+        });
+    }
+  }, [groups, current?.selected, patchCurrent, mutateProfiles]);
 
   const getSelectedForGroup = useCallback(
     (groupName: string): string | undefined => selectedByGroup.get(groupName),
@@ -413,6 +459,7 @@ export const ProxyGroups = (props: Props) => {
   // 测全部延迟（使用配置里的 timeout）
   const handleCheckAll = useLockFn(async (groupName: string) => {
     debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
+    console.log("[测速] 用户点击测速按钮", { 组名: groupName });
     // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
     markManualDelayCheckStarted();
     
@@ -420,6 +467,11 @@ export const ProxyGroups = (props: Props) => {
     if (current) {
       const next = (current.selected ?? []).filter((s) => s.name !== groupName);
       if (next.length !== (current.selected ?? []).length) {
+        console.log("[测速] 测速开始，清空手动选择记录", {
+          组名: groupName,
+          "原 selected 数量": current.selected?.length ?? 0,
+          "新 selected 数量": next.length,
+        });
         patchCurrent({ selected: next }).catch(() => {});
       }
     }
@@ -476,6 +528,11 @@ export const ProxyGroups = (props: Props) => {
           (s) => s.name !== groupName,
         );
         if (next.length !== (current.selected ?? []).length) {
+          console.log("[测速] 测速完成，清空手动选择记录", {
+            组名: groupName,
+            "原 selected 数量": current.selected?.length ?? 0,
+            "新 selected 数量": next.length,
+          });
           patchCurrent({ selected: next })
             .then(() => mutateProfiles())
             .catch(() => {});

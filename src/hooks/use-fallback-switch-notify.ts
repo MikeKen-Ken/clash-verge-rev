@@ -150,18 +150,34 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`,
         );
 
-        // fallback 触发：清空该组的手动选择，界面不再显示「当前节点」
-        if (current) {
-          const next = (current.selected ?? []).filter((s) => s.name !== groupName);
-          if (next.length !== (current.selected ?? []).length) {
-            patchCurrent({ selected: next })
-              .then(() => mutateProfiles())
-              .catch(() => {});
+        // 检查是否在冷却期内（手动选择、测速等）
+        const cooldownStatus = isInNotifyCooldown();
+        
+        // 只有在非冷却期时才清空手动选择记录（冷却期说明是用户手动操作导致的切换，不应清空）
+        if (!cooldownStatus.inCooldown) {
+          console.log("[FallbackNotify] Fallback 自动切换，清空手动选择记录", {
+            组名: groupName,
+            "从节点": previousNow,
+            "到节点": currentNow,
+          });
+          // fallback 触发：清空该组的手动选择，界面不再显示「当前节点」
+          if (current) {
+            const next = (current.selected ?? []).filter((s) => s.name !== groupName);
+            if (next.length !== (current.selected ?? []).length) {
+              patchCurrent({ selected: next })
+                .then(() => mutateProfiles())
+                .catch(() => {});
+            }
           }
+        } else {
+          console.log("[FallbackNotify] 冷却期内切换，保留手动选择记录", {
+            组名: groupName,
+            原因: cooldownStatus.reason,
+            "已过时间(ms)": cooldownStatus.elapsed,
+          });
         }
 
-        // 检查是否在冷却期内
-        const cooldownStatus = isInNotifyCooldown();
+        // 发送通知（冷却期内也跳过）
         if (cooldownStatus.inCooldown) {
           debugLog(
             `[FallbackNotify] Skipping notification (${cooldownStatus.reason}, ${cooldownStatus.elapsed}ms elapsed)`,

@@ -36,6 +36,19 @@ export const ProxyItemMini = (props: Props) => {
 
   const { t } = useTranslation();
 
+  // 诊断：打印图钉渲染条件
+  if (showManualIcon || selected) {
+    console.log("[ProxyItemMini] 渲染节点", {
+      组名: group.name,
+      组类型: group.type,
+      节点名: proxy.name,
+      selected,
+      showManualIcon,
+      "类型包含 fallback": group.type?.toLowerCase()?.includes("fallback"),
+      "应该显示图钉": showManualIcon && group.type?.toLowerCase()?.includes("fallback"),
+    });
+  }
+
   const presetList = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"];
   const isPreset = presetList.includes(proxy.name);
   // -1/<=0 为不显示，-2 为 loading
