@@ -143,12 +143,6 @@ export const ProxyItemMini = (props: Props) => {
           const finalBgcolor = isSuccess ? alpha(success.main, 0.15) : bgcolor;
 
           return {
-            // 手动选择时显示红色外框
-            ...(showManualIcon && {
-              border: "2px solid",
-              borderColor: "#f44336",
-              boxShadow: `0 0 8px ${alpha("#f44336", 0.3)}`,
-            }),
             "&:hover .the-check": { display: !showDelay ? "block" : "none" },
             "&:hover .the-delay": { display: showDelay ? "block" : "none" },
             "&:hover .the-icon": { display: "none" },
