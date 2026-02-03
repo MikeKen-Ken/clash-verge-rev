@@ -274,7 +274,7 @@ export const ProxyItem = (props: Props) => {
             />
           )}
         </ListItemIcon>
-        {showManualIcon && group.type?.toLowerCase() === "fallback" && (
+        {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
           <span className="the-pin" title="manual">
             📌
           </span>

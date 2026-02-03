@@ -303,7 +303,7 @@ export const ProxyItemMini = (props: Props) => {
             />
           )}
       </Box>
-      {showManualIcon && group.type?.toLowerCase() === "fallback" && (
+      {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
         <span className="the-pin" title="manual">
           📌
         </span>

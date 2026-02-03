@@ -108,28 +108,39 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
-  // 当 group.now 是子分组名时，解析出该子分组当前使用的节点名，用于组头显示「分组名 (实际节点)」
+  // 解析 group.now 得到最终节点名；用于组头时 label 用 group.now，用于列表项时 label 用 group.name
   const getDisplayNowForGroup = useCallback(
-    (group: { name: string; now?: string | null }): string => {
-      if (group.now == null || group.now === "") return "";
+    (
+      group: { name: string; now?: string | null },
+      /** true = 列表项子分组，显示「子分组名 (节点)」；false/undefined = 组头，显示「选中项 (节点)」 */
+      useNameAsLabel?: boolean,
+    ): string => {
+      if (group.now == null || group.now === "")
+        return group.name ?? "";
       let current: string = group.now;
       while (selectedByGroup.has(current)) {
         const next = selectedByGroup.get(current)!;
         if (next === current) break;
         current = next;
       }
-      if (current === group.now) return group.now;
-      return `${group.now} (${current})`;
+      if (!current) return group.name ?? "";
+      const label = useNameAsLabel ? group.name : (group.now ?? group.name);
+      if (current === label) return label;
+      return `${label} (${current})`;
     },
     [selectedByGroup],
   );
 
-  // 当列表项是子分组时，返回「分组名 (该分组当前使用的节点)」用于展示
+  // 当列表项是子分组时，返回「子分组名称 (该子分组当前使用的节点名)」用于展示
   const getDisplayNameForItem = useCallback(
     (proxyName: string): string => {
       if (!selectedByGroup.has(proxyName)) return proxyName;
       const now = selectedByGroup.get(proxyName) ?? "";
-      return getDisplayNowForGroup({ name: proxyName, now });
+      const display = getDisplayNowForGroup(
+        { name: proxyName, now },
+        true,
+      );
+      return display !== "" ? display : proxyName;
     },
     [selectedByGroup, getDisplayNowForGroup],
   );
@@ -141,15 +152,30 @@ export const ProxyGroups = (props: Props) => {
         (g: { name: string; type: string }) => g.name === groupName,
       );
       const typeLower = group?.type?.toLowerCase();
+      const entry = (current?.selected ?? []).find((s) => s.name === groupName);
+      const profileNow = entry?.now;
+      const coreNow = selectedByGroup.get(groupName);
+      const result =
+        coreNow === profileNow && profileNow != null ? profileNow : undefined;
+
+      if (typeLower === "fallback" && (profileNow != null || coreNow != null)) {
+        console.log("[ManualPin] getManualSelectionForGroup", {
+          groupName,
+          groupType: group?.type,
+          profileNow,
+          coreNow,
+          profileSelected: current?.selected ?? [],
+          match: coreNow === profileNow,
+          result: result ?? "(不显示图钉)",
+        });
+      }
+
       if (
         !group ||
         !["selector", "url-test", "fallback"].includes(typeLower ?? "")
       )
         return undefined;
-      const entry = (current?.selected ?? []).find((s) => s.name === groupName);
-      const profileNow = entry?.now;
       if (profileNow == null) return undefined;
-      const coreNow = selectedByGroup.get(groupName);
       return coreNow === profileNow ? profileNow : undefined;
     },
     [groups, current?.selected, selectedByGroup],
@@ -362,7 +388,12 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
-      if (!["Selector", "URLTest", "Fallback"].includes(group.type)) return;
+      const groupTypeLower = group.type?.toLowerCase();
+      if (
+        !groupTypeLower ||
+        !["selector", "url-test", "fallback"].includes(groupTypeLower)
+      )
+        return;
 
       handleProxyGroupChange(group, proxy);
     },
