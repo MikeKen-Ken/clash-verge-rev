@@ -54,6 +54,12 @@ export const useLayoutEvents = (
     );
 
     register(
+      addListener("verge://refresh-clash-config-only", () => {
+        revalidateKeys(["getClashConfig"]);
+      }),
+    );
+
+    register(
       addListener("verge://refresh-verge-config", () => {
         revalidateKeys([
           "getVergeConfig",

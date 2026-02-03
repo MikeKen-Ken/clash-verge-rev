@@ -71,6 +71,19 @@ impl Handle {
         }
     }
 
+    /// Only refresh clash config on frontend (no proxy refresh, no re-trigger of fallback health check).
+    pub fn refresh_clash_config_only() {
+        let handle = Self::global();
+        if handle.is_exiting() {
+            return;
+        }
+
+        let system_opt = handle.notification_system.read();
+        if let Some(system) = system_opt.as_ref() {
+            system.send_event(FrontendEvent::RefreshClashConfigOnly);
+        }
+    }
+
     pub fn refresh_verge() {
         let handle = Self::global();
         if handle.is_exiting() {

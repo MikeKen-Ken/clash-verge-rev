@@ -31,7 +31,16 @@ pub async fn patch_clash(patch: &Mapping) -> Result<()> {
             Config::runtime().await.edit_draft(|d| d.patch_config(patch));
             CoreManager::global().update_config().await?;
         }
-        handle::Handle::refresh_clash();
+        // 仅 log-level / allow-lan / ipv6 时只刷新 clash 配置，不触发前端重新跑 fallback 健康检测
+        let light_keys: &[&str] = &["log-level", "allow-lan", "ipv6"];
+        let only_light = patch.iter().all(|(k, _)| {
+            k.as_str().map_or(false, |s| light_keys.contains(&s))
+        });
+        if only_light {
+            handle::Handle::refresh_clash_config_only();
+        } else {
+            handle::Handle::refresh_clash();
+        }
         <Result<()>>::Ok(())
     };
     match res {

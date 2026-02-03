@@ -9,6 +9,8 @@ use tauri::{Emitter as _, WebviewWindow};
 #[derive(Debug, Clone)]
 pub enum FrontendEvent {
     RefreshClash,
+    /// Only refresh clash config (e.g. after log-level change), do not refresh proxy or re-trigger fallback health check
+    RefreshClashConfigOnly,
     RefreshVerge,
     NoticeMessage { status: String, message: String },
     ProfileChanged { current_profile_id: String },
@@ -109,6 +111,9 @@ impl NotificationSystem {
 
         match event {
             FrontendEvent::RefreshClash => ("verge://refresh-clash-config", Ok(json!("yes"))),
+            FrontendEvent::RefreshClashConfigOnly => {
+                ("verge://refresh-clash-config-only", Ok(json!("yes")))
+            }
             FrontendEvent::RefreshVerge => ("verge://refresh-verge-config", Ok(json!("yes"))),
             FrontendEvent::NoticeMessage { status, message } => {
                 ("verge://notice-message", serde_json::to_value((status, message)))

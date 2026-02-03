@@ -314,6 +314,15 @@ export const AppDataProvider = ({
       }, 200);
     };
 
+    // 仅刷新 clash 配置（如 log-level 变更），不刷新代理、不重置 fallback 测速，避免触发 group 健康检测
+    const handleRefreshClashConfigOnly = () => {
+      scheduleTimeout(() => {
+        refreshClashConfig().catch((error) =>
+          console.warn("[DataProvider] Clash config refresh failed:", error),
+        );
+      }, 200);
+    };
+
     const initializeListeners = async () => {
       try {
         const unlistenProfile = await listen<string>(
@@ -330,6 +339,10 @@ export const AppDataProvider = ({
           "verge://refresh-clash-config",
           handleRefreshClash,
         );
+        const unlistenClashConfigOnly = await listen(
+          "verge://refresh-clash-config-only",
+          handleRefreshClashConfigOnly,
+        );
         const unlistenProxy = await listen(
           "verge://refresh-proxy-config",
           handleRefreshProxy,
@@ -337,6 +350,7 @@ export const AppDataProvider = ({
 
         registerCleanup(() => {
           unlistenClash();
+          unlistenClashConfigOnly();
           unlistenProxy();
         });
       } catch (error) {
@@ -344,6 +358,7 @@ export const AppDataProvider = ({
 
         const fallbackHandlers: Array<[string, EventListener]> = [
           ["verge://refresh-clash-config", handleRefreshClash],
+          ["verge://refresh-clash-config-only", handleRefreshClashConfigOnly],
           ["verge://refresh-proxy-config", handleRefreshProxy],
         ];
 
