@@ -163,11 +163,6 @@ export const useFallbackSwitchNotify = () => {
           const selected = current.selected ?? [];
           const next = selected.filter((s: { name?: string }) => s.name !== groupName);
           if (next.length !== selected.length) {
-            console.log("[FallbackNotify] 核心已切换，清空该组手动选择记录以更新 UI", {
-              组名: groupName,
-              "核心当前节点": currentNow,
-              "profile 手动选择": selectedNow ?? "(无)",
-            });
             patchCurrent({ selected: next })
               .then(() => mutateProfiles())
               .catch(() => {});

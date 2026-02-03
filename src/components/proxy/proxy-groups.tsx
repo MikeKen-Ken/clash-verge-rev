@@ -101,18 +101,6 @@ export const ProxyGroups = (props: Props) => {
             [x.name, x.now] as [string, string],
         ),
     );
-    
-    // 诊断：每次代理列表更新后打印，便于定位「选中/图钉不更新」问题（构建后也可在控制台查看）
-    console.log("=== [数据更新] 代理列表已刷新 ===", {
-      时间戳: Date.now(),
-      组总数: map.size,
-      "核心返回的各组 now（组名 -> 当前节点）": Object.fromEntries(map),
-      "核心返回的所有组名": g?.map((x: any) => x.name) ?? [],
-      "profile.selected（手动选择记录）": current?.selected ?? [],
-      "不匹配的组（profile 有但核心没有）": (current?.selected ?? [])
-        .map((s: any) => s.name)
-        .filter((name: string) => !map.has(name)),
-    });
     return map;
   }, [groups, current?.selected]);
 
@@ -133,22 +121,13 @@ export const ProxyGroups = (props: Props) => {
       // 避免重复清理同一批记录
       if (lastCleanupRef.current === cleanupKey) return;
       lastCleanupRef.current = cleanupKey;
-      
-      console.log("=== [清理] 发现过期的手动选择记录 ===", {
-        "过期组名": invalidGroups,
-        "将自动删除": true,
-      });
+
       const validSelected = (current.selected ?? []).filter(
         (s: any) => validGroupNames.has(s.name)
       );
       // 异步清理，不阻塞渲染
       patchCurrent({ selected: validSelected })
         .then(() => {
-          console.log("=== [清理] 过期记录已删除 ===", {
-            "原数量": current.selected?.length ?? 0,
-            "新数量": validSelected.length,
-            "删除数量": invalidGroups.length,
-          });
           mutateProfiles();
         })
         .catch((err) => {
@@ -195,20 +174,6 @@ export const ProxyGroups = (props: Props) => {
       const profileNow = entry?.now;
       const coreNow = selectedByGroup.get(groupName);
       const shouldShow = coreNow === profileNow && profileNow != null;
-      const result = shouldShow ? profileNow : undefined;
-
-      // 调试：每次判断图钉都打印完整信息
-      if (["selector", "url-test", "fallback"].includes(typeLower ?? "")) {
-        console.log("[ManualPin] 图钉判断", {
-          组名: groupName,
-          组类型: group?.type,
-          "profile.selected 里该组的 now": profileNow ?? "(无)",
-          "核心返回的 now": coreNow ?? "(无)",
-          "两者是否相等": coreNow === profileNow,
-          "profileNow 非空": profileNow != null,
-          "最终结果(显示图钉的节点名)": result ?? "(不显示)",
-        });
-      }
 
       if (
         !group ||
@@ -404,16 +369,7 @@ export const ProxyGroups = (props: Props) => {
 
   const handleChangeProxy = useCallback(
     (group: IProxyGroupItem, proxy: IProxyItem) => {
-      console.log("[UI] handleChangeProxy 被调用", {
-        isChainMode,
-        组名: group.name,
-        组类型: group.type,
-        节点名: proxy.name,
-        时间戳: Date.now(),
-      });
-      
       if (isChainMode) {
-        console.log("[UI] 链式模式，添加到 chain");
         // 使用函数式更新来避免状态延迟问题
         setProxyChain((prev) => {
           // 检查是否已经存在相同名称的代理，防止重复添加
@@ -445,19 +401,13 @@ export const ProxyGroups = (props: Props) => {
       }
 
       const groupTypeLower = group.type?.toLowerCase();
-      console.log("[UI] 组类型检查", {
-        groupTypeLower,
-        "是否为可切换类型": ["selector", "url-test", "fallback"].includes(groupTypeLower ?? ""),
-      });
       if (
         !groupTypeLower ||
         !["selector", "url-test", "fallback"].includes(groupTypeLower)
       ) {
-        console.warn("[UI] 组类型不支持切换，忽略", { 组类型: group.type });
         return;
       }
 
-      console.log("[UI] 调用 handleProxyGroupChange");
       handleProxyGroupChange(group, proxy);
     },
     [handleProxyGroupChange, isChainMode, t],
@@ -466,7 +416,6 @@ export const ProxyGroups = (props: Props) => {
   // 测全部延迟（使用配置里的 timeout）
   const handleCheckAll = useLockFn(async (groupName: string) => {
     debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
-    console.log("[测速] 用户点击测速按钮", { 组名: groupName });
     // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
     markManualDelayCheckStarted();
     
@@ -474,11 +423,6 @@ export const ProxyGroups = (props: Props) => {
     if (current) {
       const next = (current.selected ?? []).filter((s) => s.name !== groupName);
       if (next.length !== (current.selected ?? []).length) {
-        console.log("[测速] 测速开始，清空手动选择记录", {
-          组名: groupName,
-          "原 selected 数量": current.selected?.length ?? 0,
-          "新 selected 数量": next.length,
-        });
         patchCurrent({ selected: next }).catch(() => {});
       }
     }
@@ -535,11 +479,6 @@ export const ProxyGroups = (props: Props) => {
           (s) => s.name !== groupName,
         );
         if (next.length !== (current.selected ?? []).length) {
-          console.log("[测速] 测速完成，清空手动选择记录", {
-            组名: groupName,
-            "原 selected 数量": current.selected?.length ?? 0,
-            "新 selected 数量": next.length,
-          });
           patchCurrent({ selected: next })
             .then(() => mutateProfiles())
             .catch(() => {});

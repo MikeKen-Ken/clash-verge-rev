@@ -166,7 +166,6 @@ export function runTrafficDiagnostics(
  */
 export function resetErrorCount(): void {
   globalErrorCount = 0;
-  console.log("[TrafficDiagnostics] 错误计数器已重置");
 }
 
 // 导出到全局对象，方便在控制台调试

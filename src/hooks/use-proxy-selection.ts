@@ -62,69 +62,31 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     ) => {
       const timestamp = Date.now();
       debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
-      console.log("=== [ProxySelection] 开始切换 ===", {
-        时间戳: timestamp,
-        组名: groupName,
-        目标节点: proxyName,
-        之前节点: previousProxy ?? "(无)",
-        "当前 profile.selected": current?.selected ?? [],
-      });
-      
+
       // 标记手动选择节点，在此后 10 秒内不发送 fallback 切换通知
       markManualProxySelectionStarted();
 
       const doPatchCurrent = async () => {
         if (!current || skipConfigSave) {
-          console.log("[ProxySelection] 跳过 profile 更新", {
-            "current 存在": !!current,
-            skipConfigSave,
-          });
           return;
         }
         const selected = current.selected ? [...current.selected] : [];
         const index = selected.findIndex((item) => item.name === groupName);
-        console.log("[ProxySelection] 准备更新 profile", {
-          "原 selected": current.selected ?? [],
-          "找到索引": index,
-        });
         if (index < 0) {
           selected.push({ name: groupName, now: proxyName });
         } else {
           selected[index] = { name: groupName, now: proxyName };
         }
-        console.log("[ProxySelection] 调用 patchCurrent 前", {
-          "新 selected": selected,
-        });
         await patchCurrent({ selected });
-        console.log("[ProxySelection] patchCurrent 完成", {
-          "新 selected": selected,
-        });
       };
 
       // 先完成核心切换与 profile 写入，再延迟刷新代理列表，等核心写好 group.now 后再拉取，避免 UI 不更新选中/图钉
       const delayMs = 400;
       const delayMs2 = 900;
       const delayMs3 = 1800;
-      
-      console.log("[ProxySelection] 开始三个后端调用", {
-        "1_selectNodeForGroup": `${groupName} -> ${proxyName}`,
-        "2_patchCurrent": "更新 profile.selected",
-        "3_syncTray": "同步托盘",
-        "调用时间": Date.now(),
-      });
-      
+
       Promise.all([
         selectNodeForGroup(groupName, proxyName).then((result) => {
-          console.log("=== [核心切换] selectNodeForGroup 调用完成 ===", {
-            组名: groupName,
-            节点名: proxyName,
-            "返回值": result,
-            "返回值类型": typeof result,
-            "调用成功": true,
-            时间戳: Date.now(),
-          });
-          // 立即刷新一次，确认核心是否更新了 now
-          console.log("[核心切换] 立即刷新代理数据，验证核心是否更新");
           setTimeout(() => onSuccess?.(), 50);
           return result;
         }).catch((err) => {
@@ -151,18 +113,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-          console.log("=== [ProxySelection] 三个后端调用全部完成  ===", {
-            组名: groupName,
-            目标节点: proxyName,
-            "耗时(ms)": Date.now() - timestamp,
-            "接下来会在 400/900/1800ms 后刷新代理列表": true,
-          });
           const runRefresh = (label: string, delay: number) => {
             debugLog(`[ProxySelection] ${label} 刷新代理列表`);
-            console.log(`[ProxySelection] 触发${label}刷新`, {
-              "距切换开始(ms)": Date.now() - timestamp,
-              "延迟(ms)": delay,
-            });
             onSuccess?.();
           };
           // 仅刷新当前选中节点延迟（不触发全量 refreshProxy），若未提供则走全量刷新
@@ -184,11 +136,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
             3500,
           );
 
-          // 最后兜底：如果 3 秒后核心还没更新，说明切换失败，回退 profile.selected
-          setTimeout(async () => {
-            // 这里无法直接获取最新的 proxies 数据，只能依赖后续的 fallback notify 清理
-            console.log("[ProxySelection] 兜底检查：如果核心切换失败，请等待 FallbackNotify 自动清理不匹配的记录");
-          }, delayMs3 + 500);
         })
         .catch((err) => {
           console.error("=== [ProxySelection] 后端同步失败 ===", {
