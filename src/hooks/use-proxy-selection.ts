@@ -166,7 +166,15 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => runRefresh("首次", delayMs), delayMs);
           setTimeout(() => runRefresh("二次", delayMs2), delayMs2);
           setTimeout(() => runRefresh("三次(兜底)", delayMs3), delayMs3);
-          
+
+          // 选择后连续 10s 轮询刷新，使测速/健康检测结果及失败后核心切走都能及时更新到 UI
+          for (let i = 1; i <= 10; i++) {
+            setTimeout(
+              () => runRefresh(`轮询(${i}s)`, 1000 * i),
+              1000 * i,
+            );
+          }
+
           // 最后兜底：如果 3 秒后核心还没更新，说明切换失败，回退 profile.selected
           setTimeout(async () => {
             // 这里无法直接获取最新的 proxies 数据，只能依赖后续的 fallback notify 清理

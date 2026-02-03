@@ -150,34 +150,23 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`,
         );
 
-        // 检查是否在冷却期内（手动选择、测速等）
-        const cooldownStatus = isInNotifyCooldown();
-        
-        // 只有在非冷却期时才清空手动选择记录（冷却期说明是用户手动操作导致的切换，不应清空）
-        if (!cooldownStatus.inCooldown) {
-          console.log("[FallbackNotify] Fallback 自动切换，清空手动选择记录", {
-            组名: groupName,
-            "从节点": previousNow,
-            "到节点": currentNow,
-          });
-          // fallback 触发：清空该组的手动选择，界面不再显示「当前节点」
-          if (current) {
-            const next = (current.selected ?? []).filter((s) => s.name !== groupName);
-            if (next.length !== (current.selected ?? []).length) {
-              patchCurrent({ selected: next })
-                .then(() => mutateProfiles())
-                .catch(() => {});
-            }
+        // 始终同步 profile.selected：核心已切走则清空该组的手动选择，使 UI 显示真实当前节点（含手动选择失败后核心切走的情况）
+        if (current) {
+          const selected = current.selected ?? [];
+          const next = selected.filter((s: { name?: string }) => s.name !== groupName);
+          if (next.length !== selected.length) {
+            console.log("[FallbackNotify] 核心已切换，清空该组手动选择记录以更新 UI", {
+              组名: groupName,
+              "核心当前节点": currentNow,
+            });
+            patchCurrent({ selected: next })
+              .then(() => mutateProfiles())
+              .catch(() => {});
           }
-        } else {
-          console.log("[FallbackNotify] 冷却期内切换，保留手动选择记录", {
-            组名: groupName,
-            原因: cooldownStatus.reason,
-            "已过时间(ms)": cooldownStatus.elapsed,
-          });
         }
 
-        // 发送通知（冷却期内也跳过）
+        // 检查是否在冷却期内（仅用于是否弹通知，不影响上面同步）
+        const cooldownStatus = isInNotifyCooldown();
         if (cooldownStatus.inCooldown) {
           debugLog(
             `[FallbackNotify] Skipping notification (${cooldownStatus.reason}, ${cooldownStatus.elapsed}ms elapsed)`,
@@ -192,7 +181,7 @@ export const useFallbackSwitchNotify = () => {
             .then(() => {
               debugLog(`[FallbackNotify] Notification sent for group ${groupName}`);
             })
-            .catch((error) => {
+            .catch((error: unknown) => {
               console.error(`[FallbackNotify] Failed to send notification:`, error);
             });
         }

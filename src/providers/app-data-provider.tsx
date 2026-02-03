@@ -75,6 +75,15 @@ export const AppDataProvider = ({
   const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingCountRef = useRef(0);
 
+  // 任意节点延迟更新时触发一次刷新，使 UI 自动显示最新延迟（测速/健康检测完成后）
+  useEffect(() => {
+    const handler = () => {
+      refreshProxy().catch(() => {});
+    };
+    delayManager.setGlobalListener(handler);
+    return () => delayManager.removeGlobalListener();
+  }, [refreshProxy]);
+
   const POLL_INTERVAL_MS = 1500;
   const POLL_MAX_COUNT = 16;
   const INITIAL_POLL_INTERVAL_MS = 1000;

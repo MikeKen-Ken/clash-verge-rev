@@ -41,6 +41,11 @@ class DelayManager {
   // 每个分组的监听
   private groupListenerMap = new Map<string, () => void>();
 
+  /** 任意延迟更新时触发一次（防抖），用于 UI 自动刷新以显示最新延迟 */
+  private globalListener: (() => void) | null = null;
+  private globalFlushScheduled = false;
+  private readonly GLOBAL_DEBOUNCE_MS = 300;
+
   private pendingItemUpdates = new Map<string, DelayUpdate[]>();
   private pendingGroupUpdates = new Set<string>();
   private itemFlushScheduled = false;
@@ -128,6 +133,32 @@ class DelayManager {
     this.scheduleGroupFlush();
   }
 
+  private scheduleGlobalFlush() {
+    if (this.globalFlushScheduled || !this.globalListener) return;
+    this.globalFlushScheduled = true;
+    const run = () => {
+      this.globalFlushScheduled = false;
+      try {
+        this.globalListener?.();
+      } catch (error) {
+        console.error("[DelayManager] 全局延迟刷新回调失败", error);
+      }
+    };
+    if (typeof window !== "undefined" && window.setTimeout) {
+      window.setTimeout(run, this.GLOBAL_DEBOUNCE_MS);
+    } else {
+      Promise.resolve().then(() => run());
+    }
+  }
+
+  setGlobalListener(listener: () => void) {
+    this.globalListener = listener;
+  }
+
+  removeGlobalListener() {
+    this.globalListener = null;
+  }
+
   setUrl(group: string, url: string) {
     debugLog(`[DelayManager] 设置测试URL，组: ${group}, URL: ${url}`);
     this.urlMap.set(group, url);
@@ -189,6 +220,7 @@ class DelayManager {
       this.pendingItemUpdates.set(key, [update]);
     }
     this.scheduleItemFlush();
+    this.scheduleGlobalFlush();
 
     return update;
   }
