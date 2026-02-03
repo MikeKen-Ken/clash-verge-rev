@@ -7,7 +7,6 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
-  InputLabel,
   MenuItem,
   Select,
   Switch,
@@ -214,17 +213,14 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
-            <FormControl size="small" sx={{ minWidth: 72 }} disabled={!autoRefresh}>
-              <InputLabel id="proxies-auto-refresh-interval">
-                {t("proxies.page.labels.autoRefreshInterval")}
-              </InputLabel>
+            <FormControl size="small" sx={{ minWidth: 64 }} disabled={!autoRefresh}>
               <Select
-                labelId="proxies-auto-refresh-interval"
                 value={autoRefreshInterval}
-                label={t("proxies.page.labels.autoRefreshInterval")}
                 onChange={(e) =>
                   setAutoRefreshInterval(Number(e.target.value))
                 }
+                displayEmpty
+                sx={{ height: 32 }}
               >
                 {AUTO_REFRESH_INTERVALS.map((s) => (
                   <MenuItem key={s} value={s}>

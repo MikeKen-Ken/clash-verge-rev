@@ -75,7 +75,10 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         await patchCurrent({ selected });
       };
 
-      // 先完成核心切换与 profile 写入，再刷新代理列表；不在切换前刷新，否则会拿到旧 now 导致界面显示旧节点
+      // 先完成核心切换与 profile 写入，再延迟刷新代理列表，等核心写好 group.now 后再拉取，避免 UI 不更新选中/图钉
+      const delayMs = 400;
+      const delayMs2 = 900;
+      const delayMs3 = 1800;
       Promise.all([
         selectNodeForGroup(groupName, proxyName),
         doPatchCurrent(),
@@ -85,11 +88,20 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
-          onSuccess?.();
+          const runRefresh = (label: string) => {
+            debugLog(`[ProxySelection] ${label} 刷新代理列表`);
+            if (label === "首次") {
+              console.log("[ProxySelection] 触发刷新代理列表，用于更新选中与图钉");
+            }
+            onSuccess?.();
+          };
+          setTimeout(() => runRefresh("首次"), delayMs);
+          setTimeout(() => runRefresh("二次"), delayMs2);
+          setTimeout(() => runRefresh("三次(兜底)"), delayMs3);
         })
         .catch((err) => {
           console.warn("[ProxySelection] 后台同步失败:", err);
-          onSuccess?.();
+          setTimeout(() => onSuccess?.(), delayMs);
         });
 
       // 3. 后台清理连接（异步，不阻塞）
