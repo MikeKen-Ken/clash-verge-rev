@@ -108,12 +108,11 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
-  // 解析 group.now 得到最终节点名；用于组头时 label 用 group.now，用于列表项时 label 用 group.name
+  // 解析 group.now 得到最终节点名；用于组头显示「当前节点」文案（子分组时会解析为「子分组名 (实际节点)」）
   const getDisplayNowForGroup = useCallback(
     (
       group: { name: string; now?: string | null },
-      /** true = 列表项子分组，显示「子分组名 (节点)」；false/undefined = 组头，显示「选中项 (节点)」 */
-      useNameAsLabel?: boolean,
+      _useNameAsLabel?: boolean,
     ): string => {
       if (group.now == null || group.now === "")
         return group.name ?? "";
@@ -124,25 +123,11 @@ export const ProxyGroups = (props: Props) => {
         current = next;
       }
       if (!current) return group.name ?? "";
-      const label = useNameAsLabel ? group.name : (group.now ?? group.name);
+      const label = _useNameAsLabel ? group.name : (group.now ?? group.name);
       if (current === label) return label;
       return `${label} (${current})`;
     },
     [selectedByGroup],
-  );
-
-  // 当列表项是子分组时，返回「子分组名称 (该子分组当前使用的节点名)」用于展示
-  const getDisplayNameForItem = useCallback(
-    (proxyName: string): string => {
-      if (!selectedByGroup.has(proxyName)) return proxyName;
-      const now = selectedByGroup.get(proxyName) ?? "";
-      const display = getDisplayNowForGroup(
-        { name: proxyName, now },
-        true,
-      );
-      return display !== "" ? display : proxyName;
-    },
-    [selectedByGroup, getDisplayNowForGroup],
   );
 
   // Selector / URLTest / Fallback 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」
@@ -158,7 +143,7 @@ export const ProxyGroups = (props: Props) => {
       const result =
         coreNow === profileNow && profileNow != null ? profileNow : undefined;
 
-      if (typeLower === "fallback" && (profileNow != null || coreNow != null)) {
+      if (typeLower === "fallback") {
         console.log("[ManualPin] getManualSelectionForGroup", {
           groupName,
           groupType: group?.type,
@@ -636,7 +621,6 @@ export const ProxyGroups = (props: Props) => {
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
                   getDisplayNowForGroup={getDisplayNowForGroup}
-                  getDisplayNameForItem={getDisplayNameForItem}
                   getManualSelectionForGroup={getManualSelectionForGroup}
                   isChainMode={isChainMode}
                 />
@@ -764,7 +748,6 @@ export const ProxyGroups = (props: Props) => {
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
             getDisplayNowForGroup={getDisplayNowForGroup}
-            getDisplayNameForItem={getDisplayNameForItem}
           />
         )}
       />

@@ -44,8 +44,6 @@ interface RenderProps {
     name: string;
     now?: string | null;
   }) => string;
-  /** 当列表项是子分组时，返回「分组名 (该分组当前使用的节点)」用于展示 */
-  getDisplayNameForItem?: (proxyName: string) => string;
   /** 仅当返回值等于节点名时显示「手动选择」图标（Selector/URLTest/Fallback 组） */
   getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
@@ -61,7 +59,6 @@ export const ProxyRender = (props: RenderProps) => {
     onChangeProxy,
     getSelectedForGroup,
     getDisplayNowForGroup,
-    getDisplayNameForItem,
     getManualSelectionForGroup,
     isChainMode: _ = false,
   } = props;
@@ -86,9 +83,6 @@ export const ProxyRender = (props: RenderProps) => {
     const manualName = getManualSelectionForGroup?.(group.name);
     return proxyCol.map((proxyItem) => {
       const name = proxyItem?.name ?? "unknown";
-      const resolved = getDisplayNameForItem?.(name);
-      const itemDisplayName =
-        resolved !== undefined && resolved !== name ? resolved : undefined;
       return (
         <ProxyItemMini
           key={`${item.key}-${name}`}
@@ -97,7 +91,6 @@ export const ProxyRender = (props: RenderProps) => {
           selected={selectedName != null ? selectedName === name : false}
           showManualIcon={manualName != null && manualName === name}
           showType={headState?.showType}
-          itemDisplayName={itemDisplayName}
           onClick={() => onChangeProxy(group, proxyItem!)}
         />
       );
@@ -110,7 +103,6 @@ export const ProxyRender = (props: RenderProps) => {
     headState,
     onChangeProxy,
     getSelectedForGroup,
-    getDisplayNameForItem,
     getManualSelectionForGroup,
   ]);
 
@@ -217,9 +209,6 @@ export const ProxyRender = (props: RenderProps) => {
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
     const name = proxy?.name ?? "";
-    const resolved = getDisplayNameForItem?.(name);
-    const itemDisplayName =
-      resolved !== undefined && resolved !== name ? resolved : undefined;
     return (
       <ProxyItem
         group={group}
@@ -227,7 +216,6 @@ export const ProxyRender = (props: RenderProps) => {
         selected={selectedName != null ? selectedName === name : false}
         showManualIcon={manualName != null && manualName === name}
         showType={headState?.showType}
-        itemDisplayName={itemDisplayName}
         sx={{ py: 0, pl: 2 }}
         onClick={() => onChangeProxy(group, proxy!)}
       />
