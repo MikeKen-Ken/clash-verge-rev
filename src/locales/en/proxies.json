@@ -25,7 +25,9 @@
     },
     "labels": {
       "proxyCount": "Proxy Count",
-      "delayCheckReset": "Delay check to cancel fixed"
+      "delayCheckReset": "Delay check to cancel fixed",
+      "autoRefresh": "Auto refresh",
+      "autoRefreshInterval": "Interval (s)"
     },
     "tooltips": {
       "locate": "locate",

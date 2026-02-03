@@ -1,13 +1,21 @@
+import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import {
   Box,
   Button,
   ButtonGroup,
+  Checkbox,
+  FormControl,
   FormControlLabel,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   Switch,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
 
@@ -30,10 +38,14 @@ const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
 
+const AUTO_REFRESH_INTERVALS = [5, 10, 30, 60] as const;
+const STORAGE_KEY_AUTO_REFRESH = "proxies_auto_refresh";
+const STORAGE_KEY_AUTO_REFRESH_INTERVAL = "proxies_auto_refresh_interval";
+
 const ProxyPage = () => {
   const { t } = useTranslation();
 
-  const { clashConfig, refreshClashConfig } = useAppData();
+  const { clashConfig, refreshClashConfig, refreshProxy } = useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { clash, patchClash, mutateClash } = useClash();
   const { isTunModeAvailable } = useSystemState();
@@ -59,6 +71,63 @@ const ProxyPage = () => {
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
+
+  const [autoRefresh, setAutoRefresh] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_AUTO_REFRESH) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => {
+    try {
+      const v = parseInt(
+        localStorage.getItem(STORAGE_KEY_AUTO_REFRESH_INTERVAL) ?? "10",
+        10,
+      );
+      return AUTO_REFRESH_INTERVALS.includes(v) ? v : 10;
+    } catch {
+      return 10;
+    }
+  });
+  const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_AUTO_REFRESH, autoRefresh ? "1" : "0");
+      localStorage.setItem(
+        STORAGE_KEY_AUTO_REFRESH_INTERVAL,
+        String(autoRefreshInterval),
+      );
+    } catch {
+      // ignore
+    }
+  }, [autoRefresh, autoRefreshInterval]);
+
+  useEffect(() => {
+    if (!autoRefresh) {
+      if (autoRefreshTimerRef.current) {
+        clearInterval(autoRefreshTimerRef.current);
+        autoRefreshTimerRef.current = null;
+      }
+      return;
+    }
+    autoRefreshTimerRef.current = setInterval(() => {
+      refreshProxy().catch(() => {});
+    }, autoRefreshInterval * 1000);
+    return () => {
+      if (autoRefreshTimerRef.current) {
+        clearInterval(autoRefreshTimerRef.current);
+        autoRefreshTimerRef.current = null;
+      }
+    };
+  }, [autoRefresh, autoRefreshInterval, refreshProxy]);
+
+  const handleRefreshProxy = useLockFn(async () => {
+    await refreshProxy();
+  });
 
   const handleTunToggle = useLockFn(async (value: boolean) => {
     if (!isTunModeAvailable) {
@@ -129,6 +198,48 @@ const ProxyPage = () => {
           </Box>
 
           <Box display="flex" alignItems="center" gap={1} sx={{ ml: "auto" }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  size="small"
+                  checked={autoRefresh}
+                  onChange={(_, checked) => setAutoRefresh(checked)}
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
+                  {t("proxies.page.labels.autoRefresh")}
+                </Typography>
+              }
+            />
+            <FormControl size="small" sx={{ minWidth: 72 }} disabled={!autoRefresh}>
+              <InputLabel id="proxies-auto-refresh-interval">
+                {t("proxies.page.labels.autoRefreshInterval")}
+              </InputLabel>
+              <Select
+                labelId="proxies-auto-refresh-interval"
+                value={autoRefreshInterval}
+                label={t("proxies.page.labels.autoRefreshInterval")}
+                onChange={(e) =>
+                  setAutoRefreshInterval(Number(e.target.value) as 5 | 10 | 30 | 60)
+                }
+              >
+                {AUTO_REFRESH_INTERVALS.map((s) => (
+                  <MenuItem key={s} value={s}>
+                    {s} s
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Tooltip title={t("shared.actions.refresh")}>
+              <IconButton
+                size="small"
+                onClick={handleRefreshProxy}
+                aria-label={t("shared.actions.refresh")}
+              >
+                <RefreshRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <RuleProviderButton />
             <ProviderButton />
             <ButtonGroup size="small">

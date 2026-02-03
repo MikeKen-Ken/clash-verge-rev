@@ -25,7 +25,9 @@
     },
     "labels": {
       "proxyCount": "节点数量",
-      "delayCheckReset": "进行延迟测试，以取消固定"
+      "delayCheckReset": "进行延迟测试，以取消固定",
+      "autoRefresh": "自动刷新",
+      "autoRefreshInterval": "间隔（秒）"
     },
     "tooltips": {
       "locate": "当前节点",
