@@ -143,13 +143,13 @@ export const ProxyGroups = (props: Props) => {
       const result =
         coreNow === profileNow && profileNow != null ? profileNow : undefined;
 
-      if (typeLower === "fallback") {
+      // 调试：Selector/URLTest/Fallback 组渲染时打印，便于确认是否被调用及 match 结果
+      if (["selector", "url-test", "fallback"].includes(typeLower ?? "")) {
         console.log("[ManualPin] getManualSelectionForGroup", {
           groupName,
           groupType: group?.type,
           profileNow,
           coreNow,
-          profileSelected: current?.selected ?? [],
           match: coreNow === profileNow,
           result: result ?? "(不显示图钉)",
         });

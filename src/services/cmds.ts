@@ -605,12 +605,11 @@ export const repairService = async () => {
   return invoke<void>("repair_service");
 };
 
-// 系统服务是否可用
+// 系统服务是否可用（Sidecar 模式下未安装服务时失败为预期，不刷控制台）
 export const isServiceAvailable = async () => {
   try {
     return await invoke<boolean>("is_service_available");
-  } catch (error) {
-    console.error("Service check failed:", error);
+  } catch {
     return false;
   }
 };

@@ -59,6 +59,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       skipConfigSave: boolean = false,
     ) => {
       debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
+      console.log("[ProxySelection] 代理切换:", groupName, "->", proxyName);
       // 标记手动选择节点，在此后 10 秒内不发送 fallback 切换通知
       markManualProxySelectionStarted();
 

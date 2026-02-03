@@ -264,13 +264,7 @@ const Layout = () => {
         // TODO remove the 5000ms
         errorRetryInterval: 5000,
         onError: (error, key) => {
-          // FIXME the condition should not be handle gllobally
-          if (key !== "getAutotemProxy") {
-            console.error(`SWR Error for ${key}:`, error);
-            return;
-          }
-
-          // FIXME we need a better way to handle the retry when first booting app
+          // 启动阶段核心管道可能尚未就绪，这些 key 会重试成功，不刷控制台
           const silentKeys = [
             "getVersion",
             "getClashConfig",
@@ -278,7 +272,7 @@ const Layout = () => {
           ];
           if (silentKeys.includes(key)) return;
 
-          console.error(`[SWR Error] Key: ${key}, Error:`, error);
+          console.error(`SWR Error for ${key}:`, error);
         },
         dedupingInterval: 2000,
       }}
