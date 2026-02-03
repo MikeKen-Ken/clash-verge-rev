@@ -17,6 +17,8 @@ interface Props {
   /** 仅当为 true 时显示「手动选择」图标（Selector/URLTest/Fallback 组且 profile 与 core 一致时） */
   showManualIcon?: boolean;
   showType?: boolean;
+  /** 当该项是子分组时，展示「分组名 (该分组当前使用的节点)」 */
+  itemDisplayName?: string;
   onClick?: (name: string) => void;
 }
 
@@ -28,6 +30,7 @@ export const ProxyItemMini = (props: Props) => {
     selected,
     showManualIcon = false,
     showType = true,
+    itemDisplayName,
     onClick,
   } = props;
 
@@ -151,7 +154,7 @@ export const ProxyItemMini = (props: Props) => {
       ]}
     >
       <Box
-        title={`${proxy.name}\n${proxy.now ?? ""}`}
+        title={`${itemDisplayName ?? proxy.name}\n${proxy.now ?? ""}`}
         sx={{ overflow: "hidden" }}
       >
         <Typography
@@ -167,7 +170,7 @@ export const ProxyItemMini = (props: Props) => {
             whiteSpace: "nowrap",
           }}
         >
-          {showManualIcon && group.type !== "Fallback" && (
+          {showManualIcon && group.type?.toLowerCase() !== "fallback" && (
             <LabelOutlined
               sx={{
                 fontSize: 14,
@@ -178,7 +181,7 @@ export const ProxyItemMini = (props: Props) => {
               titleAccess="manual"
             />
           )}
-          {proxy.name}
+          {itemDisplayName ?? proxy.name}
         </Typography>
 
         {showType && (
@@ -300,7 +303,7 @@ export const ProxyItemMini = (props: Props) => {
             />
           )}
       </Box>
-      {showManualIcon && group.type === "Fallback" && (
+      {showManualIcon && group.type?.toLowerCase() === "fallback" && (
         <span className="the-pin" title="manual">
           📌
         </span>

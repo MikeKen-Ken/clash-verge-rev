@@ -64,6 +64,12 @@ export const AppDataProvider = ({
   );
 
   const hasTriggeredStartupFallback = useRef(false);
+  /** 首次加载后轮询时记录的「所有组」初始 now，用于判断核心是否已应用 profile selected 等 */
+  const initialNowAllGroupsRef = useRef<Map<string, string> | null>(null);
+  const initialPollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const initialPollingCountRef = useRef(0);
   /** 启动轮询时记录的 url-test/fallback 各组初始 now，用于判断核心是否已更新 */
   const initialNowByGroupRef = useRef<Map<string, string> | null>(null);
   const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,6 +77,39 @@ export const AppDataProvider = ({
 
   const POLL_INTERVAL_MS = 1500;
   const POLL_MAX_COUNT = 16;
+  const INITIAL_POLL_INTERVAL_MS = 1000;
+  const INITIAL_POLL_MAX_COUNT = 12;
+
+  // 首次加载代理数据后轮询刷新，直到至少有一个组的 now 变化或达到最大次数，使 Selector 等组的 now 与核心一致
+  useEffect(() => {
+    if (!proxiesData?.groups?.length || initialNowAllGroupsRef.current != null) {
+      return;
+    }
+    const groups = proxiesData.groups as IProxyGroupItem[];
+    initialNowAllGroupsRef.current = new Map(
+      groups.map((g) => [g.name, g.now ?? ""]),
+    );
+    initialPollingCountRef.current = 0;
+
+    const scheduleNext = () => {
+      initialPollingTimerRef.current = setTimeout(() => {
+        initialPollingTimerRef.current = null;
+        initialPollingCountRef.current += 1;
+        refreshProxy().catch(() => {});
+        if (initialPollingCountRef.current < INITIAL_POLL_MAX_COUNT) {
+          scheduleNext();
+        }
+      }, INITIAL_POLL_INTERVAL_MS);
+    };
+    scheduleNext();
+
+    return () => {
+      if (initialPollingTimerRef.current != null) {
+        clearTimeout(initialPollingTimerRef.current);
+        initialPollingTimerRef.current = null;
+      }
+    };
+  }, [proxiesData?.groups?.length, refreshProxy]);
 
   // 启动时触发 url-test/fallback 组的测速，然后轮询代理数据直到各组的 now 已更新或达到最大次数
   useEffect(() => {
@@ -124,6 +163,26 @@ export const AppDataProvider = ({
       }
     };
   }, [proxiesData, refreshProxy]);
+
+  // 每次代理数据更新后检查：若至少有一个组的 now 相对「首次加载」初始值变化，或已达最大轮询次数，则停止首次轮询
+  useEffect(() => {
+    const initialAll = initialNowAllGroupsRef.current;
+    if (initialAll == null || !proxiesData?.groups?.length) return;
+
+    const groups = proxiesData.groups as IProxyGroupItem[];
+    const anyChanged = groups.some(
+      (g) => (g.now ?? "") !== initialAll.get(g.name),
+    );
+    const overLimit = initialPollingCountRef.current >= INITIAL_POLL_MAX_COUNT;
+
+    if (anyChanged || overLimit) {
+      initialNowAllGroupsRef.current = null;
+      if (initialPollingTimerRef.current != null) {
+        clearTimeout(initialPollingTimerRef.current);
+        initialPollingTimerRef.current = null;
+      }
+    }
+  }, [proxiesData]);
 
   // 每次代理数据更新后检查：若所有 url-test/fallback 的 now 已相对初始值变化，或已达最大轮询次数，则停止轮询
   useEffect(() => {

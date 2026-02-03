@@ -124,15 +124,26 @@ export const ProxyGroups = (props: Props) => {
     [selectedByGroup],
   );
 
+  // 当列表项是子分组时，返回「分组名 (该分组当前使用的节点)」用于展示
+  const getDisplayNameForItem = useCallback(
+    (proxyName: string): string => {
+      if (!selectedByGroup.has(proxyName)) return proxyName;
+      const now = selectedByGroup.get(proxyName) ?? "";
+      return getDisplayNowForGroup({ name: proxyName, now });
+    },
+    [selectedByGroup, getDisplayNowForGroup],
+  );
+
   // Selector / URLTest / Fallback 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」
   const getManualSelectionForGroup = useCallback(
     (groupName: string): string | undefined => {
       const group = groups?.find(
         (g: { name: string; type: string }) => g.name === groupName,
       );
+      const typeLower = group?.type?.toLowerCase();
       if (
         !group ||
-        !["Selector", "URLTest", "Fallback"].includes(group.type)
+        !["selector", "url-test", "fallback"].includes(typeLower ?? "")
       )
         return undefined;
       const entry = (current?.selected ?? []).find((s) => s.name === groupName);
@@ -594,6 +605,7 @@ export const ProxyGroups = (props: Props) => {
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
                   getDisplayNowForGroup={getDisplayNowForGroup}
+                  getDisplayNameForItem={getDisplayNameForItem}
                   getManualSelectionForGroup={getManualSelectionForGroup}
                   isChainMode={isChainMode}
                 />
@@ -721,6 +733,7 @@ export const ProxyGroups = (props: Props) => {
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
             getDisplayNowForGroup={getDisplayNowForGroup}
+            getDisplayNameForItem={getDisplayNameForItem}
           />
         )}
       />
