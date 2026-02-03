@@ -86,10 +86,9 @@ export const ProxyRender = (props: RenderProps) => {
     const manualName = getManualSelectionForGroup?.(group.name);
     return proxyCol.map((proxyItem) => {
       const name = proxyItem?.name ?? "unknown";
+      const resolved = getDisplayNameForItem?.(name);
       const itemDisplayName =
-        getDisplayNameForItem?.(name) !== name
-          ? getDisplayNameForItem(name)
-          : undefined;
+        resolved !== undefined && resolved !== name ? resolved : undefined;
       return (
         <ProxyItemMini
           key={`${item.key}-${name}`}
@@ -218,10 +217,9 @@ export const ProxyRender = (props: RenderProps) => {
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
     const name = proxy?.name ?? "";
+    const resolved = getDisplayNameForItem?.(name);
     const itemDisplayName =
-      getDisplayNameForItem?.(name) !== name
-        ? getDisplayNameForItem(name)
-        : undefined;
+      resolved !== undefined && resolved !== name ? resolved : undefined;
     return (
       <ProxyItem
         group={group}
