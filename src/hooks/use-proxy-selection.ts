@@ -178,13 +178,11 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => runRefresh("二次", delayMs2), delayMs2);
           setTimeout(() => runRefresh("三次(兜底)", delayMs3), delayMs3);
 
-          // 选择后连续 5s 轮询：若提供 onRefreshSelectedNodeOnly 则只刷新当前节点延迟，否则全量刷新
-          for (let i = 1; i <= 5; i++) {
-            setTimeout(
-              () => runRefreshSelectedNodeOnly(`轮询(${i}s)`, 1000 * i),
-              1000 * i,
-            );
-          }
+          // 选择后 3.5s 时查询一次：若提供 onRefreshSelectedNodeOnly 则只刷新当前节点延迟，否则全量刷新
+          setTimeout(
+            () => runRefreshSelectedNodeOnly("轮询(3.5s)", 3500),
+            3500,
+          );
 
           // 最后兜底：如果 3 秒后核心还没更新，说明切换失败，回退 profile.selected
           setTimeout(async () => {
