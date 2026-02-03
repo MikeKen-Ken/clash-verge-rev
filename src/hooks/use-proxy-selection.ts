@@ -178,8 +178,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => runRefresh("二次", delayMs2), delayMs2);
           setTimeout(() => runRefresh("三次(兜底)", delayMs3), delayMs3);
 
-          // 选择后连续 10s 轮询：若提供 onRefreshSelectedNodeOnly 则只刷新当前节点延迟，否则全量刷新
-          for (let i = 1; i <= 10; i++) {
+          // 选择后连续 5s 轮询：若提供 onRefreshSelectedNodeOnly 则只刷新当前节点延迟，否则全量刷新
+          for (let i = 1; i <= 5; i++) {
             setTimeout(
               () => runRefreshSelectedNodeOnly(`轮询(${i}s)`, 1000 * i),
               1000 * i,
