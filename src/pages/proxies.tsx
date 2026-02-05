@@ -149,17 +149,17 @@ const ProxyPage = () => {
     await patchVerge({ enable_tun_mode: value });
   });
 
-  const healthTimeoutMs = verge?.health_check_timeout_ms ?? DEFAULT_HEALTH_TIMEOUT_MS;
-  const healthSelectedTimeoutMs = verge?.health_check_selected_timeout_ms ?? DEFAULT_HEALTH_SELECTED_TIMEOUT_MS;
-  const healthFailureResetMs = verge?.health_check_failure_reset_interval_ms ?? DEFAULT_HEALTH_FAILURE_RESET_MS;
-
-  const handleHealthCheckChange = useLockFn(
-    async (field: "health_check_timeout_ms" | "health_check_selected_timeout_ms" | "health_check_failure_reset_interval_ms", value: number) => {
-      const payload = { [field]: value > 0 ? value : undefined };
-      mutateVerge({ ...verge, ...payload }, false);
-      await patchVerge(payload);
-    },
-  );
+  /** 只接受预设值或 undefined，避免写入异常大数或字符串 */
+  const clampHealthValue = (
+    raw: string,
+  ): number | undefined => {
+    if (raw === "") return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) return undefined;
+    return (HEALTH_CHECK_PRESETS as readonly number[]).includes(n)
+      ? n
+      : undefined;
+  };
 
   return (
     <BasePage
@@ -228,10 +228,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v =
-                      e.target.value === ""
-                        ? undefined
-                        : Number(e.target.value);
+                    const v = clampHealthValue(
+                      typeof e.target.value === "string"
+                        ? e.target.value
+                        : String(e.target.value),
+                    );
                     mutateVerge(
                       { ...verge, health_check_timeout: v },
                       false,
@@ -267,10 +268,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v =
-                      e.target.value === ""
-                        ? undefined
-                        : Number(e.target.value);
+                    const v = clampHealthValue(
+                      typeof e.target.value === "string"
+                        ? e.target.value
+                        : String(e.target.value),
+                    );
                     mutateVerge(
                       { ...verge, health_check_selected_timeout: v },
                       false,
@@ -310,10 +312,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v =
-                      e.target.value === ""
-                        ? undefined
-                        : Number(e.target.value);
+                    const v = clampHealthValue(
+                      typeof e.target.value === "string"
+                        ? e.target.value
+                        : String(e.target.value),
+                    );
                     mutateVerge(
                       { ...verge, health_check_failure_reset_interval: v },
                       false,

@@ -35,10 +35,10 @@ export const AppDataProvider = ({
 
   useEffect(() => {
     setDefaultHealthCheck({
-      timeout: verge?.health_check_timeout_ms,
-      selectedTimeout: verge?.health_check_selected_timeout_ms,
+      timeout: verge?.health_check_timeout,
+      selectedTimeout: verge?.health_check_selected_timeout,
     });
-  }, [verge?.health_check_timeout_ms, verge?.health_check_selected_timeout_ms]);
+  }, [verge?.health_check_timeout, verge?.health_check_selected_timeout]);
 
   const { data: proxiesData, mutate: refreshProxy } = useSWR(
     "getProxies",

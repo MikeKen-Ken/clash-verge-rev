@@ -566,11 +566,20 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     config
 }
 
+/// 健康检测数值合理上限（60 秒），避免写入异常大数
+const HEALTH_CHECK_MAX_MS: u64 = 60_000;
+
 /// 将 verge 中的健康检测值强制覆盖到 url-test/fallback 组（覆盖配置文件中已有设置）
 fn apply_health_check_defaults(mut config: Mapping, verge: &IVerge) -> Mapping {
-    let timeout = verge.health_check_timeout.filter(|&v| v > 0);
-    let selected_timeout = verge.health_check_selected_timeout.filter(|&v| v > 0);
-    let failure_reset = verge.health_check_failure_reset_interval.filter(|&v| v > 0);
+    let timeout = verge
+        .health_check_timeout
+        .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);
+    let selected_timeout = verge
+        .health_check_selected_timeout
+        .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);
+    let failure_reset = verge
+        .health_check_failure_reset_interval
+        .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);
     if timeout.is_none() && selected_timeout.is_none() && failure_reset.is_none() {
         return config;
     }
