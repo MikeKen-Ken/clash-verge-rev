@@ -2,6 +2,7 @@ import { OpenInNewRounded } from "@mui/icons-material";
 import { Button, styled, Box, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
+import { useRuleProviderUrls } from "@/hooks/use-rule-provider-urls";
 import { useAppData } from "@/providers/app-data-context";
 import { openWebUrl } from "@/services/cmds";
 
@@ -40,11 +41,13 @@ const RuleItem = (props: Props) => {
   const { index, value } = props;
   const { t } = useTranslation();
   const { ruleProviders } = useAppData();
+  const ruleProviderUrls = useRuleProviderUrls();
   const isRuleSet = value.type === "RuleSet" && value.payload;
   const provider = isRuleSet
     ? (ruleProviders?.[value.payload] as IRuleProviderItem | undefined)
     : undefined;
-  const providerUrl = provider?.url;
+  const providerUrl =
+    provider?.url ?? (isRuleSet && value.payload ? ruleProviderUrls[value.payload] : undefined);
 
   const handleOpenRepo = () => {
     if (providerUrl) openWebUrl(providerUrl);

@@ -7,11 +7,9 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
-  InputAdornment,
   MenuItem,
   Select,
   Switch,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -46,6 +44,9 @@ const STORAGE_KEY_AUTO_REFRESH_INTERVAL = "proxies_auto_refresh_interval";
 const DEFAULT_HEALTH_TIMEOUT_MS = 250;
 const DEFAULT_HEALTH_SELECTED_TIMEOUT_MS = 3000;
 const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
+
+/** 健康检测相关下拉预设（ms） */
+const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -215,90 +216,127 @@ const ProxyPage = () => {
               }
             />
             <Tooltip title={t("proxies.page.labels.healthCheckTimeout")}>
-              <TextField
-                size="small"
-                type="number"
-                placeholder="250"
-                value={verge?.health_check_timeout ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value ? Number(e.target.value) : undefined;
-                  mutateVerge(
-                    { ...verge, health_check_timeout: v },
-                    false,
-                  );
-                  void patchVerge({
-                    health_check_timeout: v,
-                  });
-                }}
-                slotProps={{
-                  input: {
-                    sx: { width: 56 },
-                    endAdornment: (
-                      <InputAdornment position="end">ms</InputAdornment>
-                    ),
-                  },
-                }}
-              />
+              <FormControl size="small" sx={{ minWidth: 88 }}>
+                <Select
+                  value={
+                    verge?.health_check_timeout != null &&
+                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                      verge.health_check_timeout,
+                    )
+                      ? verge.health_check_timeout
+                      : ""
+                  }
+                  displayEmpty
+                  onChange={(e) => {
+                    const v =
+                      e.target.value === ""
+                        ? undefined
+                        : Number(e.target.value);
+                    mutateVerge(
+                      { ...verge, health_check_timeout: v },
+                      false,
+                    );
+                    void patchVerge({ health_check_timeout: v });
+                  }}
+                  sx={{ height: 32 }}
+                  renderValue={(v) =>
+                    v === "" ? "—" : `${v} ms`
+                  }
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  {HEALTH_CHECK_PRESETS.map((n) => (
+                    <MenuItem key={n} value={n}>
+                      {n} ms
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Tooltip>
             <Tooltip title={t("proxies.page.labels.healthCheckSelectedTimeout")}>
-              <TextField
-                size="small"
-                type="number"
-                placeholder="3000"
-                value={verge?.health_check_selected_timeout ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value
-                    ? Number(e.target.value)
-                    : undefined;
-                  mutateVerge(
-                    { ...verge, health_check_selected_timeout: v },
-                    false,
-                  );
-                  void patchVerge({
-                    health_check_selected_timeout: v,
-                  });
-                }}
-                slotProps={{
-                  input: {
-                    sx: { width: 56 },
-                    endAdornment: (
-                      <InputAdornment position="end">ms</InputAdornment>
-                    ),
-                  },
-                }}
-              />
+              <FormControl size="small" sx={{ minWidth: 88 }}>
+                <Select
+                  value={
+                    verge?.health_check_selected_timeout != null &&
+                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                      verge.health_check_selected_timeout,
+                    )
+                      ? verge.health_check_selected_timeout
+                      : ""
+                  }
+                  displayEmpty
+                  onChange={(e) => {
+                    const v =
+                      e.target.value === ""
+                        ? undefined
+                        : Number(e.target.value);
+                    mutateVerge(
+                      { ...verge, health_check_selected_timeout: v },
+                      false,
+                    );
+                    void patchVerge({ health_check_selected_timeout: v });
+                  }}
+                  sx={{ height: 32 }}
+                  renderValue={(v) =>
+                    v === "" ? "—" : `${v} ms`
+                  }
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  {HEALTH_CHECK_PRESETS.map((n) => (
+                    <MenuItem key={n} value={n}>
+                      {n} ms
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Tooltip>
             <Tooltip
               title={t(
                 "proxies.page.labels.healthCheckFailureResetInterval",
               )}
             >
-              <TextField
-                size="small"
-                type="number"
-                placeholder="5000"
-                value={verge?.health_check_failure_reset_interval ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value
-                    ? Number(e.target.value)
-                    : undefined;
-                  mutateVerge(
-                    { ...verge, health_check_failure_reset_interval: v },
-                    false,
-                  );
-                  void patchVerge({
-                    health_check_failure_reset_interval: v,
-                  });
-                }}
-                slotProps={{
-                  input: {
-                    sx: { width: 56 },
-                    endAdornment: (
-                      <InputAdornment position="end">ms</InputAdornment>
-                    ),
-                  },
-                }}
-              />
+              <FormControl size="small" sx={{ minWidth: 88 }}>
+                <Select
+                  value={
+                    verge?.health_check_failure_reset_interval != null &&
+                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                      verge.health_check_failure_reset_interval,
+                    )
+                      ? verge.health_check_failure_reset_interval
+                      : ""
+                  }
+                  displayEmpty
+                  onChange={(e) => {
+                    const v =
+                      e.target.value === ""
+                        ? undefined
+                        : Number(e.target.value);
+                    mutateVerge(
+                      { ...verge, health_check_failure_reset_interval: v },
+                      false,
+                    );
+                    void patchVerge({
+                      health_check_failure_reset_interval: v,
+                    });
+                  }}
+                  sx={{ height: 32 }}
+                  renderValue={(v) =>
+                    v === "" ? "—" : `${v} ms`
+                  }
+                >
+                  <MenuItem value="">
+                    <em>—</em>
+                  </MenuItem>
+                  {HEALTH_CHECK_PRESETS.map((n) => (
+                    <MenuItem key={n} value={n}>
+                      {n} ms
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Tooltip>
           </Box>
 
