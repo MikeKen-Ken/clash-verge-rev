@@ -169,6 +169,8 @@ export const ProviderButton = () => {
                 const time = dayjs(provider.updatedAt);
                 const isUpdating = updating[key];
 
+                const providerUrl = (provider as IRuleProviderItem).url;
+
                 return (
                   <ListItem
                     key={key}
@@ -177,8 +179,10 @@ export const ProviderButton = () => {
                         p: 0,
                         mb: "8px",
                         borderRadius: 2,
-                        overflow: "hidden",
+                        overflow: "visible",
                         transition: "all 0.2s",
+                        display: "flex",
+                        alignItems: "stretch",
                       },
                       ({ palette: { mode, primary } }) => {
                         const bgcolor =
@@ -199,7 +203,7 @@ export const ProviderButton = () => {
                     ]}
                   >
                     <ListItemText
-                      sx={{ px: 2, py: 1 }}
+                      sx={{ px: 2, py: 1, flex: "1 1 0", minWidth: 0 }}
                       primary={
                         <Box
                           sx={{
@@ -248,21 +252,21 @@ export const ProviderButton = () => {
                         display: "flex",
                         alignItems: "center",
                         gap: 0.5,
+                        flexShrink: 0,
+                        pr: 1,
                       }}
                     >
-                      {(provider as IRuleProviderItem).url ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() =>
-                            openWebUrl((provider as IRuleProviderItem).url!)
-                          }
-                          startIcon={<OpenInNewRounded fontSize="small" />}
-                          sx={{ minWidth: "auto" }}
-                        >
-                          {t("rules.page.provider.actions.openRepo")}
-                        </Button>
-                      ) : null}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={!providerUrl}
+                        onClick={() => providerUrl && openWebUrl(providerUrl)}
+                        startIcon={<OpenInNewRounded fontSize="small" />}
+                        sx={{ minWidth: "auto" }}
+                        title={providerUrl ? undefined : ""}
+                      >
+                        {t("rules.page.provider.actions.openRepo")}
+                      </Button>
                       <IconButton
                         size="small"
                         color="primary"

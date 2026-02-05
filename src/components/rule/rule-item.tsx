@@ -40,10 +40,10 @@ const RuleItem = (props: Props) => {
   const { index, value } = props;
   const { t } = useTranslation();
   const { ruleProviders } = useAppData();
-  const provider =
-    value.type === "RuleSet" && value.payload
-      ? (ruleProviders?.[value.payload] as IRuleProviderItem | undefined)
-      : undefined;
+  const isRuleSet = value.type === "RuleSet" && value.payload;
+  const provider = isRuleSet
+    ? (ruleProviders?.[value.payload] as IRuleProviderItem | undefined)
+    : undefined;
   const providerUrl = provider?.url;
 
   const handleOpenRepo = () => {
@@ -96,11 +96,12 @@ const RuleItem = (props: Props) => {
         </Typography>
       </Box>
 
-      {providerUrl ? (
+      {isRuleSet ? (
         <Box component="span" sx={{ flexShrink: 0, ml: 1 }}>
           <Button
             size="small"
             variant="text"
+            disabled={!providerUrl}
             onClick={handleOpenRepo}
             startIcon={<OpenInNewRounded fontSize="small" />}
             sx={{ minWidth: "auto", px: 1, py: 0.25 }}
