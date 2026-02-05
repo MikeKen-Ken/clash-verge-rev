@@ -24,7 +24,7 @@ import {
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useNavigate } from "react-router";
 import { SWRConfig } from "swr";
@@ -34,13 +34,10 @@ import iconLight from "@/assets/image/icon_light.svg?react";
 import LogoSvg from "@/assets/image/logo.svg?react";
 import { BaseErrorBoundary } from "@/components/base";
 import { LayoutItem } from "@/components/layout/layout-item";
-import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { NoticeManager } from "@/components/layout/notice-manager";
-import { UpdateButton } from "@/components/layout/update-button";
 import { WindowControls } from "@/components/layout/window-controller";
 import { useCloseAllWithDelayCheck } from "@/hooks/use-close-all-with-delay-check";
 import { useFallbackSwitchNotify } from "@/hooks/use-fallback-switch-notify";
-import { useI18n } from "@/hooks/use-i18n";
 import { useVerge } from "@/hooks/use-verge";
 import { useWindowDecorations } from "@/hooks/use-window";
 import { useThemeMode } from "@/services/states";
@@ -118,9 +115,7 @@ const Layout = () => {
   const { t } = useTranslation();
   const { theme } = useCustomTheme();
   const { verge, mutateVerge, patchVerge } = useVerge();
-  const { language } = verge ?? {};
   const navCollapsed = verge?.collapse_navbar ?? false;
-  const { switchLanguage } = useI18n();
   const navigate = useNavigate();
   const themeReady = useMemo(() => Boolean(theme), [theme]);
 
@@ -233,13 +228,6 @@ const Layout = () => {
 
   useLayoutEvents(handleNotice);
 
-  useEffect(() => {
-    if (language) {
-      dayjs.locale(language === "zh" ? "zh-cn" : language);
-      switchLanguage(language);
-    }
-  }, [language, switchLanguage]);
-
   if (!themeReady) {
     return (
       <div
@@ -351,7 +339,6 @@ const Layout = () => {
                   />
                   <LogoSvg fill={isDark ? "white" : "black"} />
                 </div>
-                <UpdateButton className="the-newbtn" />
               </div>
 
               {menuUnlocked && (
@@ -467,10 +454,6 @@ const Layout = () => {
                   {t("layout.components.navigation.menu.restoreDefaultOrder")}
                 </MenuItem>
               </Menu>
-
-              <div className="the-traffic">
-                <LayoutTraffic />
-              </div>
             </div>
 
             <div className="layout-content__right">

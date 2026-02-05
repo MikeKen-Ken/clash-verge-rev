@@ -27,6 +27,7 @@ const SettingVergeBasic = ({ onError, embedded }: Props) => {
 
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { theme_mode, startup_script, start_page } = verge ?? {};
+  const defaultStartPage = "/proxies";
   const configRef = useRef<DialogRef>(null);
   const hotkeyRef = useRef<DialogRef>(null);
   const miscRef = useRef<DialogRef>(null);
@@ -64,20 +65,20 @@ const SettingVergeBasic = ({ onError, embedded }: Props) => {
         label={t("settings.components.verge.basic.fields.startPage")}
       >
         <GuardState
-          value={start_page ?? "/"}
+          value={start_page ?? defaultStartPage}
           onCatch={onError}
           onFormat={(e: any) => e.target.value}
           onChange={(e) => onChangeData({ start_page: e })}
           onGuard={(e) => patchVerge({ start_page: e })}
         >
           <Select size="small" sx={{ width: 140, "> div": { py: "7.5px" } }}>
-            {navItems.map((page: { label: string; path: string }) => {
-              return (
+            {navItems
+              .filter((page) => page.path !== "/")
+              .map((page: { label: string; path: string }) => (
                 <MenuItem key={page.path} value={page.path}>
                   {t(page.label)}
                 </MenuItem>
-              );
-            })}
+              ))}
           </Select>
         </GuardState>
       </SettingItem>

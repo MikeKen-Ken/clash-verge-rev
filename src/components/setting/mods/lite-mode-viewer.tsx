@@ -13,7 +13,6 @@ import { useTranslation } from "react-i18next";
 
 import { BaseDialog, DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { useVerge } from "@/hooks/use-verge";
-import { entry_lightweight_mode } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 
 export function LiteModeViewer({ ref }: { ref?: Ref<DialogRef> }) {
@@ -61,23 +60,6 @@ export function LiteModeViewer({ ref }: { ref?: Ref<DialogRef> }) {
       onOk={onSave}
     >
       <List>
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText
-            primary={t("settings.modals.liteMode.actions.enterNow")}
-          />
-          <Typography
-            variant="button"
-            sx={{
-              cursor: "pointer",
-              color: "primary.main",
-              "&:hover": { textDecoration: "underline" },
-            }}
-            onClick={async () => await entry_lightweight_mode()}
-          >
-            {t("shared.actions.enable")}
-          </Typography>
-        </ListItem>
-
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText
             primary={t("settings.modals.liteMode.toggles.autoEnter")}
