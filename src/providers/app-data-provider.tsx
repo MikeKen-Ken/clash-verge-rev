@@ -21,7 +21,7 @@ import {
   getSystemProxy,
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
-import delayManager from "@/services/delay";
+import delayManager, { setDefaultHealthCheck } from "@/services/delay";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -32,6 +32,13 @@ export const AppDataProvider = ({
   children: React.ReactNode;
 }) => {
   const { verge } = useVerge();
+
+  useEffect(() => {
+    setDefaultHealthCheck({
+      timeout: verge?.health_check_timeout_ms,
+      selectedTimeout: verge?.health_check_selected_timeout_ms,
+    });
+  }, [verge?.health_check_timeout_ms, verge?.health_check_selected_timeout_ms]);
 
   const { data: proxiesData, mutate: refreshProxy } = useSWR(
     "getProxies",

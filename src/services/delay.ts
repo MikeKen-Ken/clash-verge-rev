@@ -7,20 +7,42 @@ const hashKey = (name: string, group: string) => `${group ?? ""}::${name}`;
 /** 配置里未指定时的默认超时（与 core GroupBase 一致） */
 export const DEFAULT_GROUP_TIMEOUT_MS = 5000;
 
+/** 由设置页/代理页快捷设置写入的全局默认（verge health_check_*），组未配置时使用 */
+let defaultHealthCheckOverrides: {
+  timeout?: number;
+  selectedTimeout?: number;
+} = {};
+
+/**
+ * 设置健康检测默认超时（来自 verge 快捷设置），组配置未指定时使用。
+ */
+export function setDefaultHealthCheck(overrides: {
+  timeout?: number;
+  selectedTimeout?: number;
+}) {
+  defaultHealthCheckOverrides = overrides ?? {};
+}
+
 /**
  * 从代理组配置取测速超时：仅当该节点为「手动选择」时用 selected-timeout，否则用 timeout。
+ * 组未配置时使用 verge 快捷设置（setDefaultHealthCheck）或 DEFAULT_GROUP_TIMEOUT_MS。
  */
 export function getGroupDelayTimeout(
   group: { timeout?: number; selectedTimeout?: number } | null | undefined,
   isManualSelection: boolean,
 ): number {
-  if (!group) return DEFAULT_GROUP_TIMEOUT_MS;
-  if (isManualSelection && group.selectedTimeout != null && group.selectedTimeout > 0) {
-    return group.selectedTimeout;
+  if (isManualSelection) {
+    const fromGroup = group?.selectedTimeout;
+    if (fromGroup != null && fromGroup > 0) return fromGroup;
+    const fromVerge = defaultHealthCheckOverrides.selectedTimeout;
+    if (fromVerge != null && fromVerge > 0) return fromVerge;
+    return DEFAULT_GROUP_TIMEOUT_MS;
   }
-  return group.timeout != null && group.timeout > 0
-    ? group.timeout
-    : DEFAULT_GROUP_TIMEOUT_MS;
+  const fromGroup = group?.timeout;
+  if (fromGroup != null && fromGroup > 0) return fromGroup;
+  const fromVerge = defaultHealthCheckOverrides.timeout;
+  if (fromVerge != null && fromVerge > 0) return fromVerge;
+  return group ? DEFAULT_GROUP_TIMEOUT_MS : DEFAULT_GROUP_TIMEOUT_MS;
 }
 
 export interface DelayUpdate {

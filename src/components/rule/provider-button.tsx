@@ -17,7 +17,7 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateRuleProvider } from "tauri-plugin-mihomo-api";
 
@@ -46,6 +46,17 @@ export const ProviderButton = () => {
 
   // 检查是否有提供者
   const hasProviders = Object.keys(ruleProviders || {}).length > 0;
+
+  // 调试：弹窗打开时打印规则集 API 返回的完整数据，查看是否包含 url 字段
+  useEffect(() => {
+    if (open && ruleProviders) {
+      const entries = Object.entries(ruleProviders);
+      console.log("[规则集弹窗] 共", entries.length, "个规则集, 完整数据:", JSON.stringify(ruleProviders, null, 2));
+      entries.forEach(([name, p]) => {
+        console.log("[规则集]", name, "url=", (p as Record<string, unknown>).url, "keys=", Object.keys(p));
+      });
+    }
+  }, [open, ruleProviders]);
 
   // 更新单个规则提供者
   const updateProvider = useLockFn(async (name: string) => {
@@ -170,6 +181,7 @@ export const ProviderButton = () => {
                 const isUpdating = updating[key];
 
                 const providerUrl = (provider as IRuleProviderItem).url;
+                console.log("[规则集]", key, "url:", providerUrl, "vehicleType:", provider.vehicleType, "raw keys:", Object.keys(provider));
 
                 return (
                   <ListItem

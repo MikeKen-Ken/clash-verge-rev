@@ -190,6 +190,11 @@ export const CurrentProxyCard = () => {
   const isGlobalMode = mode === "global";
   const isDirectMode = mode === "direct";
 
+  // 日志：便于排查按钮/选择器被禁用的原因
+  useEffect(() => {
+    console.log("[CurrentProxyCard] mode:", mode, "isDirectMode:", isDirectMode, "isGlobalMode:", isGlobalMode, "| refreshDelay disabled:", isDirectMode, "| groupSelect disabled:", isGlobalMode || isDirectMode, "| proxySelect disabled:", isDirectMode);
+  }, [mode, isDirectMode, isGlobalMode]);
+
   // Sorting type state
   const [sortType, setSortType] = useState<ProxySortType>(() => {
     const savedSortType = localStorage.getItem(STORAGE_KEY_SORT_TYPE);

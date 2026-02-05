@@ -566,6 +566,41 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     config
 }
 
+/// 将 verge 中的健康检测值强制覆盖到 url-test/fallback 组（覆盖配置文件中已有设置）
+fn apply_health_check_defaults(mut config: Mapping, verge: &IVerge) -> Mapping {
+    let timeout = verge.health_check_timeout.filter(|&v| v > 0);
+    let selected_timeout = verge.health_check_selected_timeout.filter(|&v| v > 0);
+    let failure_reset = verge.health_check_failure_reset_interval.filter(|&v| v > 0);
+    if timeout.is_none() && selected_timeout.is_none() && failure_reset.is_none() {
+        return config;
+    }
+
+    if let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") {
+        for group in groups.iter_mut() {
+            if let Some(group_map) = group.as_mapping_mut() {
+                let type_str = group_map
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .map(str::to_lowercase)
+                    .unwrap_or_default();
+                if type_str != "url-test" && type_str != "fallback" {
+                    continue;
+                }
+                if let Some(v) = timeout {
+                    group_map.insert("timeout".into(), v.into());
+                }
+                if let Some(v) = selected_timeout {
+                    group_map.insert("selected-timeout".into(), v.into());
+                }
+                if let Some(v) = failure_reset {
+                    group_map.insert("failure-reset-interval".into(), v.into());
+                }
+            }
+        }
+    }
+    config
+}
+
 async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> Mapping {
     if enable_dns_settings && let Ok(app_dir) = dirs::app_home_dir() {
         let dns_path = app_dir.join(constants::files::DNS_CONFIG);
@@ -662,6 +697,12 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     let mut config = apply_builtin_scripts(config, clash_core, enable_builtin);
 
     config = cleanup_proxy_groups(config);
+
+    {
+        let verge = Config::verge().await;
+        let verge_arc = verge.latest_arc();
+        config = apply_health_check_defaults(config, &*verge_arc);
+    }
 
     // 只根据「TUN 模式」开关设置 tun.enable，不覆写订阅/配置里的 TUN 配置（stack、device 等）
     config = use_tun(config, enable_tun);

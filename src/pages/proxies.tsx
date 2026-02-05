@@ -7,9 +7,11 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   MenuItem,
   Select,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -41,6 +43,10 @@ const AUTO_REFRESH_INTERVALS = [5, 10, 30, 60] as const;
 const STORAGE_KEY_AUTO_REFRESH = "proxies_auto_refresh";
 const STORAGE_KEY_AUTO_REFRESH_INTERVAL = "proxies_auto_refresh_interval";
 
+const DEFAULT_HEALTH_TIMEOUT_MS = 250;
+const DEFAULT_HEALTH_SELECTED_TIMEOUT_MS = 3000;
+const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
+
 const ProxyPage = () => {
   const { t } = useTranslation();
 
@@ -53,6 +59,11 @@ const ProxyPage = () => {
 
   const normalizedMode = clashConfig?.mode?.toLowerCase();
   const curMode = isMode(normalizedMode) ? normalizedMode : undefined;
+
+  // 日志：便于排查代理页按钮/控件被禁用的原因
+  useEffect(() => {
+    console.log("[Proxies] curMode:", curMode, "isTunModeAvailable:", isTunModeAvailable, "autoRefresh:", autoRefresh, "| Tun Switch disabled:", !isTunModeAvailable, "| Interval Select disabled:", !autoRefresh);
+  }, [curMode, isTunModeAvailable, autoRefresh]);
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
     if (mode !== curMode && verge?.auto_close_connection) {
@@ -142,6 +153,18 @@ const ProxyPage = () => {
     await patchVerge({ enable_tun_mode: value });
   });
 
+  const healthTimeoutMs = verge?.health_check_timeout_ms ?? DEFAULT_HEALTH_TIMEOUT_MS;
+  const healthSelectedTimeoutMs = verge?.health_check_selected_timeout_ms ?? DEFAULT_HEALTH_SELECTED_TIMEOUT_MS;
+  const healthFailureResetMs = verge?.health_check_failure_reset_interval_ms ?? DEFAULT_HEALTH_FAILURE_RESET_MS;
+
+  const handleHealthCheckChange = useLockFn(
+    async (field: "health_check_timeout_ms" | "health_check_selected_timeout_ms" | "health_check_failure_reset_interval_ms", value: number) => {
+      const payload = { [field]: value > 0 ? value : undefined };
+      mutateVerge({ ...verge, ...payload }, false);
+      await patchVerge(payload);
+    },
+  );
+
   return (
     <BasePage
       full
@@ -196,6 +219,92 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
+            <Tooltip title={t("proxies.page.labels.healthCheckTimeout")}>
+              <TextField
+                size="small"
+                type="number"
+                placeholder="250"
+                value={verge?.health_check_timeout ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value ? Number(e.target.value) : undefined;
+                  mutateVerge(
+                    { ...verge, health_check_timeout: v },
+                    false,
+                  );
+                  void patchVerge({
+                    health_check_timeout: v,
+                  });
+                }}
+                slotProps={{
+                  input: {
+                    sx: { width: 56 },
+                    endAdornment: (
+                      <InputAdornment position="end">ms</InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Tooltip>
+            <Tooltip title={t("proxies.page.labels.healthCheckSelectedTimeout")}>
+              <TextField
+                size="small"
+                type="number"
+                placeholder="3000"
+                value={verge?.health_check_selected_timeout ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value
+                    ? Number(e.target.value)
+                    : undefined;
+                  mutateVerge(
+                    { ...verge, health_check_selected_timeout: v },
+                    false,
+                  );
+                  void patchVerge({
+                    health_check_selected_timeout: v,
+                  });
+                }}
+                slotProps={{
+                  input: {
+                    sx: { width: 56 },
+                    endAdornment: (
+                      <InputAdornment position="end">ms</InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Tooltip>
+            <Tooltip
+              title={t(
+                "proxies.page.labels.healthCheckFailureResetInterval",
+              )}
+            >
+              <TextField
+                size="small"
+                type="number"
+                placeholder="5000"
+                value={verge?.health_check_failure_reset_interval ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value
+                    ? Number(e.target.value)
+                    : undefined;
+                  mutateVerge(
+                    { ...verge, health_check_failure_reset_interval: v },
+                    false,
+                  );
+                  void patchVerge({
+                    health_check_failure_reset_interval: v,
+                  });
+                }}
+                slotProps={{
+                  input: {
+                    sx: { width: 56 },
+                    endAdornment: (
+                      <InputAdornment position="end">ms</InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </Tooltip>
           </Box>
 
           <Box display="flex" alignItems="center" gap={1} sx={{ ml: "auto" }}>

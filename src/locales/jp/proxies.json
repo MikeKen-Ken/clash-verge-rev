@@ -27,7 +27,10 @@
       "proxyCount": "ノード数",
       "delayCheckReset": "遅延テストを実行して固定を解除する",
       "autoRefresh": "自動更新",
-      "autoRefreshInterval": "間隔（秒）"
+      "autoRefreshInterval": "間隔（秒）",
+      "healthCheckTimeout": "タイムアウト(ms)",
+      "healthCheckSelectedTimeout": "選択時タイムアウト(ms)",
+      "healthCheckFailureResetInterval": "失敗リセット間隔(ms)"
     },
     "tooltips": {
       "locate": "現在のノード",

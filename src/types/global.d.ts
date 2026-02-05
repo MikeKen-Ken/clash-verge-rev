@@ -964,6 +964,12 @@ interface IVergeConfig {
   default_latency_test?: string;
   enable_auto_delay_detection?: boolean;
   auto_delay_detection_interval_minutes?: number;
+  /** 健康检测超时(ms)，用于测速/fallback 等，未设置时使用组配置或默认值 */
+  health_check_timeout_ms?: number;
+  /** 健康检测选中节点超时(ms)，手动选择节点测速时使用 */
+  health_check_selected_timeout_ms?: number;
+  /** 健康检测失败重置间隔(ms)，与 clash 组配置 failure-reset-interval 一致 */
+  health_check_failure_reset_interval_ms?: number;
   enable_builtin_enhanced?: boolean;
   auto_log_clean?: 0 | 1 | 2 | 3 | 4;
   enable_auto_backup_schedule?: boolean;
@@ -978,6 +984,12 @@ interface IVergeConfig {
   enable_hover_jump_navigator?: boolean;
   hover_jump_navigator_delay?: number;
   enable_external_controller?: boolean;
+  /** 健康检测/测速超时（毫秒），应用于 url-test/fallback 组默认值 */
+  health_check_timeout?: number;
+  /** 选中节点测速超时（毫秒），应用于 url-test/fallback 组默认值 */
+  health_check_selected_timeout?: number;
+  /** 失败重置间隔（毫秒），应用于 url-test/fallback 组默认值 */
+  health_check_failure_reset_interval?: number;
 }
 
 interface IWebDavFile {

@@ -254,6 +254,16 @@ pub struct IVerge {
 
     /// 启用外部控制器
     pub enable_external_controller: Option<bool>,
+
+    /// 健康检测/测速超时（毫秒），应用于 url-test/fallback 组默认值
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_timeout: Option<u64>,
+    /// 选中节点测速超时（毫秒），应用于 url-test/fallback 组默认值
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_selected_timeout: Option<u64>,
+    /// 失败重置间隔（毫秒），应用于 url-test/fallback 组默认值
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_check_failure_reset_interval: Option<u64>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -559,6 +569,9 @@ impl IVerge {
         patch!(enable_dns_settings);
         patch!(home_cards);
         patch!(enable_external_controller);
+        patch!(health_check_timeout);
+        patch!(health_check_selected_timeout);
+        patch!(health_check_failure_reset_interval);
     }
 
     pub const fn get_singleton_port() -> u16 {

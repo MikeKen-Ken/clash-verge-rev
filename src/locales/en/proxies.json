@@ -27,7 +27,10 @@
       "proxyCount": "Proxy Count",
       "delayCheckReset": "Delay check to cancel fixed",
       "autoRefresh": "Auto refresh",
-      "autoRefreshInterval": "Interval (s)"
+      "autoRefreshInterval": "Interval (s)",
+      "healthCheckTimeout": "Timeout (ms)",
+      "healthCheckSelectedTimeout": "Selected timeout (ms)",
+      "healthCheckFailureResetInterval": "Failure reset (ms)"
     },
     "tooltips": {
       "locate": "locate",
