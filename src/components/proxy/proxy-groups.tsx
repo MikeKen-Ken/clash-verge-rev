@@ -104,6 +104,10 @@ export const ProxyGroups = (props: Props) => {
     return map;
   }, [groups, current?.selected]);
 
+  // 用 ref 存最新 map，保证传给 Virtuoso 的回调引用稳定，减少子组件重渲染
+  const selectedByGroupRef = useRef<Map<string, string>>(new Map());
+  selectedByGroupRef.current = selectedByGroup;
+
   // 自动清理：删除 profile.selected 里核心不存在的组（旧配置遗留的记录）
   const lastCleanupRef = useRef<string>("");
   useEffect(() => {
@@ -137,8 +141,9 @@ export const ProxyGroups = (props: Props) => {
   }, [groups, current?.selected, patchCurrent, mutateProfiles]);
 
   const getSelectedForGroup = useCallback(
-    (groupName: string): string | undefined => selectedByGroup.get(groupName),
-    [selectedByGroup],
+    (groupName: string): string | undefined =>
+      selectedByGroupRef.current.get(groupName),
+    [],
   );
 
   // 解析 group.now 得到最终节点名；用于组头显示「当前节点」文案（子分组时会解析为「子分组名 (实际节点)」）
@@ -149,9 +154,10 @@ export const ProxyGroups = (props: Props) => {
     ): string => {
       if (group.now == null || group.now === "")
         return group.name ?? "";
+      const map = selectedByGroupRef.current;
       let current: string = group.now;
-      while (selectedByGroup.has(current)) {
-        const next = selectedByGroup.get(current)!;
+      while (map.has(current)) {
+        const next = map.get(current)!;
         if (next === current) break;
         current = next;
       }
@@ -160,7 +166,7 @@ export const ProxyGroups = (props: Props) => {
       if (current === label) return label;
       return `${label} (${current})`;
     },
-    [selectedByGroup],
+    [],
   );
 
   // Selector / URLTest / Fallback 组且 profile 的 current.selected 与 core 当前 now 一致时显示「手动选择」
@@ -172,8 +178,7 @@ export const ProxyGroups = (props: Props) => {
       const typeLower = group?.type?.toLowerCase();
       const entry = (current?.selected ?? []).find((s) => s.name === groupName);
       const profileNow = entry?.now;
-      const coreNow = selectedByGroup.get(groupName);
-      const shouldShow = coreNow === profileNow && profileNow != null;
+      const coreNow = selectedByGroupRef.current.get(groupName);
 
       if (
         !group ||
@@ -183,7 +188,7 @@ export const ProxyGroups = (props: Props) => {
       if (profileNow == null) return undefined;
       return coreNow === profileNow ? profileNow : undefined;
     },
-    [groups, current?.selected, selectedByGroup],
+    [groups, current?.selected],
   );
 
   const availableGroups = useMemo(() => {

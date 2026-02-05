@@ -1,9 +1,15 @@
-import { styled, Box, Typography } from "@mui/material";
+import { OpenInNewRounded } from "@mui/icons-material";
+import { IconButton, styled, Box, Typography } from "@mui/material";
+import { useTranslation } from "react-i18next";
+
+import { useAppData } from "@/providers/app-data-context";
+import { openWebUrl } from "@/services/cmds";
 
 const Item = styled(Box)(({ theme }) => ({
   display: "flex",
   padding: "4px 16px",
   color: theme.palette.text.primary,
+  alignItems: "center",
 }));
 
 const COLOR = [
@@ -32,6 +38,17 @@ const parseColor = (text: string) => {
 
 const RuleItem = (props: Props) => {
   const { index, value } = props;
+  const { t } = useTranslation();
+  const { ruleProviders } = useAppData();
+  const provider =
+    value.type === "RuleSet" && value.payload
+      ? (ruleProviders?.[value.payload] as IRuleProviderItem | undefined)
+      : undefined;
+  const providerUrl = provider?.url;
+
+  const handleOpenRepo = () => {
+    if (providerUrl) openWebUrl(providerUrl);
+  };
 
   return (
     <Item sx={{ borderBottom: "1px solid var(--divider-color)" }}>
@@ -43,7 +60,7 @@ const RuleItem = (props: Props) => {
         {index}
       </Typography>
 
-      <Box sx={{ userSelect: "text" }}>
+      <Box sx={{ userSelect: "text", flex: 1 }}>
         <Typography component="h6" variant="subtitle1" color="text.primary">
           {value.payload || "-"}
         </Typography>
@@ -65,6 +82,18 @@ const RuleItem = (props: Props) => {
           {value.proxy}
         </Typography>
       </Box>
+
+      {providerUrl ? (
+        <IconButton
+          size="small"
+          onClick={handleOpenRepo}
+          title={t("rules.page.provider.actions.openRepo")}
+          aria-label={t("rules.page.provider.actions.openRepo")}
+          sx={{ ml: 0.5 }}
+        >
+          <OpenInNewRounded fontSize="small" />
+        </IconButton>
+      ) : null}
     </Item>
   );
 };

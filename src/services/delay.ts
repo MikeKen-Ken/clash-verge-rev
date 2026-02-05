@@ -262,6 +262,15 @@ class DelayManager {
     return -1;
   }
 
+  /// 批量获取一组节点的 getDelayFix 结果，用于过滤/排序时减少重复查 cache
+  getDelaysForGroupFix(groupName: string, proxies: IProxyItem[]): Map<string, number> {
+    const map = new Map<string, number>();
+    for (const proxy of proxies) {
+      map.set(proxy.name, this.getDelayFix(proxy, groupName));
+    }
+    return map;
+  }
+
   async checkDelay(
     name: string,
     group: string,

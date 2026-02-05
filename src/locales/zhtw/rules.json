@@ -5,7 +5,8 @@
       "dialogTitle": "規則集合",
       "actions": {
         "updateAll": "全部更新",
-        "update": "更新"
+        "update": "更新",
+        "openRepo": "開啟規則集倉庫"
       }
     },
     "title": "規則"

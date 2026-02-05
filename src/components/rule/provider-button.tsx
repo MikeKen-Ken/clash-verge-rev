@@ -1,4 +1,4 @@
-import { RefreshRounded, StorageOutlined } from "@mui/icons-material";
+import { OpenInNewRounded, RefreshRounded, StorageOutlined } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { updateRuleProvider } from "tauri-plugin-mihomo-api";
 
 import { useAppData } from "@/providers/app-data-context";
+import { openWebUrl } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 
 // 辅助组件 - 类型框
@@ -244,12 +245,23 @@ export const ProviderButton = () => {
                     <Divider orientation="vertical" flexItem />
                     <Box
                       sx={{
-                        width: 40,
                         display: "flex",
-                        justifyContent: "center",
                         alignItems: "center",
+                        gap: 0.5,
                       }}
                     >
+                      {(provider as IRuleProviderItem).url ? (
+                        <IconButton
+                          size="small"
+                          onClick={() =>
+                            openWebUrl((provider as IRuleProviderItem).url!)
+                          }
+                          title={t("rules.page.provider.actions.openRepo")}
+                          aria-label={t("rules.page.provider.actions.openRepo")}
+                        >
+                          <OpenInNewRounded fontSize="small" />
+                        </IconButton>
+                      ) : null}
                       <IconButton
                         size="small"
                         color="primary"

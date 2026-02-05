@@ -5,7 +5,8 @@
       "dialogTitle": "Rule Providers",
       "actions": {
         "updateAll": "Update All",
-        "update": "Update"
+        "update": "Update",
+        "openRepo": "Open rule set repository"
       }
     },
     "title": "Rules"

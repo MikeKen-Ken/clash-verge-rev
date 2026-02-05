@@ -139,6 +139,8 @@ interface IRuleProviderItem {
   type: string;
   updatedAt: string;
   vehicleType: string;
+  /** 规则集来源 URL，点击可打开仓库 */
+  url?: string;
 }
 
 interface ITrafficItem {

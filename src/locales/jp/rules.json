@@ -5,7 +5,8 @@
       "dialogTitle": "ルールプロバイダー",
       "actions": {
         "updateAll": "すべて更新",
-        "update": "更新"
+        "update": "更新",
+        "openRepo": "ルールセットのリポジトリを開く"
       }
     },
     "title": "ルール"

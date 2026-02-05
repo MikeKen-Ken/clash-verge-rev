@@ -136,8 +136,9 @@ function filterProxies(
     const value =
       symbol2 === "error" ? 1e5 : symbol2 === "timeout" ? 3000 : +symbol2;
 
+    const delayMap = delayManager.getDelaysForGroupFix(groupName, proxies);
     return proxies.filter((p) => {
-      const delay = delayManager.getDelayFix(p, groupName);
+      const delay = delayMap.get(p.name) ?? -1;
 
       if (delay < 0) return false;
       if (symbol === "=" && symbol2 === "error") return delay >= 1e5;
@@ -203,9 +204,10 @@ function sortProxies(
       return [0, delay];
     };
 
+    const delayMap = delayManager.getDelaysForGroupFix(groupName, list);
     list.sort((a, b) => {
-      const ad = delayManager.getDelayFix(a, groupName);
-      const bd = delayManager.getDelayFix(b, groupName);
+      const ad = delayMap.get(a.name) ?? -1;
+      const bd = delayMap.get(b.name) ?? -1;
       const [ar, av] = categorizeDelay(ad);
       const [br, bv] = categorizeDelay(bd);
 

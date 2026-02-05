@@ -550,6 +550,7 @@ export interface TranslationResources {
       page: {
         provider: {
           actions: {
+            openRepo: string;
             update: string;
             updateAll: string;
           };

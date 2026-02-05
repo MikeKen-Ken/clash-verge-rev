@@ -264,6 +264,7 @@ export const translationKeys = [
   "proxies.components.enums.policies.PASS",
   "rules.page.provider.trigger",
   "rules.page.provider.dialogTitle",
+  "rules.page.provider.actions.openRepo",
   "rules.page.provider.actions.updateAll",
   "rules.page.provider.actions.update",
   "rules.page.title",
