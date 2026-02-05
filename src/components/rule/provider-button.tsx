@@ -251,16 +251,17 @@ export const ProviderButton = () => {
                       }}
                     >
                       {(provider as IRuleProviderItem).url ? (
-                        <IconButton
+                        <Button
                           size="small"
+                          variant="outlined"
                           onClick={() =>
                             openWebUrl((provider as IRuleProviderItem).url!)
                           }
-                          title={t("rules.page.provider.actions.openRepo")}
-                          aria-label={t("rules.page.provider.actions.openRepo")}
+                          startIcon={<OpenInNewRounded fontSize="small" />}
+                          sx={{ minWidth: "auto" }}
                         >
-                          <OpenInNewRounded fontSize="small" />
-                        </IconButton>
+                          {t("rules.page.provider.actions.openRepo")}
+                        </Button>
                       ) : null}
                       <IconButton
                         size="small"

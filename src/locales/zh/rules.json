@@ -6,7 +6,7 @@
       "actions": {
         "updateAll": "更新全部",
         "update": "更新",
-        "openRepo": "打开规则集仓库"
+        "openRepo": "打开"
       }
     },
     "title": "规则"

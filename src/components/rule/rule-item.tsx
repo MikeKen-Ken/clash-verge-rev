@@ -1,5 +1,5 @@
 import { OpenInNewRounded } from "@mui/icons-material";
-import { IconButton, styled, Box, Typography } from "@mui/material";
+import { Button, styled, Box, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { useAppData } from "@/providers/app-data-context";
@@ -55,12 +55,25 @@ const RuleItem = (props: Props) => {
       <Typography
         color="text.secondary"
         variant="body2"
-        sx={{ lineHeight: 2, minWidth: 30, mr: 2.25, textAlign: "center" }}
+        sx={{
+          lineHeight: 2,
+          minWidth: 30,
+          mr: 2.25,
+          textAlign: "center",
+          flexShrink: 0,
+        }}
       >
         {index}
       </Typography>
 
-      <Box sx={{ userSelect: "text", flex: 1 }}>
+      <Box
+        sx={{
+          userSelect: "text",
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
         <Typography component="h6" variant="subtitle1" color="text.primary">
           {value.payload || "-"}
         </Typography>
@@ -84,15 +97,17 @@ const RuleItem = (props: Props) => {
       </Box>
 
       {providerUrl ? (
-        <IconButton
-          size="small"
-          onClick={handleOpenRepo}
-          title={t("rules.page.provider.actions.openRepo")}
-          aria-label={t("rules.page.provider.actions.openRepo")}
-          sx={{ ml: 0.5 }}
-        >
-          <OpenInNewRounded fontSize="small" />
-        </IconButton>
+        <Box component="span" sx={{ flexShrink: 0, ml: 1 }}>
+          <Button
+            size="small"
+            variant="text"
+            onClick={handleOpenRepo}
+            startIcon={<OpenInNewRounded fontSize="small" />}
+            sx={{ minWidth: "auto", px: 1, py: 0.25 }}
+          >
+            {t("rules.page.provider.actions.openRepo")}
+          </Button>
+        </Box>
       ) : null}
     </Item>
   );

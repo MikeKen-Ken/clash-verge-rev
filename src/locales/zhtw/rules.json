@@ -6,7 +6,7 @@
       "actions": {
         "updateAll": "全部更新",
         "update": "更新",
-        "openRepo": "開啟規則集倉庫"
+        "openRepo": "打開"
       }
     },
     "title": "規則"

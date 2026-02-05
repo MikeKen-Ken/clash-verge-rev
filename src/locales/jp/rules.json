@@ -6,7 +6,7 @@
       "actions": {
         "updateAll": "すべて更新",
         "update": "更新",
-        "openRepo": "ルールセットのリポジトリを開く"
+        "openRepo": "開く"
       }
     },
     "title": "ルール"

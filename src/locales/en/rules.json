@@ -6,7 +6,7 @@
       "actions": {
         "updateAll": "Update All",
         "update": "Update",
-        "openRepo": "Open rule set repository"
+        "openRepo": "Open"
       }
     },
     "title": "Rules"
