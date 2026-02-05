@@ -223,7 +223,7 @@ const ProxyPage = () => {
                     (HEALTH_CHECK_PRESETS as readonly number[]).includes(
                       verge.health_check_timeout,
                     )
-                      ? verge.health_check_timeout
+                      ? String(verge.health_check_timeout)
                       : ""
                   }
                   displayEmpty
@@ -247,7 +247,7 @@ const ProxyPage = () => {
                     <em>—</em>
                   </MenuItem>
                   {HEALTH_CHECK_PRESETS.map((n) => (
-                    <MenuItem key={n} value={n}>
+                    <MenuItem key={n} value={String(n)}>
                       {n} ms
                     </MenuItem>
                   ))}
@@ -262,7 +262,7 @@ const ProxyPage = () => {
                     (HEALTH_CHECK_PRESETS as readonly number[]).includes(
                       verge.health_check_selected_timeout,
                     )
-                      ? verge.health_check_selected_timeout
+                      ? String(verge.health_check_selected_timeout)
                       : ""
                   }
                   displayEmpty
@@ -286,7 +286,7 @@ const ProxyPage = () => {
                     <em>—</em>
                   </MenuItem>
                   {HEALTH_CHECK_PRESETS.map((n) => (
-                    <MenuItem key={n} value={n}>
+                    <MenuItem key={n} value={String(n)}>
                       {n} ms
                     </MenuItem>
                   ))}
@@ -305,7 +305,7 @@ const ProxyPage = () => {
                     (HEALTH_CHECK_PRESETS as readonly number[]).includes(
                       verge.health_check_failure_reset_interval,
                     )
-                      ? verge.health_check_failure_reset_interval
+                      ? String(verge.health_check_failure_reset_interval)
                       : ""
                   }
                   displayEmpty
@@ -331,7 +331,7 @@ const ProxyPage = () => {
                     <em>—</em>
                   </MenuItem>
                   {HEALTH_CHECK_PRESETS.map((n) => (
-                    <MenuItem key={n} value={n}>
+                    <MenuItem key={n} value={String(n)}>
                       {n} ms
                     </MenuItem>
                   ))}

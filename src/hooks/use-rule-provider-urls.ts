@@ -21,7 +21,7 @@ function extractUrls(rp: Record<string, unknown>): Record<string, string> {
 export function useRuleProviderUrls(): Record<string, string> {
   const { current } = useProfiles();
   const uid = current?.uid ?? null;
-  const mergeUid = current?.merge ?? null;
+  const mergeUid = current?.option?.merge ?? null;
 
   const { data } = useSWR<Record<string, string>>(
     uid ? ["ruleProviderUrls", uid, mergeUid] : null,
