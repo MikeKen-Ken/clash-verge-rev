@@ -129,6 +129,9 @@ const ProxyPage = () => {
     };
   }, [autoRefresh, autoRefreshInterval, refreshProxy]);
 
+  const { enable_tun_mode } = verge ?? {};
+  const allowLan = clash?.["allow-lan"] ?? false;
+
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
   });
