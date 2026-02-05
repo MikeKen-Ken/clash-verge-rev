@@ -60,28 +60,6 @@ const ProxyPage = () => {
   const normalizedMode = clashConfig?.mode?.toLowerCase();
   const curMode = isMode(normalizedMode) ? normalizedMode : undefined;
 
-  // 日志：便于排查代理页按钮/控件被禁用的原因
-  useEffect(() => {
-    console.log("[Proxies] curMode:", curMode, "isTunModeAvailable:", isTunModeAvailable, "autoRefresh:", autoRefresh, "| Tun Switch disabled:", !isTunModeAvailable, "| Interval Select disabled:", !autoRefresh);
-  }, [curMode, isTunModeAvailable, autoRefresh]);
-
-  const onChangeMode = useLockFn(async (mode: Mode) => {
-    if (mode !== curMode && verge?.auto_close_connection) {
-      closeAllConnections();
-    }
-    await patchClashMode(mode);
-    refreshClashConfig();
-  });
-
-  useEffect(() => {
-    if (normalizedMode && !isMode(normalizedMode)) {
-      onChangeMode("rule");
-    }
-  }, [normalizedMode, onChangeMode]);
-
-  const { enable_tun_mode } = verge ?? {};
-  const allowLan = clash?.["allow-lan"] ?? false;
-
   const [autoRefresh, setAutoRefresh] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY_AUTO_REFRESH) === "1";
@@ -105,6 +83,20 @@ const ProxyPage = () => {
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+
+  const onChangeMode = useLockFn(async (mode: Mode) => {
+    if (mode !== curMode && verge?.auto_close_connection) {
+      closeAllConnections();
+    }
+    await patchClashMode(mode);
+    refreshClashConfig();
+  });
+
+  useEffect(() => {
+    if (normalizedMode && !isMode(normalizedMode)) {
+      onChangeMode("rule");
+    }
+  }, [normalizedMode, onChangeMode]);
 
   useEffect(() => {
     try {
