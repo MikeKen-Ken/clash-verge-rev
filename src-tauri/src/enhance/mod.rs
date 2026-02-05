@@ -569,7 +569,7 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
 /// 健康检测数值合理上限（60 秒），避免写入异常大数
 const HEALTH_CHECK_MAX_MS: u64 = 60_000;
 
-/// 将 verge 中的健康检测值强制覆盖到 url-test/fallback 组（覆盖配置文件中已有设置）
+/// 将 verge 中的健康检测值作为 url-test/fallback 组的默认值；仅当组内未配置该项时才写入，不覆盖订阅已有设置。
 fn apply_health_check_defaults(mut config: Mapping, verge: &IVerge) -> Mapping {
     let timeout = verge
         .health_check_timeout
@@ -596,13 +596,19 @@ fn apply_health_check_defaults(mut config: Mapping, verge: &IVerge) -> Mapping {
                     continue;
                 }
                 if let Some(v) = timeout {
-                    group_map.insert("timeout".into(), v.into());
+                    if group_map.get("timeout").is_none() {
+                        group_map.insert("timeout".into(), v.into());
+                    }
                 }
                 if let Some(v) = selected_timeout {
-                    group_map.insert("selected-timeout".into(), v.into());
+                    if group_map.get("selected-timeout").is_none() {
+                        group_map.insert("selected-timeout".into(), v.into());
+                    }
                 }
                 if let Some(v) = failure_reset {
-                    group_map.insert("failure-reset-interval".into(), v.into());
+                    if group_map.get("failure-reset-interval").is_none() {
+                        group_map.insert("failure-reset-interval".into(), v.into());
+                    }
                 }
             }
         }

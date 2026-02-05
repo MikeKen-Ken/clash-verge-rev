@@ -384,6 +384,10 @@ export const CurrentProxyCard = () => {
         .filter((g: { type?: string }) => ["Selector", "URLTest", "Fallback"].includes(g?.type || ""))
         .forEach((selectorGroup: any) => registerGroup(selectorGroup));
 
+      if (isGlobalMode && proxies.global) {
+        registerGroup(proxies.global, "GLOBAL");
+      }
+
       const filteredGroups = Array.from(groupsMap.values());
 
       let newProxy = "";
@@ -581,11 +585,12 @@ export const CurrentProxyCard = () => {
         displayProxy: prev.proxyData.records[newProxy] || null,
       }));
 
-      if (!isGlobalMode && !isDirectMode) {
+      if (!isDirectMode) {
         writeProfileScopedItem(STORAGE_KEY_PROXY, newProxy);
       }
 
-      const skipConfigSave = isGlobalMode || isDirectMode;
+      // 仅直连模式不写入 profile（全局模式需持久化 GLOBAL 节点选择以便重载配置后恢复）
+      const skipConfigSave = isDirectMode;
       handleSelectChange(currentGroup, previousProxy, skipConfigSave)(event);
 
       // 手动切换节点后立即检测新节点延迟，以显示最新速度

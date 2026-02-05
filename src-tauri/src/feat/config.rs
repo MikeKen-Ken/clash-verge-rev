@@ -205,6 +205,13 @@ fn determine_update_flags(patch: &IVerge) -> UpdateFlags {
     if tray_inline_outbound_modes.is_some() {
         update_flags.insert(UpdateFlags::SYSTRAY_MENU);
     }
+    // 健康检测快捷设置变更后需重新生成配置并推送到核心，才能生效
+    if patch.health_check_timeout.is_some()
+        || patch.health_check_selected_timeout.is_some()
+        || patch.health_check_failure_reset_interval.is_some()
+    {
+        update_flags.insert(UpdateFlags::CLASH_CONFIG);
+    }
 
     update_flags
 }

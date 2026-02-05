@@ -121,14 +121,22 @@ function getGroupTimeoutMapFromConfig(
   const map = new Map<string, { timeout?: number; selectedTimeout?: number }>();
   const groups = config?.["proxy-groups"];
   if (!Array.isArray(groups)) return map;
+  let firstTimeout: { timeout?: number; selectedTimeout?: number } | undefined;
   for (const g of groups) {
     const name = (g as { name?: string }).name;
     if (!name) continue;
     const raw = g as { timeout?: number; "selected-timeout"?: number };
-    map.set(name, {
+    const cfg = {
       timeout: raw.timeout,
       selectedTimeout: raw["selected-timeout"],
-    });
+    };
+    map.set(name, cfg);
+    if (firstTimeout === undefined && (raw.timeout != null || raw["selected-timeout"] != null)) {
+      firstTimeout = cfg;
+    }
+  }
+  if (!map.has("GLOBAL") && firstTimeout !== undefined) {
+    map.set("GLOBAL", firstTimeout);
   }
   return map;
 }
