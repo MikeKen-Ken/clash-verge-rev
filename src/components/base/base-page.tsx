@@ -1,4 +1,3 @@
-import { Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import React, { ReactNode } from "react";
 
@@ -21,16 +20,11 @@ export const BasePage: React.FC<Props> = (props) => {
   return (
     <BaseErrorBoundary>
       <div className="base-page">
-        <header data-tauri-drag-region="true" style={{ userSelect: "none" }}>
-          <Typography
-            sx={{ fontSize: "20px", fontWeight: "700 " }}
-            data-tauri-drag-region="true"
-          >
-            {title}
-          </Typography>
-
-          {header}
-        </header>
+        {(title || header) && (
+          <header data-tauri-drag-region="true" style={{ userSelect: "none" }}>
+            {header}
+          </header>
+        )}
 
         <div
           className={full ? "base-container no-padding" : "base-container"}

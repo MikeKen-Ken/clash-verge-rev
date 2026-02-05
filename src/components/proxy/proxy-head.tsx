@@ -1,21 +1,15 @@
 import {
   AccessTimeRounded,
-  MyLocationRounded,
   NetworkCheckRounded,
-  FilterAltRounded,
-  FilterAltOffRounded,
   VisibilityRounded,
   VisibilityOffRounded,
-  WifiTetheringRounded,
-  WifiTetheringOffRounded,
   SortByAlphaRounded,
   SortRounded,
 } from "@mui/icons-material";
-import { Box, IconButton, TextField, SxProps } from "@mui/material";
-import { useEffect, useState } from "react";
+import { Box, IconButton, SxProps } from "@mui/material";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BaseSearchBox } from "@/components/base";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
@@ -27,7 +21,6 @@ interface Props {
   url?: string;
   groupName: string;
   headState: HeadState;
-  onLocation: () => void;
   onCheckDelay: () => void;
   onHeadState: (val: Partial<HeadState>) => void;
 }
@@ -40,28 +33,16 @@ export const ProxyHead = ({
   groupName,
   headState,
   onHeadState,
-  onLocation,
   onCheckDelay,
 }: Props) => {
   const {
     showType,
     sortType,
-    filterText,
     textState,
     testUrl,
-    filterMatchCase,
-    filterMatchWholeWord,
-    filterUseRegularExpression,
   } = headState;
 
   const { t } = useTranslation();
-  const [autoFocus, setAutoFocus] = useState(false);
-
-  useEffect(() => {
-    // fix the focus conflict
-    const timer = setTimeout(() => setAutoFocus(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     // 仅使用代理组配置的 testUrl 或用户输入的 testUrl，不覆写配置文件
@@ -70,15 +51,6 @@ export const ProxyHead = ({
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ...sx }}>
-      <IconButton
-        size="small"
-        color="inherit"
-        title={t("proxies.page.tooltips.locate")}
-        onClick={onLocation}
-      >
-        <MyLocationRounded />
-      </IconButton>
-
       <IconButton
         size="small"
         color="inherit"
@@ -118,21 +90,6 @@ export const ProxyHead = ({
       <IconButton
         size="small"
         color="inherit"
-        title={t("proxies.page.tooltips.delayCheckUrl")}
-        onClick={() =>
-          onHeadState({ textState: textState === "url" ? null : "url" })
-        }
-      >
-        {textState === "url" ? (
-          <WifiTetheringRounded />
-        ) : (
-          <WifiTetheringOffRounded />
-        )}
-      </IconButton>
-
-      <IconButton
-        size="small"
-        color="inherit"
         title={
           showType
             ? t("proxies.page.tooltips.showBasic")
@@ -142,58 +99,6 @@ export const ProxyHead = ({
       >
         {showType ? <VisibilityRounded /> : <VisibilityOffRounded />}
       </IconButton>
-
-      <IconButton
-        size="small"
-        color="inherit"
-        title={t("proxies.page.tooltips.filter")}
-        onClick={() =>
-          onHeadState({ textState: textState === "filter" ? null : "filter" })
-        }
-      >
-        {textState === "filter" ? (
-          <FilterAltRounded />
-        ) : (
-          <FilterAltOffRounded />
-        )}
-      </IconButton>
-
-      {textState === "filter" && (
-        <Box sx={{ ml: 0.5, flex: "1 1 auto" }}>
-          <BaseSearchBox
-            autoFocus={autoFocus}
-            value={filterText}
-            searchState={{
-              matchCase: filterMatchCase,
-              matchWholeWord: filterMatchWholeWord,
-              useRegularExpression: filterUseRegularExpression,
-            }}
-            onSearch={(_, state) =>
-              onHeadState({
-                filterText: state.text,
-                filterMatchCase: state.matchCase,
-                filterMatchWholeWord: state.matchWholeWord,
-                filterUseRegularExpression: state.useRegularExpression,
-              })
-            }
-          />
-        </Box>
-      )}
-
-      {textState === "url" && (
-        <TextField
-          autoComplete="new-password"
-          autoFocus={autoFocus}
-          hiddenLabel
-          autoSave="off"
-          value={testUrl}
-          size="small"
-          variant="outlined"
-          placeholder={t("proxies.page.placeholders.delayCheckUrl")}
-          onChange={(e) => onHeadState({ testUrl: e.target.value })}
-          sx={{ ml: 0.5, flex: "1 1 auto", input: { py: 0.65, px: 1 } }}
-        />
-      )}
     </Box>
   );
 };

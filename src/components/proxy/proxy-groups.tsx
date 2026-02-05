@@ -497,27 +497,6 @@ export const ProxyGroups = (props: Props) => {
     }
   });
 
-  // 滚到对应的节点
-  const handleLocation = (group: IProxyGroupItem) => {
-    if (!group) return;
-    const { name, now } = group;
-
-    const index = renderList.findIndex(
-      (e) =>
-        e.group?.name === name &&
-        ((e.type === 2 && e.proxy?.name === now) ||
-          (e.type === 4 && e.proxyCol?.some((p) => p.name === now))),
-    );
-
-    if (index >= 0) {
-      virtuosoRef.current?.scrollToIndex?.({
-        index,
-        align: "center",
-        behavior: "smooth",
-      });
-    }
-  };
-
   // 定位到指定的代理组
   const handleGroupLocationByName = useCallback(
     (groupName: string) => {
@@ -648,7 +627,6 @@ export const ProxyGroups = (props: Props) => {
                   key={renderList[index].key}
                   item={renderList[index]}
                   indent={mode === "rule" || mode === "script"}
-                  onLocation={handleLocation}
                   onCheckAll={handleCheckAll}
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
@@ -775,7 +753,6 @@ export const ProxyGroups = (props: Props) => {
             key={renderList[index].key}
             item={renderList[index]}
             indent={mode === "rule" || mode === "script"}
-            onLocation={handleLocation}
             onCheckAll={handleCheckAll}
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}

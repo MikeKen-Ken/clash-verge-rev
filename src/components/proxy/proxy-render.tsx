@@ -30,7 +30,6 @@ interface RenderProps {
   item: IRenderItem;
   indent: boolean;
   isChainMode?: boolean;
-  onLocation: (group: IRenderItem["group"]) => void;
   onCheckAll: (groupName: string) => void;
   onHeadState: (groupName: string, patch: Partial<HeadState>) => void;
   onChangeProxy: (
@@ -53,7 +52,6 @@ const ProxyRenderInner = (props: RenderProps) => {
   const {
     indent,
     item,
-    onLocation,
     onCheckAll,
     onHeadState,
     onChangeProxy,
@@ -198,7 +196,6 @@ const ProxyRenderInner = (props: RenderProps) => {
         url={group.testUrl}
         groupName={group.name}
         headState={headState!}
-        onLocation={() => onLocation(group)}
         onCheckDelay={() => onCheckAll(group.name)}
         onHeadState={(p) => onHeadState(group.name, p)}
       />
