@@ -522,10 +522,7 @@ export const ProxyGroups = (props: Props) => {
     return Array.from(new Set(names));
   }, [renderList]);
 
-  if (mode === "direct") {
-    return <BaseEmpty textKey="proxies.page.messages.directMode" />;
-  }
-
+  // 直连/全局模式不切换组：仍显示与规则模式相同的代理组，仅后端改 rules/dns
   if (isChainMode) {
     // 获取所有代理组
     const proxyGroups = proxiesData?.groups || [];

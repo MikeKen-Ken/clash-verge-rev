@@ -726,10 +726,64 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     // dns settings
     config = apply_dns_settings(config, enable_dns_settings).await;
 
+    // 直连/全局模式：仅覆盖 rules 和 dns，不切换代理组，界面 groups 保持不变
+    let mode = clash_config
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| "rule".into());
+    if mode == "direct" || mode == "global" {
+        config = apply_direct_global_overrides(config, &mode);
+    }
+
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
 
     (config, exists_keys_set, result_map)
+}
+
+/// 直连/全局模式下覆盖运行配置的 rules 和 dns，不改变 proxy-groups，界面不切换组
+fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
+    // rules: 直连只保留 MATCH,⬆️；全局只保留 MATCH,🔀
+    let match_rule = if mode == "direct" {
+        "MATCH,⬆️"
+    } else {
+        "MATCH,🔀"
+    };
+    config.insert(
+        "rules".into(),
+        Value::Sequence(vec![Value::from(match_rule)]),
+    );
+
+    // dns: 删除 nameserver-policy，并设置 nameserver
+    let nameservers: Vec<Value> = if mode == "direct" {
+        vec![
+            Value::from("https://dns.alidns.com/dns-query"),
+            Value::from("https://120.53.53.53/dns-query"),
+            Value::from("tls://119.29.29.29:853"),
+        ]
+    } else {
+        vec![
+            Value::from("https://1.1.1.1/dns-query"),
+            Value::from("https://8.8.8.8/dns-query"),
+            Value::from("https://9.9.9.9/dns-query"),
+            Value::from("tls://1.0.0.1:853"),
+        ]
+    };
+
+    if let Some(dns_val) = config.get_mut("dns") {
+        if let Some(dns) = dns_val.as_mapping_mut() {
+            dns.remove("nameserver-policy");
+            dns.insert("nameserver".into(), Value::Sequence(nameservers));
+        }
+    } else {
+        let mut dns = Mapping::new();
+        dns.insert("nameserver".into(), Value::Sequence(nameservers));
+        config.insert("dns".into(), Value::from(dns));
+    }
+
+    logging!(info, Type::Core, "applied {mode} mode overrides (rules + dns)");
+    config
 }
 
 #[allow(clippy::expect_used)]

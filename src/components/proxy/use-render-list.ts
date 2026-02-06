@@ -373,8 +373,12 @@ export const useRenderList = (
       }
     }
 
-    // 正常模式的渲染逻辑
-    const useRule = mode === "rule" || mode === "script";
+    // 正常模式的渲染逻辑；直连/全局模式不切换组，与规则模式同表
+    const useRule =
+      mode === "rule" ||
+      mode === "script" ||
+      mode === "global" ||
+      mode === "direct";
     const renderGroups =
       useRule && proxiesData.groups.length
         ? proxiesData.groups

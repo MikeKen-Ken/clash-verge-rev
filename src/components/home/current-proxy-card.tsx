@@ -296,37 +296,17 @@ export const CurrentProxyCard = () => {
 
     const primaryGroupName = getPrimaryGroupName();
 
-    // 根据模式确定初始组（全局模式需同时同步当前节点，否则下拉不会高亮）
-    if (isGlobalMode) {
-      // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
-      setState((prev) => ({
-        ...prev,
-        selection: {
-          group: "GLOBAL",
-          proxy: proxies.global?.now ?? prev.selection.proxy ?? "",
-        },
-      }));
-    } else if (isDirectMode) {
-      // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
-      setState((prev) => ({
-        ...prev,
-        selection: {
-          ...prev.selection,
-          group: "DIRECT",
-        },
-      }));
-    } else {
-      const savedGroup = readProfileScopedItem(STORAGE_KEY_GROUP);
-      // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
-      setState((prev) => ({
-        ...prev,
-        selection: {
-          ...prev.selection,
-          group: savedGroup || primaryGroupName || "",
-        },
-      }));
-    }
-  }, [isGlobalMode, isDirectMode, proxies, readProfileScopedItem]);
+    // 直连/全局模式不切换组：与规则模式一致，使用保存的组或主组
+    const savedGroup = readProfileScopedItem(STORAGE_KEY_GROUP);
+    // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
+    setState((prev) => ({
+      ...prev,
+      selection: {
+        ...prev.selection,
+        group: savedGroup || primaryGroupName || prev.selection.group || "",
+      },
+    }));
+  }, [proxies, readProfileScopedItem]);
 
   // 监听代理数据变化，更新状态
   useEffect(() => {
@@ -384,7 +364,7 @@ export const CurrentProxyCard = () => {
         .filter((g: { type?: string }) => ["Selector", "URLTest", "Fallback"].includes(g?.type || ""))
         .forEach((selectorGroup: any) => registerGroup(selectorGroup));
 
-      if (isGlobalMode && proxies.global) {
+      if (proxies.global) {
         registerGroup(proxies.global, "GLOBAL");
       }
 
@@ -394,37 +374,25 @@ export const CurrentProxyCard = () => {
       let newDisplayProxy = null;
       let newGroup = prev.selection.group;
 
-      if (isDirectMode) {
-        newGroup = "DIRECT";
-        newProxy = "DIRECT";
-        newDisplayProxy = proxies.records?.DIRECT || { name: "DIRECT" };
-      } else if (isGlobalMode && proxies.global) {
-        newGroup = "GLOBAL";
-        newProxy = proxies.global.now || "";
-        newDisplayProxy = proxies.records?.[newProxy] || null;
-      } else {
-        const currentGroup = filteredGroups.find(
-          (g: { name: string }) => g.name === prev.selection.group,
-        );
+      // 直连/全局模式不切换组：保持当前组与节点显示，仅后端改 rules/dns
+      const currentGroup = filteredGroups.find(
+        (g: { name: string }) => g.name === prev.selection.group,
+      );
 
-        if (!currentGroup && filteredGroups.length > 0) {
-          const firstGroup = filteredGroups[0];
-          if (firstGroup) {
-            newGroup = firstGroup.name;
-            newProxy = firstGroup.now || firstGroup.all[0] || "";
-            newDisplayProxy = proxies.records?.[newProxy] || null;
-
-            if (!isGlobalMode && !isDirectMode) {
-              writeProfileScopedItem(STORAGE_KEY_GROUP, newGroup);
-              if (newProxy) {
-                writeProfileScopedItem(STORAGE_KEY_PROXY, newProxy);
-              }
-            }
-          }
-        } else if (currentGroup) {
-          newProxy = currentGroup.now || currentGroup.all[0] || "";
+      if (!currentGroup && filteredGroups.length > 0) {
+        const firstGroup = filteredGroups[0];
+        if (firstGroup) {
+          newGroup = firstGroup.name;
+          newProxy = firstGroup.now || firstGroup.all[0] || "";
           newDisplayProxy = proxies.records?.[newProxy] || null;
+          writeProfileScopedItem(STORAGE_KEY_GROUP, newGroup);
+          if (newProxy) {
+            writeProfileScopedItem(STORAGE_KEY_PROXY, newProxy);
+          }
         }
+      } else if (currentGroup) {
+        newProxy = currentGroup.now || currentGroup.all[0] || "";
+        newDisplayProxy = proxies.records?.[newProxy] || null;
       }
 
       return {
@@ -441,8 +409,6 @@ export const CurrentProxyCard = () => {
     });
   }, [
     proxies,
-    isGlobalMode,
-    isDirectMode,
     writeProfileScopedItem,
     normalizePolicyName,
     matchPolicyName,

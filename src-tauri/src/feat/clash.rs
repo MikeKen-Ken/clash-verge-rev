@@ -66,23 +66,26 @@ fn after_change_clash_mode() {
     });
 }
 
-/// Change Clash mode (rule/global/direct/script)
+/// Change Clash mode (rule/global/direct/script).
+/// 直连/全局模式不切换代理组：只改运行配置的 rules 和 dns，界面 groups 保持不变。
 pub async fn change_clash_mode(mode: String) {
     let mut mapping = Mapping::new();
     mapping.insert(Value::from("mode"), Value::from(mode.as_str()));
-    // Convert YAML mapping to JSON Value
-    let json_value = serde_json::json!({
-        "mode": mode
-    });
     logging!(debug, Type::Core, "change clash mode to {mode}");
-    match handle::Handle::mihomo().await.patch_base_config(&json_value).await {
-        Ok(_) => {
-            // 更新订阅
-            Config::clash().await.edit_draft(|d| d.patch_config(&mapping));
 
-            // 分离数据获取和异步调用
-            let clash_data = Config::clash().await.data_arc();
-            if clash_data.save_config().await.is_ok() {
+    // 先写入 mode 到 clash 配置（供 UI 与 enhance 读取）
+    Config::clash().await.edit_draft(|d| d.patch_config(&mapping));
+    Config::clash().await.apply();
+    let clash_data = Config::clash().await.data_arc();
+    let _ = clash_data.save_config().await;
+
+    let mode_lower = mode.to_lowercase();
+    let is_direct_or_global = mode_lower == "direct" || mode_lower == "global";
+
+    if is_direct_or_global {
+        // 直连/全局：重新生成配置（enhance 会按 mode 覆盖 rules + dns），再推到核心，不切换代理组
+        match crate::core::CoreManager::global().update_config().await {
+            Ok(_) => {
                 handle::Handle::refresh_clash();
                 logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
                 logging_error!(
@@ -91,14 +94,35 @@ pub async fn change_clash_mode(mode: String) {
                         .update_icon(&Config::verge().await.data_arc())
                         .await
                 );
+                let is_auto_close_connection =
+                    Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
+                if is_auto_close_connection {
+                    after_change_clash_mode();
+                }
             }
-
-            let is_auto_close_connection = Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
-            if is_auto_close_connection {
-                after_change_clash_mode();
-            }
+            Err(err) => logging!(error, Type::Core, "update_config after mode change: {err}"),
         }
-        Err(err) => logging!(error, Type::Core, "{err}"),
+    } else {
+        // rule/script：仅通过 core 的 mode 切换即可（保留原逻辑：patch_base_config）
+        let json_value = serde_json::json!({ "mode": mode });
+        match handle::Handle::mihomo().await.patch_base_config(&json_value).await {
+            Ok(_) => {
+                handle::Handle::refresh_clash();
+                logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
+                logging_error!(
+                    Type::Tray,
+                    tray::Tray::global()
+                        .update_icon(&Config::verge().await.data_arc())
+                        .await
+                );
+                let is_auto_close_connection =
+                    Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
+                if is_auto_close_connection {
+                    after_change_clash_mode();
+                }
+            }
+            Err(err) => logging!(error, Type::Core, "{err}"),
+        }
     }
 }
 
