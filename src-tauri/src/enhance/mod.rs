@@ -102,7 +102,7 @@ async fn get_config_values() -> ConfigValues {
     let verge_arc = verge.latest_arc();
     let IVerge {
         ref enable_tun_mode,
-        ref _enable_tun_override,
+        enable_tun_override: _,
         ref enable_builtin_enhanced,
         ref verge_socks_enabled,
         ref verge_http_enabled,
