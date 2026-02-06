@@ -293,6 +293,29 @@ class DelayManager {
     return map;
   }
 
+  /**
+   * 按节点名从任意组取可复用的延迟结果（同名节点在不同组下测速结果可复用，避免重复请求核心）。
+   * @param name 节点名
+   * @param excludeGroup 排除的组（当前要写入的组，避免用自己覆盖自己）
+   * @returns 未过期且非「测试中」的 DelayUpdate，优先返回最近更新的
+   */
+  getReusableDelayForName(name: string, excludeGroup: string): DelayUpdate | undefined {
+    const now = Date.now();
+    let best: DelayUpdate | undefined;
+    const suffix = `::${name}`;
+    for (const [key, entry] of this.cache.entries()) {
+      if (!key.endsWith(suffix) || entry.delay === -2) continue;
+      if (now - entry.updatedAt > CACHE_TTL) {
+        this.cache.delete(key);
+        continue;
+      }
+      const groupPart = key.slice(0, -suffix.length);
+      if (groupPart === excludeGroup) continue;
+      if (!best || entry.updatedAt > best.updatedAt) best = { ...entry };
+    }
+    return best;
+  }
+
   async checkDelay(
     name: string,
     group: string,
@@ -306,6 +329,13 @@ class DelayManager {
     const silent = options?.silentGlobal ?? false;
     // 先将状态设置为测试中
     this.setDelay(name, group, -2, { silentGlobal: silent });
+
+    // 同名节点在其他组已有测速结果则复用，减少对核心的重复请求（如 GLOBAL 与规则组共用同一批节点）
+    const reusable = this.getReusableDelayForName(name, group);
+    if (reusable != null) {
+      debugLog(`[DelayManager] 复用延迟，代理: ${name}, 组: ${group}, 延迟: ${reusable.delay}ms`);
+      return this.setDelay(name, group, reusable.delay, { elapsed: 0, silentGlobal: silent });
+    }
 
     let delay = -1;
     let elapsed = 0;

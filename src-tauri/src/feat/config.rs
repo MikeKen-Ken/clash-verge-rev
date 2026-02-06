@@ -287,6 +287,13 @@ pub async fn patch_verge(patch: &IVerge, not_save_file: bool) -> Result<()> {
 
     let update_flags = determine_update_flags(patch);
     logging!(debug, Type::Setup, "Determined update flags: {:?}", update_flags);
+
+    // 若需要重新生成配置（如健康检测快捷设置变更），必须先 apply verge 草稿，
+    // 否则 enhance() 内读取的 verge 可能仍是旧数据，导致生成的配置里值未更新。
+    if update_flags.contains(UpdateFlags::CLASH_CONFIG) {
+        Config::verge().await.apply();
+    }
+
     let process_flag_result: std::result::Result<(), anyhow::Error> = {
         process_terminated_flags(update_flags, patch).await?;
         Ok(())

@@ -17,7 +17,7 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateRuleProvider } from "tauri-plugin-mihomo-api";
 
@@ -49,6 +49,20 @@ export const ProviderButton = () => {
   const hasProviders = Object.keys(ruleProviders || {}).length > 0;
   // 从当前 Profile 解析的 rule-providers url（API 未返回 url 时使用）
   const ruleProviderUrls = useRuleProviderUrls();
+
+  // 调试：弹窗打开时打印 url 来源
+  useEffect(() => {
+    if (open && ruleProviders) {
+      const keys = Object.keys(ruleProviders);
+      console.log("[规则集弹窗] ruleProviderUrls 共", Object.keys(ruleProviderUrls).length, "个, keys 样例:", Object.keys(ruleProviderUrls).slice(0, 5));
+      keys.slice(0, 3).forEach((key) => {
+        const fromApi = (ruleProviders[key] as IRuleProviderItem).url;
+        const fromProfile = ruleProviderUrls[key];
+        const final = fromApi ?? fromProfile;
+        console.log("[规则集弹窗] 规则集:", key, "API url:", fromApi, "Profile url:", fromProfile, "最终 providerUrl:", final);
+      });
+    }
+  }, [open, ruleProviders, ruleProviderUrls]);
 
   // 更新单个规则提供者
   const updateProvider = useLockFn(async (name: string) => {
