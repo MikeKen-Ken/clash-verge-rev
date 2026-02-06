@@ -296,14 +296,14 @@ export const CurrentProxyCard = () => {
 
     const primaryGroupName = getPrimaryGroupName();
 
-    // 根据模式确定初始组
+    // 根据模式确定初始组（全局模式需同时同步当前节点，否则下拉不会高亮）
     if (isGlobalMode) {
       // eslint-disable-next-line @eslint-react/hooks-extra/no-direct-set-state-in-use-effect
       setState((prev) => ({
         ...prev,
         selection: {
-          ...prev.selection,
           group: "GLOBAL",
+          proxy: proxies.global?.now ?? prev.selection.proxy ?? "",
         },
       }));
     } else if (isDirectMode) {

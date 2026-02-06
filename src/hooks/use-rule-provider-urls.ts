@@ -30,14 +30,17 @@ export function useRuleProviderUrls(): Record<string, string> {
         console.log("[ruleProviderUrls] 无 uid，跳过");
         return {};
       }
+      console.log("[ruleProviderUrls] 开始拉取 uid:", uid);
       const out: Record<string, string> = {};
       try {
         const mainStr = await readProfileFile(uid);
+        const preview = typeof mainStr === "string" ? mainStr.slice(0, 400) : String(mainStr).slice(0, 400);
+        console.log("[ruleProviderUrls] 主配置读取成功, 长度:", mainStr?.length, "内容预览(前400字符):", preview);
         const mainObj = yaml.load(mainStr) as { "rule-providers"?: Record<string, unknown> } | undefined;
         const mainRp = mainObj?.["rule-providers"] ?? {};
         const mainUrls = extractUrls(mainRp as Record<string, unknown>);
         Object.assign(out, mainUrls);
-        console.log("[ruleProviderUrls] 主配置 uid:", uid, "rule-providers keys:", Object.keys(mainRp), "解析到 url 数量:", Object.keys(mainUrls).length, "样例:", Object.keys(mainUrls).slice(0, 3));
+        console.log("[ruleProviderUrls] 主配置 rule-providers keys:", Object.keys(mainRp), "解析到 url 数量:", Object.keys(mainUrls).length);
       } catch (e) {
         console.log("[ruleProviderUrls] 主配置读取失败:", e);
       }
