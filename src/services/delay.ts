@@ -361,7 +361,9 @@ class DelayManager {
 
       delay = result.delay;
       elapsed = elapsedTime;
-      debugLog(`[DelayManager] 延迟测试完成，代理: ${name}, 结果: ${delay}ms`);
+      debugLog(
+        `[DelayManager] API返回 代理:${name} 组:${group} 延迟:${delay}ms 耗时:${elapsedTime}ms timeout:${timeout}ms`,
+      );
     } catch (error) {
       console.error(`[DelayManager] 延迟测试出错，代理: ${name}`, error);
       delay = 1e6; // error
@@ -377,34 +379,45 @@ class DelayManager {
     timeout: number,
     concurrency = 36,
   ) {
-    debugLog(
-      `[DelayManager] 批量测试延迟开始，组: ${group}, 数量: ${nameList.length}, 并发数: ${concurrency}`,
-    );
     const names = nameList.filter(Boolean);
+    debugLog(
+      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${concurrency} timeout:${timeout}ms`,
+    );
+    const startTime = Date.now();
+    let reusedCount = 0;
+    let apiCallCount = 0;
+
     // 设置正在延迟测试中
     names.forEach((name) => this.setDelay(name, group, -2));
 
     let index = 0;
-    const startTime = Date.now();
     const listener = this.groupListenerMap.get(group);
 
     const help = async (): Promise<void> => {
       const currName = names[index++];
       if (!currName) return;
 
+      const nodeStart = Date.now();
       try {
-        // 确保API调用前状态为测试中
         this.setDelay(currName, group, -2);
 
-        // 添加一些随机延迟，避免所有请求同时发出和返回
         if (index > 1) {
-          // 第一个不延迟，保持响应性
           await new Promise((resolve) =>
             setTimeout(resolve, Math.random() * 200),
           );
         }
 
+        const hadReusable = this.getReusableDelayForName(currName, group) != null;
         await this.checkDelay(currName, group, timeout);
+        const nodeElapsed = Date.now() - nodeStart;
+        if (hadReusable) {
+          reusedCount += 1;
+        } else {
+          apiCallCount += 1;
+          debugLog(
+            `[DelayManager] 单节点API 代理:${currName} 耗时:${nodeElapsed}ms`,
+          );
+        }
         if (listener) {
           this.queueGroupNotification(group);
         }
@@ -413,17 +426,13 @@ class DelayManager {
           `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
           error,
         );
-        // 设置为错误状态
         this.setDelay(currName, group, 1e6);
       }
 
       return help();
     };
 
-    // 限制并发数，避免发送太多请求
     const actualConcurrency = Math.min(concurrency, names.length, 30);
-    debugLog(`[DelayManager] 实际并发数: ${actualConcurrency}`);
-
     const promiseList: Promise<void>[] = [];
     for (let i = 0; i < actualConcurrency; i++) {
       promiseList.push(help());
@@ -432,7 +441,7 @@ class DelayManager {
     await Promise.all(promiseList);
     const totalTime = Date.now() - startTime;
     debugLog(
-      `[DelayManager] 批量测试延迟完成，组: ${group}, 总耗时: ${totalTime}ms`,
+      `[DelayManager] 批量测试完成 组:${group} 总耗时:${totalTime}ms 复用:${reusedCount} 请求:${apiCallCount}`,
     );
   }
 

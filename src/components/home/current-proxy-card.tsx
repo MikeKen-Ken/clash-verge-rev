@@ -625,6 +625,12 @@ export const CurrentProxyCard = () => {
     return state.displayProxy;
   }, [state.displayProxy]);
 
+  // 全局模式下下拉框以 core 的当前节点为准，保证始终高亮正在使用的节点
+  const proxySelectValue =
+    isGlobalMode && proxies?.global
+      ? (proxies.global.now || state.selection.proxy || "")
+      : state.selection.proxy;
+
   // 获取当前节点的延迟（增加非空校验）
   const currentDelay =
     currentProxy && state.selection.group
@@ -703,6 +709,7 @@ export const CurrentProxyCard = () => {
 
   // 延迟测试
   const handleCheckDelay = useLockFn(async () => {
+    const t0 = Date.now();
     const groupName = state.selection.group;
     if (!groupName || isDirectMode) return;
 
@@ -723,7 +730,15 @@ export const CurrentProxyCard = () => {
     const group =
       state.proxyData.records?.[groupName] ??
       state.proxyData.groups.find((g: any) => g.name === groupName);
-    const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
+    const timeout =
+      getGroupDelayTimeout(group ?? null, false) || DEFAULT_GROUP_TIMEOUT_MS;
+    const timeoutSource =
+      group?.timeout != null && group.timeout > 0
+        ? "group"
+        : "verge_or_default";
+    debugLog(
+      `[CurrentProxyCard] 测速开始 组:${groupName} timeout:${timeout}ms 来源:${timeoutSource} 组配置:${group?.timeout ?? "无"}`,
+    );
 
     // 获取当前组的所有代理
     const proxyNames: string[] = [];
@@ -767,18 +782,25 @@ export const CurrentProxyCard = () => {
 
     // 测试提供者的节点
     if (providers.size > 0) {
+      const tProv = Date.now();
       debugLog(`[CurrentProxyCard] 开始测试提供者节点`);
       await Promise.allSettled(
         [...providers].map((p) => healthcheckProxyProvider(p)),
+      );
+      debugLog(
+        `[CurrentProxyCard] 提供者测速耗时: ${Date.now() - tProv}ms`,
       );
     }
 
     // 测试非提供者的节点
     if (proxyNames.length > 0) {
       const url = delayManager.getUrl(groupName);
-      debugLog(`[CurrentProxyCard] 测试URL: ${url}, 超时: ${timeout}ms`);
+      debugLog(
+        `[CurrentProxyCard] 测试URL: ${url}, 超时: ${timeout}ms, 节点数: ${proxyNames.length}`,
+      );
 
       try {
+        const tList = Date.now();
         // 全局模式仅用 checkListDelay，不跑 delayGroup。电脑端与安卓端使用相同核心（本仓库 mihomo）。
         // 规则模式：GET /group/Proxy/delay 的组内节点数通常几十，核内 group.URLTest() 并行即可快速返回。
         // 全局模式：GLOBAL 的 GetProxies 返回所有一级组/全部叶子，一次 GET /group/GLOBAL/delay 会触发对「全部节点」
@@ -792,7 +814,12 @@ export const CurrentProxyCard = () => {
             delayGroup(groupName, url, timeout),
           ]);
         }
-        debugLog(`[CurrentProxyCard] 延迟测试完成，组: ${groupName}`);
+        debugLog(
+          `[CurrentProxyCard] checkListDelay/delayGroup 耗时: ${Date.now() - tList}ms, 组: ${groupName}`,
+        );
+        debugLog(
+          `[CurrentProxyCard] 测速总耗时: ${Date.now() - t0}ms`,
+        );
       } catch (error) {
         console.error(
           `[CurrentProxyCard] 延迟测试出错，组: ${groupName}`,
@@ -1083,7 +1110,7 @@ export const CurrentProxyCard = () => {
             </InputLabel>
             <Select
               labelId="proxy-select-label"
-              value={state.selection.proxy}
+              value={proxySelectValue}
               onChange={handleProxyChange}
               label={t("home.components.currentProxy.labels.proxy")}
               disabled={isDirectMode}
