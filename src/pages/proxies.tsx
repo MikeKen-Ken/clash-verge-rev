@@ -48,6 +48,8 @@ const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
 /** 健康检测相关下拉预设（ms） */
 const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 
+const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
+
 const ProxyPage = () => {
   const { t } = useTranslation();
 
@@ -58,8 +60,16 @@ const ProxyPage = () => {
 
   const modeList = useMemo(() => MODES, []);
 
-  const normalizedMode = clashConfig?.mode?.toLowerCase();
-  const curMode = isMode(normalizedMode) ? normalizedMode : undefined;
+  // 前端自己记录当前模式，用于按钮选中状态，不依赖核心返回的 mode（核心在直连/全局时固定为 rule）
+  const [uiMode, setUiMode] = useState<Mode>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_UI_MODE);
+      if (stored && isMode(stored)) return stored as Mode;
+    } catch {
+      // ignore
+    }
+    return "rule";
+  });
 
   const [autoRefresh, setAutoRefresh] = useState(() => {
     try {
@@ -86,18 +96,26 @@ const ProxyPage = () => {
   );
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
-    if (mode !== curMode && verge?.auto_close_connection) {
+    if (mode !== uiMode && verge?.auto_close_connection) {
       closeAllConnections();
+    }
+    setUiMode(mode);
+    try {
+      localStorage.setItem(STORAGE_KEY_UI_MODE, mode);
+    } catch {
+      // ignore
     }
     await patchClashMode(mode);
     refreshClashConfig();
   });
 
+  // 后端 mode 非法时只修正后端，不改变前端按钮状态（uiMode 仅由用户点击维护）
   useEffect(() => {
-    if (normalizedMode && !isMode(normalizedMode)) {
-      onChangeMode("rule");
+    const raw = clashConfig?.mode?.toLowerCase();
+    if (raw && !isMode(raw)) {
+      patchClashMode("rule").then(() => refreshClashConfig());
     }
-  }, [normalizedMode, onChangeMode]);
+  }, [clashConfig?.mode, refreshClashConfig]);
 
   useEffect(() => {
     try {
@@ -389,7 +407,7 @@ const ProxyPage = () => {
               {modeList.map((mode) => (
                 <Button
                   key={mode}
-                  variant={mode === curMode ? "contained" : "outlined"}
+                  variant={mode === uiMode ? "contained" : "outlined"}
                   onClick={() => onChangeMode(mode)}
                   sx={{ textTransform: "capitalize" }}
                 >
@@ -402,7 +420,7 @@ const ProxyPage = () => {
       }
     >
       <ProxyGroups
-        mode={curMode ?? "rule"}
+        mode={uiMode}
         isChainMode={false}
         chainConfigData={null}
       />
