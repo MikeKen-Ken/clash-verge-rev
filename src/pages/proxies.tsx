@@ -105,6 +105,8 @@ const ProxyPage = () => {
     } catch {
       // ignore
     }
+    // 切换规则/全局/直连后 1 分钟内不发送 fallback 切换通知（与 TUN/系统代理一致）
+    markProxyModeChanged();
     await patchClashMode(mode);
     refreshClashConfig();
   });
