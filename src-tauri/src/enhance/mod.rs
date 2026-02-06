@@ -742,7 +742,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     (config, exists_keys_set, result_map)
 }
 
-/// 直连/全局模式下覆盖运行配置的 rules 和 dns，不改变 proxy-groups，界面不切换组
+/// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
+/// 仅删除顶层 nameserver-policy、设置顶层 nameserver，不替换 dns 块（保留 enable、enhanced-mode 等）。
 fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
     // rules: 直连只保留 MATCH,⬆️；全局只保留 MATCH,🔀
     let match_rule = if mode == "direct" {
@@ -755,7 +756,9 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
         Value::Sequence(vec![Value::from(match_rule)]),
     );
 
-    // dns: 删除 nameserver-policy，并设置 nameserver
+    // 顶层：删除 nameserver-policy，设置 nameserver（不修改 dns 块）
+    config.remove("nameserver-policy");
+
     let nameservers: Vec<Value> = if mode == "direct" {
         vec![
             Value::from("https://dns.alidns.com/dns-query"),
@@ -770,19 +773,9 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
             Value::from("tls://1.0.0.1:853"),
         ]
     };
+    config.insert("nameserver".into(), Value::Sequence(nameservers));
 
-    if let Some(dns_val) = config.get_mut("dns") {
-        if let Some(dns) = dns_val.as_mapping_mut() {
-            dns.remove("nameserver-policy");
-            dns.insert("nameserver".into(), Value::Sequence(nameservers));
-        }
-    } else {
-        let mut dns = Mapping::new();
-        dns.insert("nameserver".into(), Value::Sequence(nameservers));
-        config.insert("dns".into(), Value::from(dns));
-    }
-
-    logging!(info, Type::Core, "applied {mode} mode overrides (rules + dns)");
+    logging!(info, Type::Core, "applied {mode} mode overrides (rules + top-level nameserver)");
     config
 }
 
