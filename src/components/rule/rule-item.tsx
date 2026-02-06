@@ -21,6 +21,26 @@ const COLOR = [
   "success.main",
 ];
 
+// 将规则集的原始 url 转为更友好的仓库/文件页面地址
+const toRepoUrl = (url: string): string => {
+  try {
+    const u = new URL(url);
+
+    if (u.hostname === "raw.githubusercontent.com") {
+      const [owner, repo, branch, ...rest] = u.pathname.replace(/^\/+/, "").split("/");
+      if (!owner || !repo) return url;
+      if (!branch || rest.length === 0) {
+        return `https://github.com/${owner}/${repo}`;
+      }
+      return `https://github.com/${owner}/${repo}/blob/${branch}/${rest.join("/")}`;
+    }
+
+    return url;
+  } catch {
+    return url;
+  }
+};
+
 interface Props {
   index: number;
   value: IRuleItem;
@@ -46,8 +66,9 @@ const RuleItem = (props: Props) => {
   const provider = isRuleSet
     ? (ruleProviders?.[value.payload] as IRuleProviderItem | undefined)
     : undefined;
-  const providerUrl =
+  const rawUrl =
     provider?.url ?? (isRuleSet && value.payload ? ruleProviderUrls[value.payload] : undefined);
+  const providerUrl = rawUrl ? toRepoUrl(rawUrl) : undefined;
 
   const handleOpenRepo = () => {
     if (providerUrl) openWebUrl(providerUrl);

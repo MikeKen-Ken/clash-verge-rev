@@ -80,49 +80,24 @@ pub async fn change_clash_mode(mode: String) {
     let _ = clash_data.save_config().await;
 
     let mode_lower = mode.to_lowercase();
-    let is_direct_or_global = mode_lower == "direct" || mode_lower == "global";
-
-    if is_direct_or_global {
-        // 直连/全局：重新生成配置（enhance 会按 mode 覆盖 rules + dns），再推到核心，不切换代理组
-        match crate::core::CoreManager::global().update_config().await {
-            Ok(_) => {
-                handle::Handle::refresh_clash();
-                logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
-                logging_error!(
-                    Type::Tray,
-                    tray::Tray::global()
-                        .update_icon(&Config::verge().await.data_arc())
-                        .await
-                );
-                let is_auto_close_connection =
-                    Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
-                if is_auto_close_connection {
-                    after_change_clash_mode();
-                }
+    // 任意模式切换都走「重新生成 + 应用」：直连/全局时 enhance 会覆盖 rules+dns，规则/脚本时不再覆盖，恢复完整配置
+    match crate::core::CoreManager::global().update_config().await {
+        Ok(_) => {
+            handle::Handle::refresh_clash();
+            logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
+            logging_error!(
+                Type::Tray,
+                tray::Tray::global()
+                    .update_icon(&Config::verge().await.data_arc())
+                    .await
+            );
+            let is_auto_close_connection =
+                Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
+            if is_auto_close_connection {
+                after_change_clash_mode();
             }
-            Err(err) => logging!(error, Type::Core, "update_config after mode change: {err}"),
         }
-    } else {
-        // rule/script：仅通过 core 的 mode 切换即可（保留原逻辑：patch_base_config）
-        let json_value = serde_json::json!({ "mode": mode });
-        match handle::Handle::mihomo().await.patch_base_config(&json_value).await {
-            Ok(_) => {
-                handle::Handle::refresh_clash();
-                logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
-                logging_error!(
-                    Type::Tray,
-                    tray::Tray::global()
-                        .update_icon(&Config::verge().await.data_arc())
-                        .await
-                );
-                let is_auto_close_connection =
-                    Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
-                if is_auto_close_connection {
-                    after_change_clash_mode();
-                }
-            }
-            Err(err) => logging!(error, Type::Core, "{err}"),
-        }
+        Err(err) => logging!(error, Type::Core, "update_config after mode change: {err}"),
     }
 }
 

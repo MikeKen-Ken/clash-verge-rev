@@ -6,7 +6,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   List,
   ListItem,
@@ -26,6 +25,27 @@ import { ruleProviderUrlsSwrKey, useRuleProviderUrls } from "@/hooks/use-rule-pr
 import { useAppData } from "@/providers/app-data-context";
 import { openWebUrl } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
+
+// 将规则集的原始 url 转为更友好的仓库/文件页面地址
+const toRepoUrl = (url: string): string => {
+  try {
+    const u = new URL(url);
+
+    // 处理 GitHub Raw: raw.githubusercontent.com/owner/repo/branch/path...
+    if (u.hostname === "raw.githubusercontent.com") {
+      const [owner, repo, branch, ...rest] = u.pathname.replace(/^\/+/, "").split("/");
+      if (!owner || !repo) return url;
+      if (!branch || rest.length === 0) {
+        return `https://github.com/${owner}/${repo}`;
+      }
+      return `https://github.com/${owner}/${repo}/blob/${branch}/${rest.join("/")}`;
+    }
+
+    return url;
+  } catch {
+    return url;
+  }
+};
 
 // 辅助组件 - 类型框
 const TypeBox = styled(Box)<{ component?: React.ElementType }>(({ theme }) => ({
@@ -178,8 +198,9 @@ export const ProviderButton = () => {
                 const time = dayjs(provider.updatedAt);
                 const isUpdating = updating[key];
 
-                const providerUrl =
+                const rawUrl =
                   (provider as IRuleProviderItem).url ?? ruleProviderUrls[key];
+                const providerUrl = rawUrl ? toRepoUrl(rawUrl) : undefined;
 
                 return (
                   <ListItem
@@ -256,7 +277,6 @@ export const ProviderButton = () => {
                         </Box>
                       }
                     />
-                    <Divider orientation="vertical" flexItem />
                     <Box
                       sx={{
                         display: "flex",
