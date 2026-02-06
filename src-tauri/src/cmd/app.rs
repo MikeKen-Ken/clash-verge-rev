@@ -384,7 +384,7 @@ pub async fn get_process_icon_by_name(_process_name: String) -> CmdResult<Option
 /// 通过进程名查找进程路径并提取图标 (Windows)
 #[cfg(target_os = "windows")]
 fn find_process_and_extract_icon(process_name: &str) -> Option<Vec<u8>> {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, MAX_PATH};
+    use windows::Win32::Foundation::{CloseHandle, MAX_PATH};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
@@ -473,7 +473,7 @@ fn extract_icon_from_exe(exe_path: &str) -> Option<Vec<u8>> {
     use std::io::Cursor;
     use windows::core::PCWSTR;
     use windows::Win32::Graphics::Gdi::{
-        BITMAPINFOHEADER, BI_RGB, CreateCompatibleDC, DeleteDC, DeleteObject,
+        BITMAPINFOHEADER, BI_RGB, CreateCompatibleDC, DeleteDC,
         GetDIBits, GetObjectW, SelectObject, BITMAP, BITMAPINFO, DIB_RGB_COLORS, HGDIOBJ,
     };
     use windows::Win32::UI::Shell::ExtractIconExW;
@@ -619,16 +619,16 @@ unsafe fn cleanup_icon_resources(
     use windows::Win32::Graphics::Gdi::{DeleteObject, HGDIOBJ};
     use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
-    DestroyIcon(large_icon).ok();
+    unsafe { DestroyIcon(large_icon).ok(); }
     if !small_icon.is_invalid() {
-        DestroyIcon(small_icon).ok();
+        unsafe { DestroyIcon(small_icon).ok(); }
     }
     if !icon_info.hbmColor.is_invalid() {
         let hbm_color: HGDIOBJ = icon_info.hbmColor.into();
-        DeleteObject(hbm_color).ok();
+        unsafe { DeleteObject(hbm_color).ok(); }
     }
     if !icon_info.hbmMask.is_invalid() {
         let hbm_mask: HGDIOBJ = icon_info.hbmMask.into();
-        DeleteObject(hbm_mask).ok();
+        unsafe { DeleteObject(hbm_mask).ok(); }
     }
 }

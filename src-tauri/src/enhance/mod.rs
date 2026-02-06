@@ -102,7 +102,7 @@ async fn get_config_values() -> ConfigValues {
     let verge_arc = verge.latest_arc();
     let IVerge {
         ref enable_tun_mode,
-        ref enable_tun_override,
+        ref _enable_tun_override,
         ref enable_builtin_enhanced,
         ref verge_socks_enabled,
         ref verge_http_enabled,
@@ -697,7 +697,7 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     // merge default clash config
     let config = merge_default_config(
         config,
-        clash_config,
+        clash_config.clone(),
         enable_tun_override,
         socks_enabled,
         http_enabled,
