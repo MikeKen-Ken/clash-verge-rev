@@ -743,9 +743,12 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
 }
 
 /// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
-/// 仅删除顶层 nameserver-policy、设置顶层 nameserver，不替换 dns 块（保留 enable、enhanced-mode 等）。
+/// 强制 mode: rule，使核心按规则选策略：全局走 MATCH,🔀（策略组 🔀），直连走 MATCH,⬆️（策略 ⬆️），而非核心内置的 GLOBAL/DIRECT。
 fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
-    // rules: 直连只保留 MATCH,⬆️；全局只保留 MATCH,🔀
+    // 强制 rule 模式，否则核心会按 mode: global/direct 用内置 GLOBAL/DIRECT，忽略我们的 MATCH 规则
+    config.insert("mode".into(), Value::from("rule"));
+
+    // rules: 直连只保留 MATCH,⬆️（走策略 ⬆️）；全局只保留 MATCH,🔀（走策略组 🔀 的当前节点）
     let match_rule = if mode == "direct" {
         "MATCH,⬆️"
     } else {
