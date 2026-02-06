@@ -24,7 +24,7 @@ export function useRuleProviderUrls(): Record<string, string> {
     async () => {
       const config = await getRuntimeConfig();
       if (!config || typeof config !== "object") return {};
-      const rp = (config as Record<string, unknown>)["rule-providers"];
+      const rp = (config as unknown as Record<string, unknown>)["rule-providers"];
       if (!rp || typeof rp !== "object") return {};
       return extractUrls(rp as Record<string, unknown>);
     },
