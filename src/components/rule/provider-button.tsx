@@ -194,9 +194,19 @@ export const ProviderButton = () => {
 
         <DialogContent>
           <List sx={{ py: 0, minHeight: 250 }}>
-            {Object.entries(ruleProviders || {})
-              .sort()
-              .map(([key, item]) => {
+            {(() => {
+              // 按配置中的 rule-providers 顺序显示，不在配置中的排在后面并按字母序
+              const configOrder = Object.keys(ruleProviderUrls);
+              return Object.entries(ruleProviders || {})
+                .sort(([a], [b]) => {
+                  const iA = configOrder.indexOf(a);
+                  const iB = configOrder.indexOf(b);
+                  if (iA === -1 && iB === -1) return a.localeCompare(b);
+                  if (iA === -1) return 1;
+                  if (iB === -1) return -1;
+                  return iA - iB;
+                })
+                .map(([key, item]) => {
                 const provider = item;
                 const time = dayjs(provider.updatedAt);
                 const isUpdating = updating[key];
@@ -322,7 +332,8 @@ export const ProviderButton = () => {
                     </Box>
                   </ListItem>
                 );
-              })}
+              });
+            })()}
           </List>
         </DialogContent>
 
