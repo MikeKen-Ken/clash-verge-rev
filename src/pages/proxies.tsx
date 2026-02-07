@@ -203,11 +203,19 @@ const ProxyPage = () => {
               label={
                 <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
                   {t("settings.sections.system.toggles.tunMode")}
-                  {!isTunModeAvailable &&
-                    " " +
-                      t(
-                        "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
-                      )}
+                  {!isTunModeAvailable && (
+                    <>
+                      {" "}
+                      <Box
+                        component="span"
+                        sx={{ color: "error.main", fontSize: "inherit" }}
+                      >
+                        {t(
+                          "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                        )}
+                      </Box>
+                    </>
+                  )}
                 </Typography>
               }
             />

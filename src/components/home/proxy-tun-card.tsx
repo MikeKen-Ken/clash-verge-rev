@@ -14,7 +14,7 @@ import {
   useTheme,
   Fade,
 } from "@mui/material";
-import { useState, useMemo, memo, FC } from "react";
+import { useState, useMemo, memo, FC, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import ProxyControlSwitches from "@/components/shared/proxy-control-switches";
@@ -29,7 +29,7 @@ interface TabButtonProps {
   isActive: boolean;
   onClick: () => void;
   icon: SvgIconComponent;
-  label: string;
+  label: ReactNode;
   hasIndicator?: boolean;
 }
 
@@ -206,11 +206,22 @@ export const ProxyTunCard: FC = () => {
           onClick={() => handleTabChange("tun")}
           icon={TroubleshootRounded}
           label={
-            t("settings.sections.system.toggles.tunMode") +
-            (!isTunModeAvailable
-              ? " " +
-                t("settings.sections.proxyControl.fields.tunModeRequiresAdmin")
-              : "")
+            <>
+              {t("settings.sections.system.toggles.tunMode")}
+              {!isTunModeAvailable && (
+                <>
+                  {" "}
+                  <Box
+                    component="span"
+                    sx={{ color: "error.main", fontSize: "inherit" }}
+                  >
+                    {t(
+                      "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                    )}
+                  </Box>
+                </>
+              )}
+            </>
           }
           hasIndicator={enable_tun_mode && isTunModeAvailable}
         />

@@ -62,7 +62,7 @@ export function setClosedConnectionsInStorage(
   }
   return openDb().then(
     (db) =>
-      new Promise((resolve, reject) => {
+      new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readwrite");
         const store = tx.objectStore(STORE_NAME);
         const req = store.put(closed, KEY);
@@ -75,7 +75,7 @@ export function setClosedConnectionsInStorage(
           reject(req.error);
         };
       }),
-  ).catch(() => {
+  ).catch((): void => {
     // ignore quota or other errors
-  });
+  }) as Promise<void>;
 }

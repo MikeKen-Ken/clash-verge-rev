@@ -30,7 +30,7 @@ interface ProxySwitchProps {
 }
 
 interface SwitchRowProps {
-  label: string;
+  label: React.ReactNode;
   active: boolean;
   disabled?: boolean;
   infoTitle: string;
@@ -165,9 +165,12 @@ const ProxyControlSwitches = ({
     }
   });
 
+  const tunModeLabel = t("settings.sections.system.toggles.tunMode");
   const isSystemProxyMode =
     label === t("settings.sections.system.toggles.systemProxy") || !label;
-  const isTunMode = label === t("settings.sections.system.toggles.tunMode");
+  const isTunMode =
+    label === tunModeLabel ||
+    (typeof label === "string" && label.startsWith(tunModeLabel));
 
   return (
     <Box sx={{ width: "100%", pr: noRightPadding ? 1 : 2 }}>
@@ -186,11 +189,22 @@ const ProxyControlSwitches = ({
       {isTunMode && (
         <SwitchRow
           label={
-            t("settings.sections.proxyControl.fields.tunMode") +
-            (!isTunModeAvailable
-              ? " " +
-                t("settings.sections.proxyControl.fields.tunModeRequiresAdmin")
-              : "")
+            <>
+              {t("settings.sections.proxyControl.fields.tunMode")}
+              {!isTunModeAvailable && (
+                <>
+                  {" "}
+                  <Box
+                    component="span"
+                    sx={{ color: "error.main", fontSize: "inherit" }}
+                  >
+                    {t(
+                      "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                    )}
+                  </Box>
+                </>
+              )}
+            </>
           }
           active={enable_tun_mode || false}
           infoTitle={t("settings.sections.proxyControl.tooltips.tunMode")}
