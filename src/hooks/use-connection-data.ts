@@ -1,12 +1,19 @@
-import { useRef } from "react";
+import { useEffect } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
-import { useConnectionSetting } from "./use-connection-setting";
+import {
+  getClosedConnectionsFromStorage,
+  setClosedConnectionsInStorage,
+} from "@/utils/closed-connections-storage";
+
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
 const DEFAULT_CLOSED_RETENTION_HOURS = 8;
+
+/** 持久化保留时长（小时）：仅超过此时长或手动清除时才会从列表移除 */
+const PERSIST_RETENTION_HOURS = 24;
 
 export const initConnData: ConnectionMonitorData = {
   uploadTotal: 0,
@@ -22,8 +29,8 @@ export interface ConnectionMonitorData {
   closedConnections: IConnectionsItem[];
 }
 
-/** 按保留时间（小时）过滤已关闭连接：只保留关闭时间在 retentionHours 内的 */
-const filterClosedConnectionsByRetention = (
+/** 按保留时间（小时）过滤已关闭连接：只保留关闭时间在 retentionHours 内的（供展示与持久化使用） */
+export const filterClosedConnectionsByRetention = (
   closedConnections: IConnectionsItem[],
   retentionHours: number = DEFAULT_CLOSED_RETENTION_HOURS,
 ): IConnectionsItem[] => {
@@ -38,7 +45,6 @@ const filterClosedConnectionsByRetention = (
 const mergeConnectionSnapshot = (
   payload: IConnections,
   previous: ConnectionMonitorData = initConnData,
-  retentionHours: number = DEFAULT_CLOSED_RETENTION_HOURS,
 ): ConnectionMonitorData => {
   const nextConnections = payload.connections ?? [];
   const previousActive = previous.activeConnections ?? [];
@@ -84,10 +90,12 @@ const mergeConnectionSnapshot = (
     .filter((conn) => !newIds.has(conn.id))
     .map((conn) => ({ ...conn, closedAt: now } as IConnectionsItem));
 
+  // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
   const closedConnections = filterClosedConnectionsByRetention(
     [...(previous.closedConnections ?? []), ...newlyClosed],
-    retentionHours,
+    PERSIST_RETENTION_HOURS,
   );
+  void setClosedConnectionsInStorage(closedConnections);
 
   return {
     uploadTotal: payload.uploadTotal ?? 0,
@@ -98,11 +106,6 @@ const mergeConnectionSnapshot = (
 };
 
 export const useConnectionData = () => {
-  const [setting] = useConnectionSetting();
-  const retentionHours = setting?.closedConnectionsRetentionHours ?? DEFAULT_CLOSED_RETENTION_HOURS;
-  const retentionHoursRef = useRef(retentionHours);
-  retentionHoursRef.current = retentionHours;
-
   const { response, refresh, subscriptionCacheKey } =
     useMihomoWsSubscription<ConnectionMonitorData>({
       storageKey: "mihomo_connection_date",
@@ -120,11 +123,7 @@ export const useConnectionData = () => {
           try {
             const parsed = JSON.parse(data) as IConnections;
             next(null, (old = initConnData) =>
-              mergeConnectionSnapshot(
-                parsed,
-                old,
-                retentionHoursRef.current ?? DEFAULT_CLOSED_RETENTION_HOURS,
-              ),
+              mergeConnectionSnapshot(parsed, old),
             );
           } catch (error) {
             next(error);
@@ -132,6 +131,29 @@ export const useConnectionData = () => {
         },
       }),
     });
+
+  // 从 IndexedDB 恢复已关闭列表（异步，不阻塞首屏）；仅当内存中尚未有已关闭数据时注入，避免覆盖新数据
+  useEffect(() => {
+    if (!subscriptionCacheKey) return;
+    getClosedConnectionsFromStorage()
+      .then((raw) => {
+        const closed = filterClosedConnectionsByRetention(
+          raw,
+          PERSIST_RETENTION_HOURS,
+        );
+        if (closed.length === 0) return;
+        mutate(
+          subscriptionCacheKey,
+          (prev: ConnectionMonitorData | undefined) => {
+            const current = prev ?? initConnData;
+            if ((current.closedConnections?.length ?? 0) > 0) return current;
+            return { ...current, closedConnections: closed };
+          },
+          { revalidate: false },
+        );
+      })
+      .catch(() => {});
+  }, [subscriptionCacheKey]);
 
   const clearClosedConnections = () => {
     if (!subscriptionCacheKey) return;
@@ -141,6 +163,7 @@ export const useConnectionData = () => {
       activeConnections: response.data?.activeConnections ?? [],
       closedConnections: [],
     });
+    void setClosedConnectionsInStorage([]);
   };
 
   return {

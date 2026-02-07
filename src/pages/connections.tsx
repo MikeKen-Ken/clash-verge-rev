@@ -31,7 +31,10 @@ import {
 } from "@/components/connection/connection-detail";
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
-import { useConnectionData } from "@/hooks/use-connection-data";
+import {
+  filterClosedConnectionsByRetention,
+  useConnectionData,
+} from "@/hooks/use-connection-data";
 import {
   CLOSED_CONNECTIONS_RETENTION_HOURS,
   useConnectionSetting,
@@ -146,10 +149,15 @@ const ConnectionsPage = () => {
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
+    const closedRaw = connections?.closedConnections ?? [];
+    const closedForDisplay = filterClosedConnectionsByRetention(
+      closedRaw,
+      setting?.closedConnectionsRetentionHours ?? 8,
+    );
     const conns =
-      (connectionsType === "active"
-        ? connections?.activeConnections
-        : connections?.closedConnections) ?? [];
+      connectionsType === "active"
+        ? (connections?.activeConnections ?? [])
+        : closedForDisplay;
     let matchConns = conns.filter((conn) => {
       const { host, destinationIP, process } = conn.metadata;
       return (
@@ -165,7 +173,7 @@ const ConnectionsPage = () => {
     }
 
     return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain]);
+  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours]);
 
   const onCloseAll = useLockFn(closeAllConnections);
   const onCloseExcludingDirect = useLockFn(closeConnectionsExcludingDirect);

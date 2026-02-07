@@ -1,0 +1,81 @@
+/**
+ * 已关闭连接持久化：使用 IndexedDB，避免 localStorage 容量与阻塞问题。
+ * IndexedDB 容量大（通常数百 MB）、异步、不阻塞主线程。
+ */
+
+const DB_NAME = "verge_connections";
+const DB_VERSION = 1;
+const STORE_NAME = "closed";
+const KEY = "list";
+
+function openDb(): Promise<IDBDatabase> {
+  if (typeof window === "undefined" || !window.indexedDB) {
+    return Promise.reject(new Error("IndexedDB not available"));
+  }
+  return new Promise((resolve, reject) => {
+    const req = window.indexedDB.open(DB_NAME, DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+  });
+}
+
+export async function getClosedConnectionsFromStorage(): Promise<
+  IConnectionsItem[]
+> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(KEY);
+      req.onsuccess = () => {
+        db.close();
+        const value = req.result;
+        if (value == null) {
+          resolve([]);
+          return;
+        }
+        const arr = Array.isArray(value) ? value : [];
+        resolve(arr as IConnectionsItem[]);
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function setClosedConnectionsInStorage(
+  closed: IConnectionsItem[],
+): Promise<void> {
+  if (typeof window === "undefined" || !window.indexedDB) {
+    return Promise.resolve();
+  }
+  return openDb().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.put(closed, KEY);
+        req.onsuccess = () => {
+          db.close();
+          resolve();
+        };
+        req.onerror = () => {
+          db.close();
+          reject(req.error);
+        };
+      }),
+  ).catch(() => {
+    // ignore quota or other errors
+  });
+}
