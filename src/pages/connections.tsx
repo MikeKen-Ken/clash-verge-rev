@@ -336,18 +336,24 @@ const ConnectionsPage = () => {
         {connectionsType === "closed" && (
           <>
             <BaseStyledSelect
-              value={setting?.closedConnectionsLimit ?? 500}
+              value={String(setting?.closedConnectionsLimit ?? 500)}
               onChange={(e) =>
-                setSetting((o) => ({
-                  ...o,
-                  closedConnectionsLimit: Number(e.target.value) as IConnectionSetting["closedConnectionsLimit"],
-                }))
+                setSetting((o) => {
+                  const base: IConnectionSetting = o ?? {
+                    layout: "table",
+                    closedConnectionsLimit: 500,
+                  };
+                  return {
+                    ...base,
+                    closedConnectionsLimit: Number(e.target.value) as IConnectionSetting["closedConnectionsLimit"],
+                  };
+                })
               }
               sx={{ minWidth: 90 }}
               title={t("connections.components.closedLimit")}
             >
               {CLOSED_CONNECTIONS_LIMIT_OPTIONS.map((n) => (
-                <MenuItem key={n} value={n}>
+                <MenuItem key={n} value={String(n)}>
                   <span style={{ fontSize: 14 }}>{n}</span>
                 </MenuItem>
               ))}
