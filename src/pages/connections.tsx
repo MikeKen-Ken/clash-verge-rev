@@ -1,6 +1,7 @@
 import {
   ArrowDropDown,
   DeleteForeverRounded,
+  MergeTypeRounded,
   TableChartRounded,
   TableRowsRounded,
 } from "@mui/icons-material";
@@ -8,11 +9,9 @@ import {
   Box,
   Button,
   ButtonGroup,
-  Fab,
   IconButton,
   Menu,
   MenuItem,
-  Zoom,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -33,7 +32,10 @@ import {
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import { useConnectionData } from "@/hooks/use-connection-data";
-import { useConnectionSetting } from "@/hooks/use-connection-setting";
+import {
+  CLOSED_CONNECTIONS_LIMIT_OPTIONS,
+  useConnectionSetting,
+} from "@/hooks/use-connection-setting";
 import parseTraffic from "@/utils/parse-traffic";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 
@@ -74,6 +76,38 @@ const orderFunctionMap = ORDER_OPTIONS.reduce<Record<OrderKey, OrderFunc>>(
   {} as Record<OrderKey, OrderFunc>,
 );
 
+/** 按域名合并已关闭连接，合并下载量、上传量 */
+const mergeClosedConnectionsByHost = (
+  list: IConnectionsItem[],
+): IConnectionsItem[] => {
+  const byHost = new Map<string, IConnectionsItem[]>();
+  for (const conn of list) {
+    const key = conn.metadata?.host || conn.metadata?.remoteDestination || conn.metadata?.destinationIP || conn.id;
+    if (!byHost.has(key)) byHost.set(key, []);
+    byHost.get(key)!.push(conn);
+  }
+  return Array.from(byHost.entries()).map(([hostKey, group]) => {
+    const first = group[0]!;
+    const upload = group.reduce((s, c) => s + (c.upload ?? 0), 0);
+    const download = group.reduce((s, c) => s + (c.download ?? 0), 0);
+    const latest = group.reduce(
+      (latest, c) =>
+        new Date(c.start || "0").getTime() > new Date(latest.start || "0").getTime()
+          ? c
+          : latest,
+      first,
+    );
+    return {
+      ...latest,
+      id: `merged-${hostKey}-${first.id}`,
+      upload,
+      download,
+      curUpload: 0,
+      curDownload: 0,
+    } as IConnectionsItem;
+  });
+};
+
 const ConnectionsPage = () => {
   const { t } = useTranslation();
   const [match, setMatch] = useState<(input: string) => boolean>(
@@ -83,6 +117,7 @@ const ConnectionsPage = () => {
   const [connectionsType, setConnectionsType] = useState<"active" | "closed">(
     "active",
   );
+  const [mergeByDomain, setMergeByDomain] = useState(false);
 
   const {
     response: { data: connections },
@@ -94,6 +129,20 @@ const ConnectionsPage = () => {
   const isTableLayout = setting.layout === "table";
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+
+  /** 仅统计非直连（未走 DIRECT）的流量 */
+  const nonDirectTraffic = useMemo(() => {
+    const active = connections?.activeConnections ?? [];
+    const closed = connections?.closedConnections ?? [];
+    let download = 0;
+    let upload = 0;
+    for (const c of [...active, ...closed]) {
+      if (c.chains?.includes?.("DIRECT")) continue;
+      download += c.download ?? 0;
+      upload += c.upload ?? 0;
+    }
+    return { download, upload };
+  }, [connections?.activeConnections, connections?.closedConnections]);
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
@@ -110,8 +159,13 @@ const ConnectionsPage = () => {
 
     if (orderFunc) matchConns = orderFunc(matchConns ?? []);
 
+    if (connectionsType === "closed" && mergeByDomain && matchConns.length > 0) {
+      matchConns = mergeClosedConnectionsByHost(matchConns);
+      if (orderFunc) matchConns = orderFunc(matchConns);
+    }
+
     return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt]);
+  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain]);
 
   const onCloseAll = useLockFn(closeAllConnections);
   const onCloseExcludingDirect = useLockFn(closeConnectionsExcludingDirect);
@@ -163,13 +217,24 @@ const ConnectionsPage = () => {
       }}
       header={
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {connectionsType === "closed" && (
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              startIcon={<DeleteForeverRounded />}
+              onClick={() => clearClosedConnections()}
+            >
+              {t("shared.actions.clear")}
+            </Button>
+          )}
           <Box sx={{ mx: 1 }}>
             {t("shared.labels.downloaded")}:{" "}
-            {parseTraffic(connections?.downloadTotal)}
+            {parseTraffic(nonDirectTraffic.download)}
           </Box>
           <Box sx={{ mx: 1 }}>
             {t("shared.labels.uploaded")}:{" "}
-            {parseTraffic(connections?.uploadTotal)}
+            {parseTraffic(nonDirectTraffic.upload)}
           </Box>
           <IconButton
             color="inherit"
@@ -189,9 +254,9 @@ const ConnectionsPage = () => {
             )}
           </IconButton>
           <ButtonGroup size="small" variant="contained">
-            <Button onClick={handleCloseAll}>
+            <Button onClick={handleCloseExcludingDirect}>
               <span style={{ whiteSpace: "nowrap" }}>
-                {t("shared.actions.closeAll")}
+                关闭非DIRECT连接
               </span>
             </Button>
             <Button
@@ -213,11 +278,11 @@ const ConnectionsPage = () => {
               "aria-labelledby": "close-button",
             }}
           >
-            <MenuItem onClick={handleCloseAll}>
-              {t("shared.actions.closeAll")}
-            </MenuItem>
             <MenuItem onClick={handleCloseExcludingDirect}>
               关闭非DIRECT连接
+            </MenuItem>
+            <MenuItem onClick={handleCloseAll}>
+              {t("shared.actions.closeAll")}
             </MenuItem>
           </Menu>
         </Box>
@@ -268,6 +333,37 @@ const ConnectionsPage = () => {
             ))}
           </BaseStyledSelect>
         )}
+        {connectionsType === "closed" && (
+          <>
+            <BaseStyledSelect
+              value={setting?.closedConnectionsLimit ?? 500}
+              onChange={(e) =>
+                setSetting((o) => ({
+                  ...o,
+                  closedConnectionsLimit: Number(e.target.value) as IConnectionSetting["closedConnectionsLimit"],
+                }))
+              }
+              sx={{ minWidth: 90 }}
+              title={t("connections.components.closedLimit")}
+            >
+              {CLOSED_CONNECTIONS_LIMIT_OPTIONS.map((n) => (
+                <MenuItem key={n} value={n}>
+                  <span style={{ fontSize: 14 }}>{n}</span>
+                </MenuItem>
+              ))}
+            </BaseStyledSelect>
+            <Button
+              size="small"
+              variant={mergeByDomain ? "contained" : "outlined"}
+              onClick={() => setMergeByDomain((v) => !v)}
+              startIcon={<MergeTypeRounded />}
+            >
+              {mergeByDomain
+                ? t("connections.components.actions.cancelMergeByDomain")
+                : t("connections.components.actions.mergeByDomain")}
+            </Button>
+          </>
+        )}
         <Box
           sx={{
             flex: 1,
@@ -315,25 +411,6 @@ const ConnectionsPage = () => {
         />
       )}
       <ConnectionDetail ref={detailRef} />
-      <Zoom
-        in={connectionsType === "closed" && filterConn.length > 0}
-        unmountOnExit
-      >
-        <Fab
-          size="medium"
-          variant="extended"
-          sx={{
-            position: "absolute",
-            right: 16,
-            bottom: isTableLayout ? 70 : 16,
-          }}
-          color="primary"
-          onClick={() => clearClosedConnections()}
-        >
-          <DeleteForeverRounded sx={{ mr: 1 }} fontSize="small" />
-          {t("shared.actions.clear")}
-        </Fab>
-      </Zoom>
     </BasePage>
   );
 };

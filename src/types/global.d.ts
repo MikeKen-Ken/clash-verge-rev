@@ -255,8 +255,15 @@ interface IConnections {
   connections: IConnectionsItem[];
 }
 
+/** 已关闭连接可保存的数量 */
+const CLOSED_CONNECTIONS_LIMIT_OPTIONS = [500, 1000, 3000, 5000] as const;
+type ClosedConnectionsLimit =
+  (typeof CLOSED_CONNECTIONS_LIMIT_OPTIONS)[number];
+
 interface IConnectionSetting {
   layout: "table" | "list";
+  /** 已关闭连接保存数量上限，默认 500 */
+  closedConnectionsLimit?: ClosedConnectionsLimit;
 }
 
 /**

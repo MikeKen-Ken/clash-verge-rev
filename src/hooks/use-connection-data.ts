@@ -1,10 +1,12 @@
+import { useRef } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
+import { useConnectionSetting } from "./use-connection-setting";
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
-const MAX_CLOSED_CONNS_NUM = 500;
+const DEFAULT_CLOSED_CONNS_NUM = 500;
 
 export const initConnData: ConnectionMonitorData = {
   uploadTotal: 0,
@@ -22,14 +24,16 @@ export interface ConnectionMonitorData {
 
 const trimClosedConnections = (
   closedConnections: IConnectionsItem[],
+  limit: number = DEFAULT_CLOSED_CONNS_NUM,
 ): IConnectionsItem[] =>
-  closedConnections.length > MAX_CLOSED_CONNS_NUM
-    ? closedConnections.slice(-MAX_CLOSED_CONNS_NUM)
+  closedConnections.length > limit
+    ? closedConnections.slice(-limit)
     : closedConnections;
 
 const mergeConnectionSnapshot = (
   payload: IConnections,
   previous: ConnectionMonitorData = initConnData,
+  closedLimit: number = DEFAULT_CLOSED_CONNS_NUM,
 ): ConnectionMonitorData => {
   const nextConnections = payload.connections ?? [];
   const previousActive = previous.activeConnections ?? [];
@@ -70,10 +74,13 @@ const mergeConnectionSnapshot = (
 
   const activeConnections = [...carried, ...newcomers];
 
-  const closedConnections = trimClosedConnections([
-    ...(previous.closedConnections ?? []),
-    ...previousActive.filter((conn) => !newIds.has(conn.id)),
-  ]);
+  const closedConnections = trimClosedConnections(
+    [
+      ...(previous.closedConnections ?? []),
+      ...previousActive.filter((conn) => !newIds.has(conn.id)),
+    ],
+    closedLimit,
+  );
 
   return {
     uploadTotal: payload.uploadTotal ?? 0,
@@ -84,6 +91,11 @@ const mergeConnectionSnapshot = (
 };
 
 export const useConnectionData = () => {
+  const [setting] = useConnectionSetting();
+  const closedLimit = setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNS_NUM;
+  const closedLimitRef = useRef(closedLimit);
+  closedLimitRef.current = closedLimit;
+
   const { response, refresh, subscriptionCacheKey } =
     useMihomoWsSubscription<ConnectionMonitorData>({
       storageKey: "mihomo_connection_date",
@@ -101,7 +113,11 @@ export const useConnectionData = () => {
           try {
             const parsed = JSON.parse(data) as IConnections;
             next(null, (old = initConnData) =>
-              mergeConnectionSnapshot(parsed, old),
+              mergeConnectionSnapshot(
+                parsed,
+                old,
+                closedLimitRef.current ?? DEFAULT_CLOSED_CONNS_NUM,
+              ),
             );
           } catch (error) {
             next(error);

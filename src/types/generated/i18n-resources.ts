@@ -9,7 +9,10 @@ export interface TranslationResources {
           active: string;
           closeConnection: string;
           closed: string;
+          mergeByDomain: string;
+          cancelMergeByDomain: string;
         };
+        closedLimit: string;
         columnManager: {
           dragHandle: string;
           title: string;
