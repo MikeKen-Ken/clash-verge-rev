@@ -21,7 +21,11 @@ import { useTranslation } from "react-i18next";
 import { mutate } from "swr";
 import { updateRuleProvider } from "tauri-plugin-mihomo-api";
 
-import { ruleProviderUrlsSwrKey, useRuleProviderUrls } from "@/hooks/use-rule-provider-urls";
+import {
+  ruleProviderUrlsSwrKey,
+  useRuleProviderUrls,
+  useRulesetOrderFromRules,
+} from "@/hooks/use-rule-provider-urls";
 import { useAppData } from "@/providers/app-data-context";
 import { openWebUrl } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
@@ -70,8 +74,10 @@ export const ProviderButton = () => {
   const hasProviders = Object.keys(ruleProviders || {}).length > 0;
   // 从运行中配置解析的 rule-providers url（API 未返回 url 时使用）
   const ruleProviderUrls = useRuleProviderUrls();
+  // 从运行中配置的 rules 里 RULE-SET 首次出现顺序，用于列表排序
+  const rulesetOrder = useRulesetOrderFromRules();
 
-  // 每次打开规则集合弹窗时重新拉取规则提供者列表和运行中配置，确保看到新增的 ruleset
+  // 每次打开规则集合弹窗时重新拉取规则提供者列表和运行中配置，确保顺序与 ruleset 列表都是最新的
   useEffect(() => {
     if (open) {
       void refreshRuleProviders();
@@ -195,8 +201,8 @@ export const ProviderButton = () => {
         <DialogContent>
           <List sx={{ py: 0, minHeight: 250 }}>
             {(() => {
-              // 按配置中的 rule-providers 顺序显示，不在配置中的排在后面并按字母序
-              const configOrder = Object.keys(ruleProviderUrls);
+              // 按 rules 里 RULE-SET 首次出现顺序显示，不在 rules 中的排在后面并按字母序
+              const configOrder = rulesetOrder.length > 0 ? rulesetOrder : Object.keys(ruleProviderUrls);
               return Object.entries(ruleProviders || {})
                 .sort(([a], [b]) => {
                   const iA = configOrder.indexOf(a);

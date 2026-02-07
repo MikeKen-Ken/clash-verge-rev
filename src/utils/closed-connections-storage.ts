@@ -7,6 +7,15 @@ const DB_NAME = "verge_connections";
 const DB_VERSION = 1;
 const STORE_NAME = "closed";
 const KEY = "list";
+/** 完整连接快照（活跃+已关闭），用于重新进入连接页时恢复列表，避免空白 */
+const SNAPSHOT_KEY = "snapshot";
+
+export interface ConnectionSnapshot {
+  uploadTotal: number;
+  downloadTotal: number;
+  activeConnections: IConnectionsItem[];
+  closedConnections: IConnectionsItem[];
+}
 
 function openDb(): Promise<IDBDatabase> {
   if (typeof window === "undefined" || !window.indexedDB) {
@@ -78,4 +87,58 @@ export function setClosedConnectionsInStorage(
   ).catch((): void => {
     // ignore quota or other errors
   }) as Promise<void>;
+}
+
+export async function getConnectionSnapshot(): Promise<ConnectionSnapshot | null> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(SNAPSHOT_KEY);
+      req.onsuccess = () => {
+        db.close();
+        const value = req.result;
+        if (value == null || typeof value !== "object") {
+          resolve(null);
+          return;
+        }
+        const v = value as ConnectionSnapshot;
+        resolve({
+          uploadTotal: v.uploadTotal ?? 0,
+          downloadTotal: v.downloadTotal ?? 0,
+          activeConnections: Array.isArray(v.activeConnections) ? v.activeConnections : [],
+          closedConnections: Array.isArray(v.closedConnections) ? v.closedConnections : [],
+        });
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function setConnectionSnapshot(data: ConnectionSnapshot): void {
+  if (typeof window === "undefined" || !window.indexedDB) {
+    return;
+  }
+  openDb().then(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.put(data, SNAPSHOT_KEY);
+        req.onsuccess = () => {
+          db.close();
+          resolve();
+        };
+        req.onerror = () => {
+          db.close();
+          reject(req.error);
+        };
+      }),
+  ).catch((): void => {});
 }

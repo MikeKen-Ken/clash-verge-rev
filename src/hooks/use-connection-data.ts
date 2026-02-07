@@ -4,7 +4,9 @@ import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
 import {
   getClosedConnectionsFromStorage,
+  getConnectionSnapshot,
   setClosedConnectionsInStorage,
+  setConnectionSnapshot,
 } from "@/utils/closed-connections-storage";
 
 import { registerProcessPath } from "./use-process-icon";
@@ -132,11 +134,19 @@ export const useConnectionData = () => {
       }),
     });
 
-  // 从 IndexedDB 恢复已关闭列表（异步，不阻塞首屏）；仅当内存中尚未有已关闭数据时注入，避免覆盖新数据
+  // 重新进入连接页时从 IndexedDB 恢复上次快照（活跃+已关闭），避免列表空白；若无快照则仅恢复已关闭列表
   useEffect(() => {
     if (!subscriptionCacheKey) return;
-    getClosedConnectionsFromStorage()
+    getConnectionSnapshot()
+      .then((snapshot) => {
+        if (snapshot && (snapshot.activeConnections?.length > 0 || snapshot.closedConnections?.length > 0)) {
+          mutate(subscriptionCacheKey, snapshot, { revalidate: false });
+          return;
+        }
+        return getClosedConnectionsFromStorage();
+      })
       .then((raw) => {
+        if (!raw || !Array.isArray(raw)) return;
         const closed = filterClosedConnectionsByRetention(
           raw,
           PERSIST_RETENTION_HOURS,
@@ -155,15 +165,25 @@ export const useConnectionData = () => {
       .catch(() => {});
   }, [subscriptionCacheKey]);
 
+  // 有连接数据时持久化完整快照，供重新进入连接页时恢复
+  useEffect(() => {
+    const data = response.data;
+    if (data && (data.activeConnections?.length > 0 || data.closedConnections?.length > 0)) {
+      setConnectionSnapshot(data);
+    }
+  }, [response.data]);
+
   const clearClosedConnections = () => {
     if (!subscriptionCacheKey) return;
-    mutate(subscriptionCacheKey, {
+    const next = {
       uploadTotal: response.data?.uploadTotal ?? 0,
       downloadTotal: response.data?.downloadTotal ?? 0,
       activeConnections: response.data?.activeConnections ?? [],
       closedConnections: [],
-    });
+    };
+    mutate(subscriptionCacheKey, next);
     void setClosedConnectionsInStorage([]);
+    setConnectionSnapshot(next);
   };
 
   return {
