@@ -247,6 +247,8 @@ interface IConnectionsItem {
   ruleDetail?: string;
   curUpload?: number; // upload speed, calculate at runtime
   curDownload?: number; // download speed, calculate at runtime
+  /** 进入已关闭列表时的时间戳（用于按时间保留） */
+  closedAt?: number;
 }
 
 interface IConnections {
@@ -255,15 +257,15 @@ interface IConnections {
   connections: IConnectionsItem[];
 }
 
-/** 已关闭连接可保存的数量 */
-const CLOSED_CONNECTIONS_LIMIT_OPTIONS = [500, 1000, 3000, 5000] as const;
-type ClosedConnectionsLimit =
-  (typeof CLOSED_CONNECTIONS_LIMIT_OPTIONS)[number];
+/** 已关闭连接保留时间（小时） */
+const CLOSED_CONNECTIONS_RETENTION_HOURS = [1, 3, 8, 24] as const;
+type ClosedConnectionsRetentionHours =
+  (typeof CLOSED_CONNECTIONS_RETENTION_HOURS)[number];
 
 interface IConnectionSetting {
   layout: "table" | "list";
-  /** 已关闭连接保存数量上限，默认 500 */
-  closedConnectionsLimit?: ClosedConnectionsLimit;
+  /** 已关闭连接保留时长（小时），默认 8 */
+  closedConnectionsRetentionHours?: ClosedConnectionsRetentionHours;
 }
 
 /**

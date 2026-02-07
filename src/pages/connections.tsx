@@ -33,7 +33,7 @@ import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import { useConnectionData } from "@/hooks/use-connection-data";
 import {
-  CLOSED_CONNECTIONS_LIMIT_OPTIONS,
+  CLOSED_CONNECTIONS_RETENTION_HOURS,
   useConnectionSetting,
 } from "@/hooks/use-connection-setting";
 import parseTraffic from "@/utils/parse-traffic";
@@ -336,25 +336,27 @@ const ConnectionsPage = () => {
         {connectionsType === "closed" && (
           <>
             <BaseStyledSelect
-              value={String(setting?.closedConnectionsLimit ?? 500)}
+              value={String(setting?.closedConnectionsRetentionHours ?? 8)}
               onChange={(e) =>
                 setSetting((o) => {
                   const base: IConnectionSetting = o ?? {
                     layout: "table",
-                    closedConnectionsLimit: 500,
+                    closedConnectionsRetentionHours: 8,
                   };
                   return {
                     ...base,
-                    closedConnectionsLimit: Number(e.target.value) as IConnectionSetting["closedConnectionsLimit"],
+                    closedConnectionsRetentionHours: Number(e.target.value) as IConnectionSetting["closedConnectionsRetentionHours"],
                   };
                 })
               }
-              sx={{ minWidth: 90 }}
-              title={t("connections.components.closedLimit")}
+              sx={{ minWidth: 100 }}
+              title={t("connections.components.closedRetention")}
             >
-              {CLOSED_CONNECTIONS_LIMIT_OPTIONS.map((n) => (
-                <MenuItem key={n} value={String(n)}>
-                  <span style={{ fontSize: 14 }}>{n}</span>
+              {CLOSED_CONNECTIONS_RETENTION_HOURS.map((h) => (
+                <MenuItem key={h} value={String(h)}>
+                  <span style={{ fontSize: 14 }}>
+                    {t(`connections.components.retentionHours${h}`)}
+                  </span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>

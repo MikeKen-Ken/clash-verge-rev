@@ -12,7 +12,11 @@ export interface TranslationResources {
           mergeByDomain: string;
           cancelMergeByDomain: string;
         };
-        closedLimit: string;
+        closedRetention: string;
+        retentionHours1: string;
+        retentionHours3: string;
+        retentionHours8: string;
+        retentionHours24: string;
         columnManager: {
           dragHandle: string;
           title: string;

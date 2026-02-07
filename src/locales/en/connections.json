@@ -28,7 +28,11 @@
             "mergeByDomain": "Merge by domain",
             "cancelMergeByDomain": "Cancel merge"
         },
-        "closedLimit": "Save limit",
+        "closedRetention": "Retention",
+        "retentionHours1": "1 hour",
+        "retentionHours3": "3 hours",
+        "retentionHours8": "8 hours",
+        "retentionHours24": "24 hours",
         "columnManager": {
             "title": "Columns",
             "dragHandle": "Drag handle"

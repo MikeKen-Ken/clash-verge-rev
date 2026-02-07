@@ -6,7 +6,7 @@ import { useConnectionSetting } from "./use-connection-setting";
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 
-const DEFAULT_CLOSED_CONNS_NUM = 500;
+const DEFAULT_CLOSED_RETENTION_HOURS = 8;
 
 export const initConnData: ConnectionMonitorData = {
   uploadTotal: 0,
@@ -22,22 +22,28 @@ export interface ConnectionMonitorData {
   closedConnections: IConnectionsItem[];
 }
 
-const trimClosedConnections = (
+/** 按保留时间（小时）过滤已关闭连接：只保留关闭时间在 retentionHours 内的 */
+const filterClosedConnectionsByRetention = (
   closedConnections: IConnectionsItem[],
-  limit: number = DEFAULT_CLOSED_CONNS_NUM,
-): IConnectionsItem[] =>
-  closedConnections.length > limit
-    ? closedConnections.slice(-limit)
-    : closedConnections;
+  retentionHours: number = DEFAULT_CLOSED_RETENTION_HOURS,
+): IConnectionsItem[] => {
+  const now = Date.now();
+  const maxAgeMs = retentionHours * 3600 * 1000;
+  return closedConnections.filter((conn) => {
+    const closedAt = conn.closedAt ?? new Date(conn.start || 0).getTime();
+    return now - closedAt <= maxAgeMs;
+  });
+};
 
 const mergeConnectionSnapshot = (
   payload: IConnections,
   previous: ConnectionMonitorData = initConnData,
-  closedLimit: number = DEFAULT_CLOSED_CONNS_NUM,
+  retentionHours: number = DEFAULT_CLOSED_RETENTION_HOURS,
 ): ConnectionMonitorData => {
   const nextConnections = payload.connections ?? [];
   const previousActive = previous.activeConnections ?? [];
   const nextById = new Map(nextConnections.map((conn) => [conn.id, conn]));
+  const now = Date.now();
 
   // Register process name to path mappings for log icon display
   nextConnections.forEach((conn) => {
@@ -74,12 +80,13 @@ const mergeConnectionSnapshot = (
 
   const activeConnections = [...carried, ...newcomers];
 
-  const closedConnections = trimClosedConnections(
-    [
-      ...(previous.closedConnections ?? []),
-      ...previousActive.filter((conn) => !newIds.has(conn.id)),
-    ],
-    closedLimit,
+  const newlyClosed = previousActive
+    .filter((conn) => !newIds.has(conn.id))
+    .map((conn) => ({ ...conn, closedAt: now } as IConnectionsItem));
+
+  const closedConnections = filterClosedConnectionsByRetention(
+    [...(previous.closedConnections ?? []), ...newlyClosed],
+    retentionHours,
   );
 
   return {
@@ -92,9 +99,9 @@ const mergeConnectionSnapshot = (
 
 export const useConnectionData = () => {
   const [setting] = useConnectionSetting();
-  const closedLimit = setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNS_NUM;
-  const closedLimitRef = useRef(closedLimit);
-  closedLimitRef.current = closedLimit;
+  const retentionHours = setting?.closedConnectionsRetentionHours ?? DEFAULT_CLOSED_RETENTION_HOURS;
+  const retentionHoursRef = useRef(retentionHours);
+  retentionHoursRef.current = retentionHours;
 
   const { response, refresh, subscriptionCacheKey } =
     useMihomoWsSubscription<ConnectionMonitorData>({
@@ -116,7 +123,7 @@ export const useConnectionData = () => {
               mergeConnectionSnapshot(
                 parsed,
                 old,
-                closedLimitRef.current ?? DEFAULT_CLOSED_CONNS_NUM,
+                retentionHoursRef.current ?? DEFAULT_CLOSED_RETENTION_HOURS,
               ),
             );
           } catch (error) {

@@ -28,7 +28,11 @@
             "mergeByDomain": "按域名合并",
             "cancelMergeByDomain": "取消合并"
         },
-        "closedLimit": "保存数量",
+        "closedRetention": "保留时间",
+        "retentionHours1": "1 小时",
+        "retentionHours3": "3 小时",
+        "retentionHours8": "8 小时",
+        "retentionHours24": "24 小时",
         "columnManager": {
             "title": "列设置",
             "dragHandle": "拖拽控件"
