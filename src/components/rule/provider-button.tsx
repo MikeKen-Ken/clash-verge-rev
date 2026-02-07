@@ -71,10 +71,13 @@ export const ProviderButton = () => {
   // 从运行中配置解析的 rule-providers url（API 未返回 url 时使用）
   const ruleProviderUrls = useRuleProviderUrls();
 
-  // 每次打开规则集合弹窗时重新拉取运行中配置，确保拿到最新的 rule-providers
+  // 每次打开规则集合弹窗时重新拉取规则提供者列表和运行中配置，确保看到新增的 ruleset
   useEffect(() => {
-    if (open) void mutate(ruleProviderUrlsSwrKey);
-  }, [open]);
+    if (open) {
+      void refreshRuleProviders();
+      void mutate(ruleProviderUrlsSwrKey);
+    }
+  }, [open, refreshRuleProviders]);
 
   // 更新单个规则提供者
   const updateProvider = useLockFn(async (name: string) => {
