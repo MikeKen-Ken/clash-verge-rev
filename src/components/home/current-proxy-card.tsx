@@ -48,6 +48,7 @@ import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
+import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
 // 本地存储的键名
@@ -795,6 +796,7 @@ export const CurrentProxyCard = () => {
     }
 
     refreshProxy();
+    await closeConnectionsExcludingDirect();
     if (sortType === 1) {
       setDelaySortRefresh((prev) => prev + 1);
     }

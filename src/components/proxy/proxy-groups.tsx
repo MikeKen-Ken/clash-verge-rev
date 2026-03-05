@@ -23,6 +23,7 @@ import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
 import delayManager, { getGroupDelayTimeout } from "@/services/delay";
+import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
 import { ScrollTopButton } from "../layout/scroll-top-button";
@@ -493,6 +494,7 @@ export const ProxyGroups = (props: Props) => {
       if (headState?.sortType === 1) {
         onHeadState(groupName, { sortType: headState.sortType });
       }
+      await closeConnectionsExcludingDirect();
       onProxies();
     }
   });
