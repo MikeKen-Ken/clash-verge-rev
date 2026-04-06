@@ -268,7 +268,7 @@ const ProxyPage = () => {
               }
               label={
                 <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                  {t("proxies.page.labels.blockAds")}
+                  {t(["proxies.page.labels.blockAds"])}
                 </Typography>
               }
             />
