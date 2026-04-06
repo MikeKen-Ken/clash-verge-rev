@@ -444,6 +444,12 @@ export interface TranslationResources {
         labels: {
           delayCheckReset: string;
           proxyCount: string;
+          autoRefresh: string;
+          autoRefreshInterval: string;
+          blockAds: string;
+          healthCheckTimeout: string;
+          healthCheckSelectedTimeout: string;
+          healthCheckFailureResetInterval: string;
         };
         messages: {
           directMode: string;

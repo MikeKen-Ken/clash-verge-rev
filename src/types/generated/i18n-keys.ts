@@ -234,6 +234,7 @@ export const translationKeys = [
   "proxies.page.labels.delayCheckReset",
   "proxies.page.labels.autoRefresh",
   "proxies.page.labels.autoRefreshInterval",
+  "proxies.page.labels.blockAds",
   "proxies.page.labels.healthCheckTimeout",
   "proxies.page.labels.healthCheckSelectedTimeout",
   "proxies.page.labels.healthCheckFailureResetInterval",
