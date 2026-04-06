@@ -22,6 +22,8 @@ declare const OS_PLATFORM: Platform;
 interface IConfigData {
   port: number;
   mode: string;
+  /** Desktop proxy page ad-block toggle, removed before runtime config is written. */
+  "proxy-ads-block"?: boolean;
   ipv6: boolean;
   "socket-port": number;
   "allow-lan": boolean;

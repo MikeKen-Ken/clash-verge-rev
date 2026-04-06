@@ -152,6 +152,7 @@ const ProxyPage = () => {
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
+  const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
@@ -240,6 +241,34 @@ const ProxyPage = () => {
               label={
                 <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
                   {t("settings.sections.clash.form.fields.allowLan")}
+                </Typography>
+              }
+            />
+            <FormControlLabel
+              control={
+                <GuardState
+                  value={proxyAdsBlockEnabled}
+                  valueProps="checked"
+                  onFormat={(_, checked) => checked}
+                  onChange={(checked) => {
+                    mutateClash(
+                      (prev) =>
+                        prev != null
+                          ? { ...prev, "proxy-ads-block": checked }
+                          : prev,
+                      false,
+                    );
+                  }}
+                  onGuard={async (checked) => {
+                    await patchClash({ "proxy-ads-block": checked });
+                  }}
+                >
+                  <Switch size="small" />
+                </GuardState>
+              }
+              label={
+                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
+                  {t("proxies.page.labels.blockAds")}
                 </Typography>
               }
             />

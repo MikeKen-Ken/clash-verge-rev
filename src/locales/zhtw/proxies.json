@@ -27,7 +27,8 @@
       "proxyCount": "節點數量",
       "delayCheckReset": "測試延遲以取消固定",
       "autoRefresh": "自動更新",
-      "autoRefreshInterval": "間隔（秒）"
+      "autoRefreshInterval": "間隔（秒）",
+      "blockAds": "阻擋廣告"
     },
     "tooltips": {
       "locate": "目前節點",

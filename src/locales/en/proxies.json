@@ -28,6 +28,7 @@
       "delayCheckReset": "Delay check to cancel fixed",
       "autoRefresh": "Auto refresh",
       "autoRefreshInterval": "Interval (s)",
+      "blockAds": "Block Ads",
       "healthCheckTimeout": "Timeout (ms)",
       "healthCheckSelectedTimeout": "Selected timeout (ms)",
       "healthCheckFailureResetInterval": "Failure reset (ms)"

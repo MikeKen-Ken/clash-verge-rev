@@ -736,6 +736,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         config = apply_direct_global_overrides(config, &mode);
     }
 
+    config = apply_proxy_ads_block(config);
+
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
 
@@ -779,6 +781,28 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
     config.insert("nameserver".into(), Value::Sequence(nameservers));
 
     logging!(info, Type::Core, "applied {mode} mode overrides (rules + top-level nameserver)");
+    config
+}
+
+const PROXY_ADS_BLOCK_KEY: &str = "proxy-ads-block";
+const PROXY_ADS_RULE: &str = "RULE-SET,ads,REJECT";
+
+fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
+    let enable_proxy_ads_block = config
+        .get(PROXY_ADS_BLOCK_KEY)
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+
+    if !enable_proxy_ads_block {
+        if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
+            rules.retain(|rule| {
+                rule.as_str()
+                    .map(|s| s.trim() != PROXY_ADS_RULE)
+                    .unwrap_or(true)
+            });
+        }
+    }
+
     config
 }
 
