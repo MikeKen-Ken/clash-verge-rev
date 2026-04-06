@@ -22,6 +22,14 @@ let globalTrafficBaseline: {
   uploadTotal: number;
   downloadTotal: number;
 } | null = null;
+const sessionListeners = new Set<(sessionStartMs: number) => void>();
+
+export const resetConnectionTrafficSession = () => {
+  const nextSessionStartMs = Date.now();
+  currentSessionStartMs = nextSessionStartMs;
+  globalTrafficBaseline = null;
+  sessionListeners.forEach((listener) => listener(nextSessionStartMs));
+};
 
 export const initConnData: ConnectionMonitorData = {
   uploadTotal: 0,
@@ -128,12 +136,16 @@ export const useConnectionData = () => {
   const prevTunEnabledRef = useRef(tunEnabled);
 
   useEffect(() => {
+    sessionListeners.add(setSessionStartMs);
+    return () => {
+      sessionListeners.delete(setSessionStartMs);
+    };
+  }, []);
+
+  useEffect(() => {
     if (prevTunEnabledRef.current !== tunEnabled) {
       prevTunEnabledRef.current = tunEnabled;
-      const nextSessionStartMs = Date.now();
-      currentSessionStartMs = nextSessionStartMs;
-      globalTrafficBaseline = null;
-      setSessionStartMs(nextSessionStartMs);
+      resetConnectionTrafficSession();
     }
   }, [tunEnabled]);
 

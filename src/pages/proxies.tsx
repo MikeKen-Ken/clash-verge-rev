@@ -21,6 +21,7 @@ import { closeAllConnections } from "tauri-plugin-mihomo-api";
 import { BasePage } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
+import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
 import { useClash } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
@@ -166,6 +167,7 @@ const ProxyPage = () => {
       return;
     }
     if (value) markProxyModeChanged();
+    resetConnectionTrafficSession();
     mutateVerge({ ...verge, enable_tun_mode: value }, false);
     await patchVerge({ enable_tun_mode: value });
   });

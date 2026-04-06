@@ -16,6 +16,7 @@ import { GuardState } from "@/components/setting/mods/guard-state";
 import { SysproxyViewer } from "@/components/setting/mods/sysproxy-viewer";
 import { TunViewer } from "@/components/setting/mods/tun-viewer";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
+import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
 import { useServiceInstaller } from "@/hooks/use-service-installer";
 import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
 import { useSystemProxyState } from "@/hooks/use-system-proxy-state";
@@ -140,6 +141,7 @@ const ProxyControlSwitches = ({
     if (value) {
       markProxyModeChanged();
     }
+    resetConnectionTrafficSession();
     mutateVerge({ ...verge, enable_tun_mode: value }, false);
     await patchVerge({ enable_tun_mode: value });
   };
