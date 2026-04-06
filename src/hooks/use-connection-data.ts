@@ -17,6 +17,11 @@ const DEFAULT_CLOSED_RETENTION_HOURS = 8;
 
 /** 持久化保留时长（小时）：仅超过此时长或手动清除时才会从列表移除 */
 const PERSIST_RETENTION_HOURS = 24;
+let currentSessionStartMs = Date.now();
+let globalTrafficBaseline: {
+  uploadTotal: number;
+  downloadTotal: number;
+} | null = null;
 
 export const initConnData: ConnectionMonitorData = {
   uploadTotal: 0,
@@ -114,39 +119,34 @@ export const useConnectionData = () => {
 
   /**
    * sessionStartMs marks the beginning of the "current traffic session".
-   * Initialized to mount time; resets whenever TUN mode is toggled.
+   * Kept at module scope so route switches won't reset it.
+   * Resets whenever TUN mode is toggled.
    * Used by consumers (e.g. the connections page) to exclude per-connection
    * upload/download values that accumulated before this point.
    */
-  const [sessionStartMs, setSessionStartMs] = useState(() => Date.now());
+  const [sessionStartMs, setSessionStartMs] = useState(currentSessionStartMs);
   const prevTunEnabledRef = useRef(tunEnabled);
 
   useEffect(() => {
     if (prevTunEnabledRef.current !== tunEnabled) {
       prevTunEnabledRef.current = tunEnabled;
-      setSessionStartMs(Date.now());
+      const nextSessionStartMs = Date.now();
+      currentSessionStartMs = nextSessionStartMs;
+      globalTrafficBaseline = null;
+      setSessionStartMs(nextSessionStartMs);
     }
   }, [tunEnabled]);
 
   /**
-   * trafficBaselineRef: the raw core cumulative totals at the moment
+   * traffic baseline: the raw core cumulative totals at the moment
    * this session started. Subtracted from live totals so that the home-page
    * upload/download stats also start from 0 each session.
    * Resets on TUN toggle (via sessionStartMs dependency).
    */
-  const trafficBaselineRef = useRef<{
-    uploadTotal: number;
-    downloadTotal: number;
-  } | null>(null);
-
-  useEffect(() => {
-    trafficBaselineRef.current = null;
-  }, [sessionStartMs]);
-
   const normalizeTotals = (data: ConnectionMonitorData): ConnectionMonitorData => {
-    const baseline = trafficBaselineRef.current;
+    const baseline = globalTrafficBaseline;
     if (!baseline) {
-      trafficBaselineRef.current = {
+      globalTrafficBaseline = {
         uploadTotal: data.uploadTotal,
         downloadTotal: data.downloadTotal,
       };
