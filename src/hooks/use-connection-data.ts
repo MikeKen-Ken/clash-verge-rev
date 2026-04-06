@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
@@ -111,46 +111,47 @@ const mergeConnectionSnapshot = (
 export const useConnectionData = () => {
   const { verge } = useVerge();
   const tunEnabled = verge?.enable_tun_mode ?? false;
-  const tunEnabledRef = useRef(tunEnabled);
+
+  /**
+   * sessionStartMs marks the beginning of the "current traffic session".
+   * Initialized to mount time; resets whenever TUN mode is toggled.
+   * Used by consumers (e.g. the connections page) to exclude per-connection
+   * upload/download values that accumulated before this point.
+   */
+  const [sessionStartMs, setSessionStartMs] = useState(() => Date.now());
+  const prevTunEnabledRef = useRef(tunEnabled);
+
+  useEffect(() => {
+    if (prevTunEnabledRef.current !== tunEnabled) {
+      prevTunEnabledRef.current = tunEnabled;
+      setSessionStartMs(Date.now());
+    }
+  }, [tunEnabled]);
+
+  /**
+   * trafficBaselineRef: the raw core cumulative totals at the moment
+   * this session started. Subtracted from live totals so that the home-page
+   * upload/download stats also start from 0 each session.
+   * Resets on TUN toggle (via sessionStartMs dependency).
+   */
   const trafficBaselineRef = useRef<{
     uploadTotal: number;
     downloadTotal: number;
   } | null>(null);
-  const lastTunEnabledRef = useRef<boolean>(tunEnabled);
 
   useEffect(() => {
-    tunEnabledRef.current = tunEnabled;
-    if (lastTunEnabledRef.current !== tunEnabled) {
-      lastTunEnabledRef.current = tunEnabled;
-      trafficBaselineRef.current = null;
-    }
-    if (!tunEnabled) {
-      trafficBaselineRef.current = null;
-    }
-  }, [tunEnabled]);
+    trafficBaselineRef.current = null;
+  }, [sessionStartMs]);
 
   const normalizeTotals = (data: ConnectionMonitorData): ConnectionMonitorData => {
-    if (!tunEnabledRef.current) {
-      return {
-        ...data,
-        uploadTotal: Math.max(0, data.uploadTotal),
-        downloadTotal: Math.max(0, data.downloadTotal),
-      };
-    }
-
     const baseline = trafficBaselineRef.current;
     if (!baseline) {
       trafficBaselineRef.current = {
         uploadTotal: data.uploadTotal,
         downloadTotal: data.downloadTotal,
       };
-      return {
-        ...data,
-        uploadTotal: 0,
-        downloadTotal: 0,
-      };
+      return { ...data, uploadTotal: 0, downloadTotal: 0 };
     }
-
     return {
       ...data,
       uploadTotal: Math.max(0, data.uploadTotal - baseline.uploadTotal),
@@ -240,5 +241,7 @@ export const useConnectionData = () => {
     response,
     refreshGetClashConnection: refresh,
     clearClosedConnections,
+    /** Timestamp (ms) marking the start of the current traffic session. Resets when TUN is toggled. */
+    sessionStartMs,
   };
 };

@@ -125,6 +125,7 @@ const ConnectionsPage = () => {
   const {
     response: { data: connections },
     clearClosedConnections,
+    sessionStartMs,
   } = useConnectionData();
 
   const [setting, setSetting] = useConnectionSetting();
@@ -133,7 +134,10 @@ const ConnectionsPage = () => {
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
 
-  /** 仅统计非直连（未走 DIRECT）的流量 */
+  /**
+   * 仅统计非直连（未走 DIRECT）、且在当前会话（sessionStartMs）之后建立的连接流量。
+   * 排除 sessionStartMs 之前的连接，使得重启软件或切换 TUN 模式后流量从 0 重新计算。
+   */
   const nonDirectTraffic = useMemo(() => {
     const active = connections?.activeConnections ?? [];
     const closed = connections?.closedConnections ?? [];
@@ -141,11 +145,15 @@ const ConnectionsPage = () => {
     let upload = 0;
     for (const c of [...active, ...closed]) {
       if (c.chains?.includes?.("DIRECT")) continue;
+      // Skip connections that were established before the current session started
+      // (e.g. restored from IndexedDB cache from a previous run or pre-TUN-toggle session).
+      const connStartMs = new Date(c.start || 0).getTime();
+      if (connStartMs < sessionStartMs) continue;
       download += c.download ?? 0;
       upload += c.upload ?? 0;
     }
     return { download, upload };
-  }, [connections?.activeConnections, connections?.closedConnections]);
+  }, [connections?.activeConnections, connections?.closedConnections, sessionStartMs]);
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
