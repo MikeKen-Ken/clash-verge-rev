@@ -1,6 +1,7 @@
 pub mod dirs;
 pub mod help;
 pub mod init;
+pub mod mihomo_ipc;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod network;

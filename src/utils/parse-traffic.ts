@@ -1,7 +1,9 @@
 const UNITS = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
 
 const parseTraffic = (num?: number) => {
-  if (typeof num !== "number") return ["NaN", ""];
+  if (typeof num !== "number" || !Number.isFinite(num) || num < 0) {
+    return ["0", UNITS[0]];
+  }
   const exp =
     num < 1 ? 0 : Math.min(Math.floor(Math.log2(num) / 10), UNITS.length - 1);
   const dat = num / Math.pow(1024, exp);

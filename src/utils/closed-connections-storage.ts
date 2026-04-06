@@ -104,9 +104,10 @@ export async function getConnectionSnapshot(): Promise<ConnectionSnapshot | null
           return;
         }
         const v = value as ConnectionSnapshot;
+        // Cumulative totals come from the live core WebSocket; never rehydrate stale values from IndexedDB.
         resolve({
-          uploadTotal: v.uploadTotal ?? 0,
-          downloadTotal: v.downloadTotal ?? 0,
+          uploadTotal: 0,
+          downloadTotal: 0,
           activeConnections: Array.isArray(v.activeConnections) ? v.activeConnections : [],
           closedConnections: Array.isArray(v.closedConnections) ? v.closedConnections : [],
         });
@@ -125,12 +126,17 @@ export function setConnectionSnapshot(data: ConnectionSnapshot): void {
   if (typeof window === "undefined" || !window.indexedDB) {
     return;
   }
+  const toStore: ConnectionSnapshot = {
+    ...data,
+    uploadTotal: 0,
+    downloadTotal: 0,
+  };
   openDb().then(
     (db) =>
       new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, "readwrite");
         const store = tx.objectStore(STORE_NAME);
-        const req = store.put(data, SNAPSHOT_KEY);
+        const req = store.put(toStore, SNAPSHOT_KEY);
         req.onsuccess = () => {
           db.close();
           resolve();

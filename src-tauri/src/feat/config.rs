@@ -226,6 +226,16 @@ async fn process_terminated_flags(update_flags: UpdateFlags, patch: &IVerge) -> 
     if update_flags.contains(UpdateFlags::CLASH_CONFIG) {
         CoreManager::global().update_config().await?;
         handle::Handle::refresh_clash();
+        // Align with Android TunService: reset cumulative traffic when TUN is turned on (core often reloads config without process restart).
+        if patch.enable_tun_mode == Some(true) {
+            if let Err(err) = crate::utils::mihomo_ipc::post_traffic_reset().await {
+                logging!(
+                    warn,
+                    Type::Core,
+                    "Reset traffic statistics after enabling TUN failed: {err}"
+                );
+            }
+        }
     }
     if update_flags.contains(UpdateFlags::VERGE_CONFIG) {
         Config::verge()
