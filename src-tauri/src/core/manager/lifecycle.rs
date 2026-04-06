@@ -20,7 +20,19 @@ impl CoreManager {
         match *self.get_running_mode() {
             RunningMode::Service => self.start_core_by_service().await,
             RunningMode::NotRunning | RunningMode::Sidecar => self.start_core_by_sidecar().await,
+        }?;
+
+        if Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false) {
+            if let Err(err) = crate::utils::mihomo_ipc::post_traffic_reset().await {
+                logging!(
+                    warn,
+                    Type::Core,
+                    "Reset traffic statistics after core start failed: {err}"
+                );
+            }
         }
+
+        Ok(())
     }
 
     pub async fn stop_core(&self) -> Result<()> {

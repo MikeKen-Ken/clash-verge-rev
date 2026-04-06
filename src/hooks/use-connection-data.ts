@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
@@ -11,6 +11,7 @@ import {
 
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
+import { useVerge } from "./use-verge";
 
 const DEFAULT_CLOSED_RETENTION_HOURS = 8;
 
@@ -108,6 +109,55 @@ const mergeConnectionSnapshot = (
 };
 
 export const useConnectionData = () => {
+  const { verge } = useVerge();
+  const tunEnabled = verge?.enable_tun_mode ?? false;
+  const tunEnabledRef = useRef(tunEnabled);
+  const trafficBaselineRef = useRef<{
+    uploadTotal: number;
+    downloadTotal: number;
+  } | null>(null);
+  const lastTunEnabledRef = useRef<boolean>(tunEnabled);
+
+  useEffect(() => {
+    tunEnabledRef.current = tunEnabled;
+    if (lastTunEnabledRef.current !== tunEnabled) {
+      lastTunEnabledRef.current = tunEnabled;
+      trafficBaselineRef.current = null;
+    }
+    if (!tunEnabled) {
+      trafficBaselineRef.current = null;
+    }
+  }, [tunEnabled]);
+
+  const normalizeTotals = (data: ConnectionMonitorData): ConnectionMonitorData => {
+    if (!tunEnabledRef.current) {
+      return {
+        ...data,
+        uploadTotal: Math.max(0, data.uploadTotal),
+        downloadTotal: Math.max(0, data.downloadTotal),
+      };
+    }
+
+    const baseline = trafficBaselineRef.current;
+    if (!baseline) {
+      trafficBaselineRef.current = {
+        uploadTotal: data.uploadTotal,
+        downloadTotal: data.downloadTotal,
+      };
+      return {
+        ...data,
+        uploadTotal: 0,
+        downloadTotal: 0,
+      };
+    }
+
+    return {
+      ...data,
+      uploadTotal: Math.max(0, data.uploadTotal - baseline.uploadTotal),
+      downloadTotal: Math.max(0, data.downloadTotal - baseline.downloadTotal),
+    };
+  };
+
   const { response, refresh, subscriptionCacheKey } =
     useMihomoWsSubscription<ConnectionMonitorData>({
       storageKey: "mihomo_connection_date",
@@ -125,7 +175,7 @@ export const useConnectionData = () => {
           try {
             const parsed = JSON.parse(data) as IConnections;
             next(null, (old = initConnData) =>
-              mergeConnectionSnapshot(parsed, old),
+              normalizeTotals(mergeConnectionSnapshot(parsed, old)),
             );
           } catch (error) {
             next(error);
