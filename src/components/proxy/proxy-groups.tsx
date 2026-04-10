@@ -419,70 +419,86 @@ export const ProxyGroups = (props: Props) => {
     [handleProxyGroupChange, isChainMode, t],
   );
 
-  // 测全部延迟（使用配置里的 timeout）
-  const handleCheckAll = useLockFn(async (groupName: string) => {
-    debugLog(`[ProxyGroups] 开始测试所有延迟，组: ${groupName}`);
-    // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
+  // 测全部延迟：不管点击哪个组，始终对所有组按顺序测速。
+  // 第一个组强制重新测速（sessionStart 过滤历史缓存），后续组自动复用第一组本次会话的结果。
+  const handleCheckAll = useLockFn(async (_groupName: string) => {
+    debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     markManualDelayCheckStarted();
-    
-    // 测速时清空该组的手动选择（对齐安卓端：后端会调用 ClearManualSelection）
+
+    // 本次测速会话时间戳：只有 updatedAt >= sessionStart 的缓存才可跨组复用
+    const sessionStart = Date.now();
+
+    // 测速前清空所有组的手动选择
     if (current) {
-      const next = (current.selected ?? []).filter((s) => s.name !== groupName);
+      const allGroupNames = new Set(
+        availableGroups.map((g: IProxyGroupItem) => g.name),
+      );
+      const next = (current.selected ?? []).filter(
+        (s) => !allGroupNames.has(s.name),
+      );
       if (next.length !== (current.selected ?? []).length) {
         patchCurrent({ selected: next }).catch(() => {});
       }
     }
 
-    const group = availableGroups.find(
-      (g: IProxyGroupItem) => g.name === groupName,
-    );
-    const timeout = group?.timeout ?? 5000;
-
-    const proxies = renderList
-      .filter(
-        (e) => e.group?.name === groupName && (e.type === 2 || e.type === 4),
-      )
-      .flatMap((e) => e.proxyCol || e.proxy!)
-      .filter(Boolean);
-
-    debugLog(`[ProxyGroups] 找到代理数量: ${proxies.length}`);
-
-    const providers = new Set(proxies.map((p) => p!.provider!).filter(Boolean));
-
-    if (providers.size) {
-      debugLog(`[ProxyGroups] 发现提供者，数量: ${providers.size}`);
-      Promise.allSettled(
-        [...providers].map((p) => healthcheckProxyProvider(p)),
-      ).then(() => {
-        debugLog(`[ProxyGroups] 提供者健康检查完成`);
-        onProxies();
-      });
-    }
-
-    const names = proxies.filter((p) => !p!.provider).map((p) => p!.name);
-    debugLog(`[ProxyGroups] 过滤后需要测试的代理数量: ${names.length}`);
-
-    const url = delayManager.getUrl(groupName);
-    debugLog(`[ProxyGroups] 测试URL: ${url}, 超时: ${timeout}ms`);
+    const allProviders = new Set<string>();
 
     try {
-      await Promise.race([
-        delayManager.checkListDelay(names, groupName, timeout),
-        delayGroup(groupName, url, timeout).then((result) => {
-          debugLog(
-            `[ProxyGroups] getGroupProxyDelays返回结果数量:`,
-            Object.keys(result || {}).length,
-          );
-        }), // 查询group delays 将清除fixed(不关注调用结果)
-      ]);
-      debugLog(`[ProxyGroups] 延迟测试完成，组: ${groupName}`);
+      // 按顺序逐组测速：第一组全量真实测速，后续组复用本次会话已测出的节点结果
+      for (const group of availableGroups as IProxyGroupItem[]) {
+        const groupName = group.name;
+        const timeout = getGroupDelayTimeout(group, false);
+        const proxies: IProxyItem[] = (group as any).all ?? [];
+
+        proxies.forEach((p) => {
+          if (p.provider) allProviders.add(p.provider);
+        });
+
+        const names = proxies
+          .filter((p) => !p.provider)
+          .map((p) => p.name)
+          .filter(Boolean);
+
+        if (names.length === 0) continue;
+
+        const url = delayManager.getUrl(groupName);
+        debugLog(
+          `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, timeout: ${timeout}ms`,
+        );
+
+        // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
+        delayGroup(groupName, url, timeout).catch(() => {});
+
+        await delayManager.checkListDelay(
+          names,
+          groupName,
+          timeout,
+          36,
+          sessionStart,
+        );
+      }
+      debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
     } catch (error) {
-      console.error(`[ProxyGroups] 延迟测试出错，组: ${groupName}`, error);
+      console.error(`[ProxyGroups] 测试所有分组延迟出错`, error);
     } finally {
-      // 测速后清空该组的手动选择，界面不再显示「当前节点」
+      // 处理 provider 健康检查（fire and forget）
+      if (allProviders.size) {
+        debugLog(`[ProxyGroups] 发现提供者，数量: ${allProviders.size}`);
+        Promise.allSettled(
+          [...allProviders].map((p) => healthcheckProxyProvider(p)),
+        ).then(() => {
+          debugLog(`[ProxyGroups] 提供者健康检查完成`);
+          onProxies();
+        });
+      }
+
+      // 测速后清空所有组的手动选择
       if (current) {
+        const allGroupNames = new Set(
+          availableGroups.map((g: IProxyGroupItem) => g.name),
+        );
         const next = (current.selected ?? []).filter(
-          (s) => s.name !== groupName,
+          (s) => !allGroupNames.has(s.name),
         );
         if (next.length !== (current.selected ?? []).length) {
           patchCurrent({ selected: next })
@@ -490,10 +506,15 @@ export const ProxyGroups = (props: Props) => {
             .catch(() => {});
         }
       }
-      const headState = getGroupHeadState(groupName);
-      if (headState?.sortType === 1) {
-        onHeadState(groupName, { sortType: headState.sortType });
+
+      // 对启用了延迟排序的分组触发重排
+      for (const group of availableGroups as IProxyGroupItem[]) {
+        const headState = getGroupHeadState(group.name);
+        if (headState?.sortType === 1) {
+          onHeadState(group.name, { sortType: headState.sortType });
+        }
       }
+
       await closeConnectionsExcludingDirect();
       onProxies();
     }

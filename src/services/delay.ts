@@ -297,9 +297,11 @@ class DelayManager {
    * 按节点名从任意组取可复用的延迟结果（同名节点在不同组下测速结果可复用，避免重复请求核心）。
    * @param name 节点名
    * @param excludeGroup 排除的组（当前要写入的组，避免用自己覆盖自己）
+   * @param sessionStart 本次测速会话的开始时间戳（ms）。若提供，则只复用 updatedAt >= sessionStart 的结果，
+   *                     即只复用本次会话中已测出的新结果，不复用历史缓存。
    * @returns 未过期且非「测试中」的 DelayUpdate，优先返回最近更新的
    */
-  getReusableDelayForName(name: string, excludeGroup: string): DelayUpdate | undefined {
+  getReusableDelayForName(name: string, excludeGroup: string, sessionStart?: number): DelayUpdate | undefined {
     const now = Date.now();
     let best: DelayUpdate | undefined;
     const suffix = `::${name}`;
@@ -309,6 +311,8 @@ class DelayManager {
         this.cache.delete(key);
         continue;
       }
+      // 若指定了 sessionStart，则只复用本次会话中测出的结果，过滤掉历史缓存
+      if (sessionStart != null && entry.updatedAt < sessionStart) continue;
       const groupPart = key.slice(0, -suffix.length);
       if (groupPart === excludeGroup) continue;
       if (!best || entry.updatedAt > best.updatedAt) best = { ...entry };
@@ -320,7 +324,12 @@ class DelayManager {
     name: string,
     group: string,
     timeout: number,
-    options?: { /** 为 true 时仅更新该节点延迟，不触发全量 refreshProxy */ silentGlobal?: boolean },
+    options?: {
+      /** 为 true 时仅更新该节点延迟，不触发全量 refreshProxy */
+      silentGlobal?: boolean;
+      /** 本次测速会话的开始时间戳（ms），只复用本次会话中已测出的新结果 */
+      sessionStart?: number;
+    },
   ): Promise<DelayUpdate> {
     debugLog(
       `[DelayManager] 开始测试延迟，代理: ${name}, 组: ${group}, 超时: ${timeout}ms`,
@@ -330,8 +339,8 @@ class DelayManager {
     // 先将状态设置为测试中
     this.setDelay(name, group, -2, { silentGlobal: silent });
 
-    // 同名节点在其他组已有测速结果则复用，减少对核心的重复请求（如 GLOBAL 与规则组共用同一批节点）
-    const reusable = this.getReusableDelayForName(name, group);
+    // 同名节点在其他组已有本次会话的测速结果则复用，减少对核心的重复请求
+    const reusable = this.getReusableDelayForName(name, group, options?.sessionStart);
     if (reusable != null) {
       debugLog(`[DelayManager] 复用延迟，代理: ${name}, 组: ${group}, 延迟: ${reusable.delay}ms`);
       return this.setDelay(name, group, reusable.delay, { elapsed: 0, silentGlobal: silent });
@@ -378,6 +387,8 @@ class DelayManager {
     group: string,
     timeout: number,
     concurrency = 36,
+    /** 本次测速会话的开始时间戳（ms）。提供后只复用本次会话中已测出的新结果，不复用历史缓存。 */
+    sessionStart?: number,
   ) {
     const names = nameList.filter(Boolean);
     debugLog(
@@ -407,8 +418,8 @@ class DelayManager {
           );
         }
 
-        const hadReusable = this.getReusableDelayForName(currName, group) != null;
-        await this.checkDelay(currName, group, timeout);
+        const hadReusable = this.getReusableDelayForName(currName, group, sessionStart) != null;
+        await this.checkDelay(currName, group, timeout, { sessionStart });
         const nodeElapsed = Date.now() - nodeStart;
         if (hadReusable) {
           reusedCount += 1;
