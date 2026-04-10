@@ -1,4 +1,5 @@
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
+import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import {
   Box,
   Button,
@@ -100,6 +101,7 @@ const ProxyPage = () => {
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const checkAllDelayRunnerRef = useRef<(() => void) | null>(null);
   const [healthCheckConcurrency, setHealthCheckConcurrencyState] =
     useState<number>(() => getDelayCheckConcurrency());
 
@@ -468,6 +470,17 @@ const ProxyPage = () => {
                 <RefreshRounded fontSize="small" />
               </IconButton>
             </Tooltip>
+            <Tooltip title={t("proxies.page.tooltips.delayCheck")}>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  checkAllDelayRunnerRef.current?.();
+                }}
+                aria-label={t("proxies.page.tooltips.delayCheck")}
+              >
+                <NetworkCheckRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <RuleProviderButton />
             <ProviderButton />
             <ButtonGroup size="small">
@@ -490,6 +503,9 @@ const ProxyPage = () => {
         mode={uiMode}
         isChainMode={false}
         chainConfigData={null}
+        onRegisterCheckAll={(runner) => {
+          checkAllDelayRunnerRef.current = runner;
+        }}
       />
     </BasePage>
   );

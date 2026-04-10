@@ -39,6 +39,7 @@ interface Props {
   mode: string;
   isChainMode?: boolean;
   chainConfigData?: string | null;
+  onRegisterCheckAll?: ((runner: (() => void) | null) => void) | null;
 }
 
 interface ProxyChainItem {
@@ -52,7 +53,7 @@ const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
-  const { mode, isChainMode = false, chainConfigData } = props;
+  const { mode, isChainMode = false, chainConfigData, onRegisterCheckAll } = props;
   const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>(() => {
     try {
       const saved = localStorage.getItem("proxy-chain-items");
@@ -548,6 +549,16 @@ export const ProxyGroups = (props: Props) => {
     patchCurrent,
     t,
   ]);
+
+  useEffect(() => {
+    if (!onRegisterCheckAll) return;
+    onRegisterCheckAll(() => {
+      void handleCheckAll("");
+    });
+    return () => {
+      onRegisterCheckAll(null);
+    };
+  }, [handleCheckAll, onRegisterCheckAll]);
 
   // 定位到指定的代理组
   const handleGroupLocationByName = useCallback(
