@@ -26,6 +26,11 @@ import { useClash } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { patchClashMode } from "@/services/cmds";
+import {
+  DELAY_CHECK_CONCURRENCY_PRESETS,
+  getDelayCheckConcurrency,
+  setDelayCheckConcurrency,
+} from "@/services/delay";
 import { useSystemState } from "@/hooks/use-system-state";
 import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
@@ -95,6 +100,8 @@ const ProxyPage = () => {
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const [healthCheckConcurrency, setHealthCheckConcurrencyState] =
+    useState<number>(() => getDelayCheckConcurrency());
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
     if (mode !== uiMode && verge?.auto_close_connection) {
@@ -395,6 +402,25 @@ const ProxyPage = () => {
                   {HEALTH_CHECK_PRESETS.map((n) => (
                     <MenuItem key={n} value={String(n)}>
                       {n} ms
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Tooltip>
+            <Tooltip title="Health check concurrency">
+              <FormControl size="small" sx={{ minWidth: 88 }}>
+                <Select
+                  value={healthCheckConcurrency}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setDelayCheckConcurrency(value);
+                    setHealthCheckConcurrencyState(getDelayCheckConcurrency());
+                  }}
+                  sx={{ height: 32 }}
+                >
+                  {DELAY_CHECK_CONCURRENCY_PRESETS.map((n) => (
+                    <MenuItem key={n} value={n}>
+                      {n}
                     </MenuItem>
                   ))}
                 </Select>

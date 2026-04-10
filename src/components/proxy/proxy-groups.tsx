@@ -9,7 +9,6 @@ import {
   Snackbar,
   Typography,
 } from "@mui/material";
-import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -81,6 +80,11 @@ export const ProxyGroups = (props: Props) => {
     open: boolean;
     message: string;
   }>({ open: false, message: "" });
+  const [delayCheckBusyWarning, setDelayCheckBusyWarning] = useState<{
+    open: boolean;
+    message: string;
+  }>({ open: false, message: "" });
+  const isDelayCheckingRef = useRef(false);
 
   const { verge } = useVerge();
   const { proxies: proxiesData } = useAppData();
@@ -342,6 +346,10 @@ export const ProxyGroups = (props: Props) => {
     setDuplicateWarning({ open: false, message: "" });
   }, []);
 
+  const handleCloseDelayCheckBusyWarning = useCallback(() => {
+    setDelayCheckBusyWarning({ open: false, message: "" });
+  }, []);
+
   const currentGroup = useMemo(() => {
     if (!activeSelectedGroup) return null;
     return (
@@ -421,7 +429,15 @@ export const ProxyGroups = (props: Props) => {
 
   // 测全部延迟：不管点击哪个组，始终对所有组按顺序测速。
   // 第一个组强制重新测速（sessionStart 过滤历史缓存），后续组自动复用第一组本次会话的结果。
-  const handleCheckAll = useLockFn(async (_groupName: string) => {
+  const handleCheckAll = useCallback(async (_groupName: string) => {
+    if (isDelayCheckingRef.current) {
+      setDelayCheckBusyWarning({
+        open: true,
+        message: t("proxies.page.tooltips.delayCheck") + "进行中，请稍后重试",
+      });
+      return;
+    }
+    isDelayCheckingRef.current = true;
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     markManualDelayCheckStarted();
 
@@ -481,44 +497,57 @@ export const ProxyGroups = (props: Props) => {
     } catch (error) {
       console.error(`[ProxyGroups] 测试所有分组延迟出错`, error);
     } finally {
-      // 处理 provider 健康检查（fire and forget）
-      if (allProviders.size) {
-        debugLog(`[ProxyGroups] 发现提供者，数量: ${allProviders.size}`);
-        Promise.allSettled(
-          [...allProviders].map((p) => healthcheckProxyProvider(p)),
-        ).then(() => {
-          debugLog(`[ProxyGroups] 提供者健康检查完成`);
-          onProxies();
-        });
-      }
-
-      // 测速后清空所有组的手动选择
-      if (current) {
-        const allGroupNames = new Set(
-          availableGroups.map((g: IProxyGroupItem) => g.name),
-        );
-        const next = (current.selected ?? []).filter(
-          (s) => !allGroupNames.has(s.name),
-        );
-        if (next.length !== (current.selected ?? []).length) {
-          patchCurrent({ selected: next })
-            .then(() => mutateProfiles())
-            .catch(() => {});
+      try {
+        // 处理 provider 健康检查（fire and forget）
+        if (allProviders.size) {
+          debugLog(`[ProxyGroups] 发现提供者，数量: ${allProviders.size}`);
+          Promise.allSettled(
+            [...allProviders].map((p) => healthcheckProxyProvider(p)),
+          ).then(() => {
+            debugLog(`[ProxyGroups] 提供者健康检查完成`);
+            onProxies();
+          });
         }
-      }
 
-      // 对启用了延迟排序的分组触发重排
-      for (const group of availableGroups as IProxyGroupItem[]) {
-        const headState = getGroupHeadState(group.name);
-        if (headState?.sortType === 1) {
-          onHeadState(group.name, { sortType: headState.sortType });
+        // 测速后清空所有组的手动选择
+        if (current) {
+          const allGroupNames = new Set(
+            availableGroups.map((g: IProxyGroupItem) => g.name),
+          );
+          const next = (current.selected ?? []).filter(
+            (s) => !allGroupNames.has(s.name),
+          );
+          if (next.length !== (current.selected ?? []).length) {
+            patchCurrent({ selected: next })
+              .then(() => mutateProfiles())
+              .catch(() => {});
+          }
         }
-      }
 
-      await closeConnectionsExcludingDirect();
-      onProxies();
+        // 对启用了延迟排序的分组触发重排
+        for (const group of availableGroups as IProxyGroupItem[]) {
+          const headState = getGroupHeadState(group.name);
+          if (headState?.sortType === 1) {
+            onHeadState(group.name, { sortType: headState.sortType });
+          }
+        }
+
+        await closeConnectionsExcludingDirect();
+        onProxies();
+      } finally {
+        isDelayCheckingRef.current = false;
+      }
     }
-  });
+  }, [
+    availableGroups,
+    current,
+    getGroupHeadState,
+    mutateProfiles,
+    onHeadState,
+    onProxies,
+    patchCurrent,
+    t,
+  ]);
 
   // 定位到指定的代理组
   const handleGroupLocationByName = useCallback(
@@ -685,6 +714,20 @@ export const ProxyGroups = (props: Props) => {
             {duplicateWarning.message}
           </Alert>
         </Snackbar>
+        <Snackbar
+          open={delayCheckBusyWarning.open}
+          autoHideDuration={2500}
+          onClose={handleCloseDelayCheckBusyWarning}
+          anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        >
+          <Alert
+            onClose={handleCloseDelayCheckBusyWarning}
+            severity="error"
+            variant="filled"
+          >
+            {delayCheckBusyWarning.message}
+          </Alert>
+        </Snackbar>
 
         {/* 代理组选择菜单 */}
         <Menu
@@ -783,6 +826,20 @@ export const ProxyGroups = (props: Props) => {
         )}
       />
       <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
+      <Snackbar
+        open={delayCheckBusyWarning.open}
+        autoHideDuration={2500}
+        onClose={handleCloseDelayCheckBusyWarning}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleCloseDelayCheckBusyWarning}
+          severity="error"
+          variant="filled"
+        >
+          {delayCheckBusyWarning.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };
