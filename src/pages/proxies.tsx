@@ -24,6 +24,7 @@ import { GuardState } from "@/components/setting/mods/guard-state";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
 import { useClash } from "@/hooks/use-clash";
+import { useNetworkInterfaces } from "@/hooks/use-network";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { patchClashMode } from "@/services/cmds";
@@ -63,6 +64,7 @@ const ProxyPage = () => {
   const { clashConfig, refreshClashConfig, refreshProxy } = useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { clash, patchClash, mutateClash } = useClash();
+  const { networkInterfaces } = useNetworkInterfaces();
   const { isTunModeAvailable } = useSystemState();
 
   const modeList = useMemo(() => MODES, []);
@@ -150,7 +152,7 @@ const ProxyPage = () => {
       return;
     }
     autoRefreshTimerRef.current = setInterval(() => {
-      refreshProxy().catch(() => {});
+      refreshProxy().catch(() => { });
     }, autoRefreshInterval * 1000);
     return () => {
       if (autoRefreshTimerRef.current) {
@@ -163,6 +165,42 @@ const ProxyPage = () => {
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
   const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
+  const mixedPort = clash?.["mixed-port"];
+  const httpPort = clash?.port;
+  const socksPort = clash?.["socks-port"];
+
+  const lanIpv4List = useMemo(() => {
+    const ipv4Set = new Set<string>();
+    networkInterfaces.forEach((iface) => {
+      iface.addr.forEach((addr) => {
+        const ip = addr.V4?.ip;
+        if (!ip) return;
+        if (ip === "127.0.0.1" || ip.startsWith("169.254.")) return;
+        ipv4Set.add(ip);
+      });
+    });
+    return Array.from(ipv4Set);
+  }, [networkInterfaces]);
+
+  const lanPortLines = useMemo(() => {
+    const lines: string[] = [];
+    if (mixedPort) {
+      lines.push(`Mixed: ${mixedPort}`);
+    }
+    if (verge?.verge_http_enabled && httpPort) {
+      lines.push(`HTTP: ${httpPort}`);
+    }
+    if (verge?.verge_socks_enabled && socksPort) {
+      lines.push(`SOCKS5: ${socksPort}`);
+    }
+    return lines;
+  }, [
+    mixedPort,
+    httpPort,
+    socksPort,
+    verge?.verge_http_enabled,
+    verge?.verge_socks_enabled,
+  ]);
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
@@ -288,9 +326,9 @@ const ProxyPage = () => {
                 <Select
                   value={
                     verge?.health_check_timeout != null &&
-                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
-                      verge.health_check_timeout,
-                    )
+                      (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                        verge.health_check_timeout,
+                      )
                       ? String(verge.health_check_timeout)
                       : ""
                   }
@@ -328,9 +366,9 @@ const ProxyPage = () => {
                 <Select
                   value={
                     verge?.health_check_selected_timeout != null &&
-                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
-                      verge.health_check_selected_timeout,
-                    )
+                      (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                        verge.health_check_selected_timeout,
+                      )
                       ? String(verge.health_check_selected_timeout)
                       : ""
                   }
@@ -372,9 +410,9 @@ const ProxyPage = () => {
                 <Select
                   value={
                     verge?.health_check_failure_reset_interval != null &&
-                    (HEALTH_CHECK_PRESETS as readonly number[]).includes(
-                      verge.health_check_failure_reset_interval,
-                    )
+                      (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                        verge.health_check_failure_reset_interval,
+                      )
                       ? String(verge.health_check_failure_reset_interval)
                       : ""
                   }
@@ -429,6 +467,23 @@ const ProxyPage = () => {
               </FormControl>
             </Tooltip>
           </Box>
+          {allowLan && (
+            <Box sx={{ width: "100%", mt: -0.5, pl: 0.5 }}>
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                {t("proxies.page.labels.lanAccessInfoTitle")}
+              </Typography>
+              <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
+                {lanIpv4List.length > 0
+                  ? lanIpv4List.join(" / ")
+                  : t("proxies.page.labels.lanAccessNoIp")}
+              </Typography>
+              <Typography variant="caption" sx={{ display: "block" }}>
+                {lanPortLines.length > 0
+                  ? lanPortLines.join(" | ")
+                  : t("proxies.page.labels.lanAccessNoPort")}
+              </Typography>
+            </Box>
+          )}
 
           <Box display="flex" alignItems="center" gap={1} sx={{ ml: "auto" }}>
             <FormControlLabel
