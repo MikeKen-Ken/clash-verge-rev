@@ -57,6 +57,7 @@ const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
 const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
+const LAN_ENDPOINT_OFFSET_X = -2;
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -308,7 +309,7 @@ const ProxyPage = () => {
                     alignItems: "center",
                     flexWrap: "wrap",
                     gap: 0.75,
-                    ml: -1.25,
+                    ml: LAN_ENDPOINT_OFFSET_X,
                   }}
                 >
                   {lanEndpointItems.map((endpoint) => (
@@ -326,7 +327,11 @@ const ProxyPage = () => {
                   ))}
                 </Box>
               ) : (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: -1.25 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: LAN_ENDPOINT_OFFSET_X }}
+                >
                   N/A
                 </Typography>
               ))}
