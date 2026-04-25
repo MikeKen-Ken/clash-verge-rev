@@ -182,26 +182,6 @@ const ProxyPage = () => {
     return Array.from(ipv4Set);
   }, [networkInterfaces]);
 
-  const lanPortLines = useMemo(() => {
-    const lines: string[] = [];
-    if (mixedPort) {
-      lines.push(`Mixed: ${mixedPort}`);
-    }
-    if (verge?.verge_http_enabled && httpPort) {
-      lines.push(`HTTP: ${httpPort}`);
-    }
-    if (verge?.verge_socks_enabled && socksPort) {
-      lines.push(`SOCKS5: ${socksPort}`);
-    }
-    return lines;
-  }, [
-    mixedPort,
-    httpPort,
-    socksPort,
-    verge?.verge_http_enabled,
-    verge?.verge_socks_enabled,
-  ]);
-
   const lanEndpointItems = useMemo(() => {
     if (!allowLan || lanIpv4List.length === 0) return [] as string[];
     const ports: number[] = [];
@@ -265,45 +245,6 @@ const ProxyPage = () => {
       title={t("proxies.page.title.default")}
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-          {allowLan && (
-            <Box
-              sx={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 0.75,
-              }}
-            >
-              <Typography variant="caption" sx={{ color: "text.secondary", mr: 0.5 }}>
-                {t("settings.sections.clash.form.fields.allowLan")}:
-              </Typography>
-              {lanEndpointItems.length > 0 ? (
-                lanEndpointItems.map((endpoint) => (
-                  <Button
-                    key={endpoint}
-                    size="small"
-                    variant="outlined"
-                    sx={{ minWidth: "auto", px: 1, py: 0.25 }}
-                    onClick={() => {
-                      void handleCopyLanEndpoint(endpoint);
-                    }}
-                  >
-                    {endpoint}
-                  </Button>
-                ))
-              ) : (
-                <Typography variant="caption" color="text.secondary">
-                  N/A
-                </Typography>
-              )}
-              {lanPortLines.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                  ({lanPortLines.join(" | ")})
-                </Typography>
-              )}
-            </Box>
-          )}
           <Box display="flex" alignItems="center" gap={1}>
             <FormControlLabel
               control={
@@ -359,6 +300,28 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
+            {allowLan &&
+              (lanEndpointItems.length > 0 ? (
+                <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.75 }}>
+                  {lanEndpointItems.map((endpoint) => (
+                    <Button
+                      key={endpoint}
+                      size="small"
+                      variant="outlined"
+                      sx={{ minWidth: "auto", px: 1, py: 0.25 }}
+                      onClick={() => {
+                        void handleCopyLanEndpoint(endpoint);
+                      }}
+                    >
+                      {endpoint}
+                    </Button>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  N/A
+                </Typography>
+              ))}
             <FormControlLabel
               control={
                 <GuardState
