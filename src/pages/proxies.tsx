@@ -470,17 +470,17 @@ const ProxyPage = () => {
           {allowLan && (
             <Box sx={{ width: "100%", mt: -0.5, pl: 0.5 }}>
               <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                {t("proxies.page.labels.lanAccessInfoTitle")}
+                {t("settings.sections.clash.form.fields.allowLan")} Info
               </Typography>
               <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
                 {lanIpv4List.length > 0
                   ? lanIpv4List.join(" / ")
-                  : t("proxies.page.labels.lanAccessNoIp")}
+                  : "N/A"}
               </Typography>
               <Typography variant="caption" sx={{ display: "block" }}>
                 {lanPortLines.length > 0
                   ? lanPortLines.join(" | ")
-                  : t("proxies.page.labels.lanAccessNoPort")}
+                  : "N/A"}
               </Typography>
             </Box>
           )}
