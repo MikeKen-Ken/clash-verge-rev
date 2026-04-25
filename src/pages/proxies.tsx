@@ -308,7 +308,7 @@ const ProxyPage = () => {
                     alignItems: "center",
                     flexWrap: "wrap",
                     gap: 0.75,
-                    ml: -0.5,
+                    ml: -1.25,
                   }}
                 >
                   {lanEndpointItems.map((endpoint) => (
@@ -326,7 +326,7 @@ const ProxyPage = () => {
                   ))}
                 </Box>
               ) : (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="text.secondary" sx={{ ml: -1.25 }}>
                   N/A
                 </Typography>
               ))}
