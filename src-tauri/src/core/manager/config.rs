@@ -10,6 +10,7 @@ use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 use std::{collections::HashSet, path::PathBuf, time::Instant};
 use tauri_plugin_mihomo::Error as MihomoError;
+use tokio::time::timeout;
 
 impl CoreManager {
     pub async fn use_default_config(&self, error_key: &str, error_msg: &str) -> Result<()> {
@@ -35,6 +36,9 @@ impl CoreManager {
         if handle::Handle::global().is_exiting() {
             return Ok((true, String::new()));
         }
+
+        // 串行化配置更新，避免并发 patch 导致 core reload 竞态或挂起。
+        let _update_guard = self.update_lock.lock().await;
 
         if !self.should_update_config() {
             return Ok((true, String::new()));
@@ -82,16 +86,24 @@ impl CoreManager {
 
     async fn apply_config(&self, path: PathBuf) -> Result<()> {
         let path = dirs::path_to_str(&path)?;
-        match self.reload_config(path).await {
+        let reload_result = timeout(timing::CORE_RELOAD_TIMEOUT, self.reload_config(path)).await;
+        match reload_result {
+            Err(_) => {
+                Config::runtime().await.discard();
+                Err(anyhow!(
+                    "Failed to apply config: reload timed out after {:?}",
+                    timing::CORE_RELOAD_TIMEOUT
+                ))
+            }
+            Ok(Err(err)) => {
+                Config::runtime().await.discard();
+                Err(anyhow!("Failed to apply config: {}", err))
+            }
             Ok(_) => {
                 Self::apply_profile_selected_to_core().await;
                 Config::runtime().await.apply();
                 logging!(info, Type::Core, "Configuration applied");
                 Ok(())
-            }
-            Err(err) => {
-                Config::runtime().await.discard();
-                Err(anyhow!("Failed to apply config: {}", err))
             }
         }
     }
@@ -115,15 +127,33 @@ impl CoreManager {
                 (Some(n), Some(w)) if !n.is_empty() && !w.is_empty() => (n.as_str(), w.as_str()),
                 _ => continue,
             };
-            if let Err(e) = handle.select_node_for_group(name, now).await {
-                logging!(
-                    warn,
-                    Type::Core,
-                    "Apply profile selected {} -> {} failed: {}",
-                    name,
-                    now,
-                    e
-                );
+            match timeout(
+                timing::CORE_SELECT_NODE_TIMEOUT,
+                handle.select_node_for_group(name, now),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    logging!(
+                        warn,
+                        Type::Core,
+                        "Apply profile selected {} -> {} failed: {}",
+                        name,
+                        now,
+                        e
+                    );
+                }
+                Err(_) => {
+                    logging!(
+                        warn,
+                        Type::Core,
+                        "Apply profile selected {} -> {} timed out after {:?}",
+                        name,
+                        now,
+                        timing::CORE_SELECT_NODE_TIMEOUT
+                    );
+                }
             }
         }
     }

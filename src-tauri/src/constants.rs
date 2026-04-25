@@ -25,6 +25,8 @@ pub mod timing {
     pub const CONFIG_UPDATE_DEBOUNCE: Duration = Duration::from_millis(300);
     pub const EVENT_EMIT_DELAY: Duration = Duration::from_millis(20);
     pub const STARTUP_ERROR_DELAY: Duration = Duration::from_secs(2);
+    pub const CORE_RELOAD_TIMEOUT: Duration = Duration::from_secs(10);
+    pub const CORE_SELECT_NODE_TIMEOUT: Duration = Duration::from_secs(3);
 
     #[cfg(target_os = "windows")]
     pub const SERVICE_WAIT_MAX: Duration = Duration::from_millis(3000);

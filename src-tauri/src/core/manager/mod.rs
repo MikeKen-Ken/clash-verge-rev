@@ -8,6 +8,7 @@ use clash_verge_logger::AsyncLogger;
 use once_cell::sync::Lazy;
 use std::{fmt, sync::Arc, time::Instant};
 use tauri_plugin_shell::process::CommandChild;
+use tokio::sync::Mutex;
 
 use crate::singleton;
 
@@ -34,6 +35,7 @@ impl fmt::Display for RunningMode {
 pub struct CoreManager {
     state: ArcSwap<State>,
     last_update: ArcSwapOption<Instant>,
+    update_lock: Mutex<()>,
 }
 
 #[derive(Debug)]
@@ -56,6 +58,7 @@ impl Default for CoreManager {
         Self {
             state: ArcSwap::new(Arc::new(State::default())),
             last_update: ArcSwapOption::new(None),
+            update_lock: Mutex::new(()),
         }
     }
 }

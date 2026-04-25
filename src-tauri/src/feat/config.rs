@@ -32,7 +32,7 @@ pub async fn patch_clash(patch: &Mapping) -> Result<()> {
             CoreManager::global().update_config().await?;
         }
         // 仅 log-level / allow-lan / ipv6 时只刷新 clash 配置，不触发前端重新跑 fallback 健康检测
-        let light_keys: &[&str] = &["log-level", "allow-lan", "ipv6"];
+        let light_keys: &[&str] = &["log-level", "allow-lan", "ipv6", "proxy-ads-block"];
         let only_light = patch.iter().all(|(k, _)| {
             k.as_str().map_or(false, |s| light_keys.contains(&s))
         });
