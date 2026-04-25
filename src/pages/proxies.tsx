@@ -277,6 +277,7 @@ const ProxyPage = () => {
               }
             />
             <FormControlLabel
+              sx={{ ml: 0, mr: 0 }}
               control={
                 <GuardState
                   value={allowLan}
@@ -302,7 +303,7 @@ const ProxyPage = () => {
             />
             {allowLan &&
               (lanEndpointItems.length > 0 ? (
-                <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.75 }}>
+                <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.5 }}>
                   {lanEndpointItems.map((endpoint) => (
                     <Button
                       key={endpoint}
