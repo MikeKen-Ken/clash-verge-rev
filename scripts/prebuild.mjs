@@ -174,6 +174,7 @@ const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/do
 const META_ALPHA_RELEASE_TAG_API =
   "https://api.github.com/repos/MikeKen-Ken/mihomo/releases/tags/Prerelease-Alpha";
 let META_ALPHA_VERSION;
+let META_ALPHA_RELEASE_CACHE;
 
 const META_VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
@@ -212,16 +213,7 @@ async function fetchText(url, options) {
 }
 
 async function fetchAlphaVersionFromReleaseApi(options) {
-  const response = await fetch(META_ALPHA_RELEASE_TAG_API, {
-    ...options,
-    method: "GET",
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch ${META_ALPHA_RELEASE_TAG_API}: ${response.status}`,
-    );
-  }
-  const release = await response.json();
+  const release = await fetchAlphaRelease(options);
   const versionAsset = release.assets?.find((asset) => asset.name === "version.txt");
   if (!versionAsset?.browser_download_url && !versionAsset?.url) {
     throw new Error("version.txt asset not found in Prerelease-Alpha release");
@@ -244,6 +236,44 @@ async function fetchAlphaVersionFromReleaseApi(options) {
     return await fetchText(versionAsset.browser_download_url, options);
   }
   throw new Error("unable to download version.txt from release assets");
+}
+
+async function fetchAlphaRelease(options) {
+  if (META_ALPHA_RELEASE_CACHE?.assets) return META_ALPHA_RELEASE_CACHE;
+  const response = await fetch(META_ALPHA_RELEASE_TAG_API, {
+    ...options,
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${META_ALPHA_RELEASE_TAG_API}: ${response.status}`,
+    );
+  }
+  META_ALPHA_RELEASE_CACHE = await response.json();
+  return META_ALPHA_RELEASE_CACHE;
+}
+
+async function downloadAlphaAssetViaApi(fileName, outPath, options) {
+  const release = await fetchAlphaRelease(options);
+  const asset = release.assets?.find((item) => item.name === fileName);
+  if (!asset) {
+    throw new Error(`Alpha release asset not found: ${fileName}`);
+  }
+  const assetResp = await fetch(asset.url, {
+    ...options,
+    method: "GET",
+    headers: {
+      ...options.headers,
+      Accept: "application/octet-stream",
+    },
+  });
+  if (!assetResp.ok) {
+    throw new Error(`Failed to download alpha asset ${fileName}: status ${assetResp.status}`);
+  }
+  const buf = Buffer.from(await assetResp.arrayBuffer());
+  await fsp.mkdir(path.dirname(outPath), { recursive: true });
+  await fsp.writeFile(outPath, buf);
+  log_success(`download finished via API: ${fileName}`);
 }
 
 const META_ALPHA_MAP = {
@@ -367,13 +397,7 @@ function clashMeta() {
 // download helper (增强：status + magic bytes)
 // =======================
 async function downloadFile(url, outPath) {
-  const options = {};
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy;
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy);
+  const options = createFetchOptions();
 
   const response = await fetch(url, {
     ...options,
@@ -381,6 +405,16 @@ async function downloadFile(url, outPath) {
     headers: { "Content-Type": "application/octet-stream" },
   });
   if (!response.ok) {
+    if (
+      response.status === 404 &&
+      url.startsWith(META_ALPHA_URL_PREFIX + "/")
+    ) {
+      const fileName = decodeURIComponent(url.split("/").pop() || "");
+      if (fileName) {
+        await downloadAlphaAssetViaApi(fileName, outPath, options);
+        return;
+      }
+    }
     const body = await response.text().catch(() => "");
     // 将 body 写到文件以便排查（可通过临时目录查看）
     await fsp.mkdir(path.dirname(outPath), { recursive: true });
