@@ -136,6 +136,8 @@ jobs:
             pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
 
       - name: Pnpm install and check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }} --force

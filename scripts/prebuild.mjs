@@ -181,12 +181,16 @@ const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
 let META_VERSION;
 
 function createFetchOptions() {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
   const options = {
     headers: {
       Accept: "application/vnd.github+json",
       "User-Agent": "clash-verge-rev-prebuild",
     },
   };
+  if (token) {
+    options.headers.Authorization = `Bearer ${token}`;
+  }
   const httpProxy =
     process.env.HTTP_PROXY ||
     process.env.http_proxy ||
@@ -219,10 +223,27 @@ async function fetchAlphaVersionFromReleaseApi(options) {
   }
   const release = await response.json();
   const versionAsset = release.assets?.find((asset) => asset.name === "version.txt");
-  if (!versionAsset?.browser_download_url) {
+  if (!versionAsset?.browser_download_url && !versionAsset?.url) {
     throw new Error("version.txt asset not found in Prerelease-Alpha release");
   }
-  return await fetchText(versionAsset.browser_download_url, options);
+  // Prefer authenticated asset API URL for private repos.
+  if (versionAsset.url) {
+    const assetResp = await fetch(versionAsset.url, {
+      ...options,
+      method: "GET",
+      headers: {
+        ...options.headers,
+        Accept: "application/octet-stream",
+      },
+    });
+    if (assetResp.ok) {
+      return (await assetResp.text()).trim();
+    }
+  }
+  if (versionAsset.browser_download_url) {
+    return await fetchText(versionAsset.browser_download_url, options);
+  }
+  throw new Error("unable to download version.txt from release assets");
 }
 
 const META_ALPHA_MAP = {
