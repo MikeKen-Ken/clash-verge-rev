@@ -145,6 +145,7 @@ const ConnectionsPage = () => {
     response: { data: connections },
     clearClosedConnections,
     sessionStartMs,
+    refreshGetClashConnection,
   } = useConnectionData();
 
   const [setting, setSetting] = useConnectionSetting();
@@ -228,6 +229,18 @@ const ConnectionsPage = () => {
     setBlockedLanIps(next);
     showNotice.success("已禁用该设备");
   });
+  const onEnableDevice = useLockFn(async (sourceIp: string) => {
+    const next = normalizeBlockedLanSourceIps(
+      blockedLanIps.filter((ip) => ip !== sourceIp),
+    );
+    await patchClash({
+      "clash-for-android": {
+        "lan-blocked-devices": next,
+      },
+    } as Partial<IConfigData>);
+    setBlockedLanIps(next);
+    showNotice.success("已从禁用列表移除");
+  });
 
   const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
   const isCloseMenuOpen = Boolean(closeMenuAnchor);
@@ -257,7 +270,14 @@ const ConnectionsPage = () => {
   }, [onCloseExcludingDirect, handleCloseMenuClose]);
 
   const hasTableData = filterConn.length > 0;
-  const hasDeviceData = lanDeviceItems.length > 0;
+  const hasDeviceData = lanDeviceItems.length > 0 || blockedLanIps.length > 0;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      refreshGetClashConnection();
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [refreshGetClashConnection]);
 
   useEffect(() => {
     const fromConfig =
@@ -526,6 +546,37 @@ const ConnectionsPage = () => {
                     onClick={() => onDisableDevice(device.sourceIp)}
                   >
                     禁用设备
+                  </Button>
+                </Box>
+              </Box>
+            ))}
+            {blockedLanIps.map((ip) => (
+              <Box
+                key={`blocked-${ip}`}
+                sx={{
+                  border: "1px dashed",
+                  borderColor: "warning.main",
+                  borderRadius: 1,
+                  p: 1.25,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0.5,
+                }}
+              >
+                <Typography variant="body2" fontWeight={700}>
+                  {ip}
+                </Typography>
+                <Typography variant="caption" color="warning.main">
+                  已禁用
+                </Typography>
+                <Box sx={{ pt: 0.5 }}>
+                  <Button
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                    onClick={() => onEnableDevice(ip)}
+                  >
+                    移除禁用
                   </Button>
                 </Box>
               </Box>
