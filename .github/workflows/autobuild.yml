@@ -137,7 +137,10 @@ jobs:
 
       - name: Pnpm install and check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Cross-repo private release access requires a PAT/fine-grained token.
+          # Prefer MIHOMO_REPO_TOKEN; fallback to the default repository GITHUB_TOKEN.
+          GITHUB_TOKEN: ${{ secrets.MIHOMO_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.MIHOMO_REPO_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }} --force
