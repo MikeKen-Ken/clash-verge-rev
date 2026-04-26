@@ -171,12 +171,59 @@ async function updateHashCache(targetPath) {
 const META_ALPHA_VERSION_URL =
   "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
 const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
+const META_ALPHA_RELEASE_TAG_API =
+  "https://api.github.com/repos/MikeKen-Ken/mihomo/releases/tags/Prerelease-Alpha";
 let META_ALPHA_VERSION;
 
 const META_VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
 const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
 let META_VERSION;
+
+function createFetchOptions() {
+  const options = {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "clash-verge-rev-prebuild",
+    },
+  };
+  const httpProxy =
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy;
+  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy);
+  return options;
+}
+
+async function fetchText(url, options) {
+  const response = await fetch(url, {
+    ...options,
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  }
+  return (await response.text()).trim();
+}
+
+async function fetchAlphaVersionFromReleaseApi(options) {
+  const response = await fetch(META_ALPHA_RELEASE_TAG_API, {
+    ...options,
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${META_ALPHA_RELEASE_TAG_API}: ${response.status}`,
+    );
+  }
+  const release = await response.json();
+  const versionAsset = release.assets?.find((asset) => asset.name === "version.txt");
+  if (!versionAsset?.browser_download_url) {
+    throw new Error("version.txt asset not found in Prerelease-Alpha release");
+  }
+  return await fetchText(versionAsset.browser_download_url, options);
+}
 
 const META_ALPHA_MAP = {
   "win32-x64": "mihomo-windows-amd64",
@@ -217,24 +264,15 @@ async function getLatestAlphaVersion() {
       return;
     }
   }
-  const options = {};
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy;
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy);
+  const options = createFetchOptions();
 
   try {
-    const response = await fetch(META_ALPHA_VERSION_URL, {
-      ...options,
-      method: "GET",
-    });
-    if (!response.ok)
-      throw new Error(
-        `Failed to fetch ${META_ALPHA_VERSION_URL}: ${response.status}`,
-      );
-    META_ALPHA_VERSION = (await response.text()).trim();
+    try {
+      META_ALPHA_VERSION = await fetchText(META_ALPHA_VERSION_URL, options);
+    } catch (directErr) {
+      log_debug(`Direct alpha version URL failed, fallback to API: ${directErr.message}`);
+      META_ALPHA_VERSION = await fetchAlphaVersionFromReleaseApi(options);
+    }
     log_info(`Latest alpha version: ${META_ALPHA_VERSION}`);
     await setCachedVersion("META_ALPHA_VERSION", META_ALPHA_VERSION);
   } catch (err) {
@@ -251,24 +289,10 @@ async function getLatestReleaseVersion() {
       return;
     }
   }
-  const options = {};
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy;
-  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy);
+  const options = createFetchOptions();
 
   try {
-    const response = await fetch(META_VERSION_URL, {
-      ...options,
-      method: "GET",
-    });
-    if (!response.ok)
-      throw new Error(
-        `Failed to fetch ${META_VERSION_URL}: ${response.status}`,
-      );
-    META_VERSION = (await response.text()).trim();
+    META_VERSION = await fetchText(META_VERSION_URL, options);
     log_info(`Latest release version: ${META_VERSION}`);
     await setCachedVersion("META_VERSION", META_VERSION);
   } catch (err) {
