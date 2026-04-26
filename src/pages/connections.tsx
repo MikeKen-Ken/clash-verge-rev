@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
@@ -145,7 +146,6 @@ const ConnectionsPage = () => {
     response: { data: connections },
     clearClosedConnections,
     sessionStartMs,
-    refreshGetClashConnection,
   } = useConnectionData();
 
   const [setting, setSetting] = useConnectionSetting();
@@ -215,6 +215,51 @@ const ConnectionsPage = () => {
     );
     return buildLanDeviceItems(visible);
   }, [connections?.activeConnections, connectionsType, blockedLanIps]);
+  const blockedLastUsedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const all = [
+      ...(connections?.activeConnections ?? []),
+      ...(connections?.closedConnections ?? []),
+    ];
+    all.forEach((conn) => {
+      const sourceIp = conn.metadata?.sourceIP || "";
+      if (!sourceIp || !blockedLanIps.includes(sourceIp)) return;
+      const startMs = new Date(conn.start || 0).getTime();
+      if (!Number.isFinite(startMs)) return;
+      map.set(sourceIp, Math.max(map.get(sourceIp) ?? 0, startMs));
+    });
+    return map;
+  }, [
+    connections?.activeConnections,
+    connections?.closedConnections,
+    blockedLanIps,
+  ]);
+  const disconnectedDeviceItems = useMemo(() => {
+    const active = connections?.activeConnections ?? [];
+    const closed = connections?.closedConnections ?? [];
+    const activeIpSet = new Set(
+      active
+        .map((conn) => conn.metadata?.sourceIP || "")
+        .filter((ip) => ip.length > 0),
+    );
+    const closedLastUsed = new Map<string, number>();
+    closed.forEach((conn) => {
+      const ip = conn.metadata?.sourceIP || "";
+      if (!ip) return;
+      if (blockedLanIps.includes(ip)) return;
+      if (activeIpSet.has(ip)) return;
+      const startMs = new Date(conn.start || 0).getTime();
+      if (!Number.isFinite(startMs)) return;
+      closedLastUsed.set(ip, Math.max(closedLastUsed.get(ip) ?? 0, startMs));
+    });
+    return Array.from(closedLastUsed.entries())
+      .map(([ip, lastUsed]) => ({ ip, lastUsed }))
+      .sort((a, b) => b.lastUsed - a.lastUsed);
+  }, [
+    connections?.activeConnections,
+    connections?.closedConnections,
+    blockedLanIps,
+  ]);
 
   const onCloseAll = useLockFn(closeAllConnections);
   const onCloseExcludingDirect = useLockFn(closeConnectionsExcludingDirect);
@@ -270,14 +315,10 @@ const ConnectionsPage = () => {
   }, [onCloseExcludingDirect, handleCloseMenuClose]);
 
   const hasTableData = filterConn.length > 0;
-  const hasDeviceData = lanDeviceItems.length > 0 || blockedLanIps.length > 0;
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      refreshGetClashConnection();
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [refreshGetClashConnection]);
+  const hasDeviceData =
+    lanDeviceItems.length > 0 ||
+    blockedLanIps.length > 0 ||
+    disconnectedDeviceItems.length > 0;
 
   useEffect(() => {
     const fromConfig =
@@ -434,7 +475,7 @@ const ConnectionsPage = () => {
               )
             }
           >
-            设备视图 {lanDeviceItems.length}
+            设备视图
           </Button>
         )}
         {!isTableLayout && (
@@ -536,6 +577,9 @@ const ConnectionsPage = () => {
                   连接数: {device.connectionCount}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
+                  开始时间: {dayjs(device.latestStart).format("YYYY-MM-DD HH:mm:ss")}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
                   ↓ {parseTraffic(device.download)} / ↑ {parseTraffic(device.upload)}
                 </Typography>
                 <Box sx={{ pt: 0.5 }}>
@@ -569,6 +613,14 @@ const ConnectionsPage = () => {
                 <Typography variant="caption" color="warning.main">
                   已禁用
                 </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  最后使用: {(() => {
+                    const ts = blockedLastUsedMap.get(ip) ?? 0;
+                    return ts > 0
+                      ? dayjs(ts).format("YYYY-MM-DD HH:mm:ss")
+                      : "暂无记录";
+                  })()}
+                </Typography>
                 <Box sx={{ pt: 0.5 }}>
                   <Button
                     size="small"
@@ -579,6 +631,30 @@ const ConnectionsPage = () => {
                     移除禁用
                   </Button>
                 </Box>
+              </Box>
+            ))}
+            {disconnectedDeviceItems.map((item) => (
+              <Box
+                key={`disconnected-${item.ip}`}
+                sx={{
+                  border: "1px dashed",
+                  borderColor: "text.disabled",
+                  borderRadius: 1,
+                  p: 1.25,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0.5,
+                }}
+              >
+                <Typography variant="body2" fontWeight={700}>
+                  {item.ip}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  已断开
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  最后使用: {dayjs(item.lastUsed).format("YYYY-MM-DD HH:mm:ss")}
+                </Typography>
               </Box>
             ))}
           </Box>
