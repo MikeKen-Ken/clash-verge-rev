@@ -51,3 +51,43 @@ export async function closeConnectionsExcludingDirect(): Promise<number> {
     throw error;
   }
 }
+
+/**
+ * 根据 sourceIP 批量关闭连接
+ * @returns 返回关闭的连接数量
+ */
+export async function closeConnectionsBySourceIp(sourceIp: string): Promise<number> {
+  try {
+    const { connections } = await getConnections();
+    if (!connections || connections.length === 0) {
+      debugLog("[CloseConnectionsBySourceIp] No connections found");
+      return 0;
+    }
+
+    const connectionsToClose = connections.filter(
+      (conn) => conn.metadata?.sourceIP === sourceIp,
+    );
+
+    if (connectionsToClose.length === 0) {
+      debugLog(`[CloseConnectionsBySourceIp] No connections for ${sourceIp}`);
+      return 0;
+    }
+
+    const closePromises = connectionsToClose.map((conn) =>
+      closeConnection(conn.id).catch((error) => {
+        console.error(
+          `[CloseConnectionsBySourceIp] Failed to close connection ${conn.id}:`,
+          error,
+        );
+        return null;
+      }),
+    );
+    const results = await Promise.allSettled(closePromises);
+    return results.filter(
+      (result) => result.status === "fulfilled" && result.value !== null,
+    ).length;
+  } catch (error) {
+    console.error("[CloseConnectionsBySourceIp] Error closing connections:", error);
+    throw error;
+  }
+}

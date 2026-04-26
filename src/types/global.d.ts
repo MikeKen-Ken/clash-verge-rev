@@ -82,6 +82,9 @@ interface IConfigData {
     proxy?: string;
   }[];
   "proxy-groups"?: IProxyGroupItem[];
+  "clash-for-android"?: {
+    "lan-blocked-devices"?: string[];
+  };
 }
 
 interface IRuleItem {

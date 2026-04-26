@@ -12,9 +12,10 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Typography,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
@@ -39,8 +40,21 @@ import {
   CLOSED_CONNECTIONS_RETENTION_HOURS,
   useConnectionSetting,
 } from "@/hooks/use-connection-setting";
+import { useClash } from "@/hooks/use-clash";
+import { showNotice } from "@/services/notice-service";
+import {
+  buildLanDeviceItems,
+  isLanSourceIp,
+} from "@/features/lan-devices/model";
+import {
+  addBlockedLanSourceIp,
+  normalizeBlockedLanSourceIps,
+} from "@/features/lan-devices/state";
 import parseTraffic from "@/utils/parse-traffic";
-import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
+import {
+  closeConnectionsBySourceIp,
+  closeConnectionsExcludingDirect,
+} from "@/utils/close-connections";
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
 
@@ -120,7 +134,12 @@ const ConnectionsPage = () => {
   const [connectionsType, setConnectionsType] = useState<"active" | "closed">(
     "active",
   );
+  const [connectionsView, setConnectionsView] = useState<"connections" | "devices">(
+    "connections",
+  );
   const [mergeByDomain, setMergeByDomain] = useState(false);
+  const [blockedLanIps, setBlockedLanIps] = useState<string[]>([]);
+  const { clash, patchClash } = useClash();
 
   const {
     response: { data: connections },
@@ -166,7 +185,11 @@ const ConnectionsPage = () => {
       connectionsType === "active"
         ? (connections?.activeConnections ?? [])
         : closedForDisplay;
-    let matchConns = conns.filter((conn) => {
+    const visibleConns =
+      connectionsType === "active"
+        ? conns.filter((conn) => !blockedLanIps.includes(conn.metadata?.sourceIP || ""))
+        : conns;
+    let matchConns = visibleConns.filter((conn) => {
       const { host, destinationIP, process } = conn.metadata;
       return (
         match(host || "") || match(destinationIP || "") || match(process || "")
@@ -181,10 +204,30 @@ const ConnectionsPage = () => {
     }
 
     return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours]);
+  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIps]);
+
+  const lanDeviceItems = useMemo(() => {
+    if (connectionsType !== "active") return [];
+    const active = connections?.activeConnections ?? [];
+    const visible = active.filter(
+      (conn) => !blockedLanIps.includes(conn.metadata?.sourceIP || ""),
+    );
+    return buildLanDeviceItems(visible);
+  }, [connections?.activeConnections, connectionsType, blockedLanIps]);
 
   const onCloseAll = useLockFn(closeAllConnections);
   const onCloseExcludingDirect = useLockFn(closeConnectionsExcludingDirect);
+  const onDisableDevice = useLockFn(async (sourceIp: string) => {
+    await closeConnectionsBySourceIp(sourceIp);
+    const next = addBlockedLanSourceIp(blockedLanIps, sourceIp);
+    await patchClash({
+      "clash-for-android": {
+        "lan-blocked-devices": next,
+      },
+    } as Partial<IConfigData>);
+    setBlockedLanIps(next);
+    showNotice.success("已禁用该设备");
+  });
 
   const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
   const isCloseMenuOpen = Boolean(closeMenuAnchor);
@@ -214,6 +257,27 @@ const ConnectionsPage = () => {
   }, [onCloseExcludingDirect, handleCloseMenuClose]);
 
   const hasTableData = filterConn.length > 0;
+  const hasDeviceData = lanDeviceItems.length > 0;
+
+  useEffect(() => {
+    const fromConfig =
+      clash?.["clash-for-android"]?.["lan-blocked-devices"] ?? [];
+    setBlockedLanIps(normalizeBlockedLanSourceIps(fromConfig));
+  }, [clash]);
+
+  useEffect(() => {
+    const active = connections?.activeConnections ?? [];
+    if (active.length === 0 || blockedLanIps.length === 0) return;
+    const targets = Array.from(
+      new Set(
+        active
+          .map((conn) => conn.metadata?.sourceIP || "")
+          .filter((ip) => ip && blockedLanIps.includes(ip) && isLanSourceIp(ip)),
+      ),
+    );
+    if (targets.length === 0) return;
+    void Promise.allSettled(targets.map((ip) => closeConnectionsBySourceIp(ip)));
+  }, [connections?.activeConnections, blockedLanIps]);
 
   return (
     <BasePage
@@ -331,12 +395,28 @@ const ConnectionsPage = () => {
           <Button
             size="small"
             variant={connectionsType === "closed" ? "contained" : "outlined"}
-            onClick={() => setConnectionsType("closed")}
+            onClick={() => {
+              setConnectionsType("closed");
+              setConnectionsView("connections");
+            }}
           >
             {t("connections.components.actions.closed")}{" "}
             {connections?.closedConnections.length}
           </Button>
         </ButtonGroup>
+        {connectionsType === "active" && (
+          <Button
+            size="small"
+            variant={connectionsView === "devices" ? "contained" : "outlined"}
+            onClick={() =>
+              setConnectionsView((prev) =>
+                prev === "connections" ? "devices" : "connections",
+              )
+            }
+          >
+            设备视图 {lanDeviceItems.length}
+          </Button>
+        )}
         {!isTableLayout && (
           <BaseStyledSelect
             value={curOrderOpt}
@@ -402,7 +482,57 @@ const ConnectionsPage = () => {
         </Box>
       </Box>
 
-      {!hasTableData ? (
+      {connectionsType === "active" && connectionsView === "devices" ? (
+        !hasDeviceData ? (
+          <BaseEmpty />
+        ) : (
+          <Box
+            sx={{
+              px: 1.5,
+              pb: 1.5,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 1,
+              overflowY: "auto",
+            }}
+          >
+            {lanDeviceItems.map((device) => (
+              <Box
+                key={device.sourceIp}
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  p: 1.25,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0.5,
+                }}
+              >
+                <Typography variant="body2" fontWeight={700}>
+                  {device.sourceIp}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  连接数: {device.connectionCount}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  ↓ {parseTraffic(device.download)} / ↑ {parseTraffic(device.upload)}
+                </Typography>
+                <Box sx={{ pt: 0.5 }}>
+                  <Button
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    onClick={() => onDisableDevice(device.sourceIp)}
+                  >
+                    禁用设备
+                  </Button>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )
+      ) : !hasTableData ? (
         <BaseEmpty />
       ) : isTableLayout ? (
         <ConnectionTable
