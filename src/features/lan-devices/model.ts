@@ -65,3 +65,37 @@ export const buildLanDeviceItems = (
     }))
     .sort((a, b) => b.connectionCount - a.connectionCount || b.latestStart - a.latestStart);
 };
+
+export const extractLocalInterfaceIps = (
+  networkInterfaces: INetworkInterface[] | undefined,
+): Set<string> => {
+  const localIps = new Set<string>();
+  (networkInterfaces ?? []).forEach((iface) => {
+    iface.addr?.forEach((addr) => {
+      const v4 = addr.V4?.ip?.trim();
+      const v6 = addr.V6?.ip?.trim();
+      if (v4) localIps.add(v4);
+      if (v6) localIps.add(v6.toLowerCase());
+    });
+  });
+  return localIps;
+};
+
+/**
+ * 设备视图只统计“远端局域网客户端”的连接，排除本机进程和本机网卡 IP。
+ * 这样可以避免将 adb 等本机发起的局域网连接误识别为 LAN 设备接入。
+ */
+export const isRemoteLanClientConnection = (
+  conn: IConnectionsItem,
+  localInterfaceIps: Set<string>,
+): boolean => {
+  const sourceIp = (conn.metadata?.sourceIP || "").trim();
+  if (!isLanSourceIp(sourceIp)) return false;
+  if (localInterfaceIps.has(sourceIp) || localInterfaceIps.has(sourceIp.toLowerCase())) {
+    return false;
+  }
+  const processName = (conn.metadata?.process || "").trim();
+  const processPath = (conn.metadata?.processPath || "").trim();
+  if (processName || processPath) return false;
+  return true;
+};

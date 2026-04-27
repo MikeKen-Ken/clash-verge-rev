@@ -45,12 +45,15 @@ import { useClash } from "@/hooks/use-clash";
 import { showNotice } from "@/services/notice-service";
 import {
   buildLanDeviceItems,
+  extractLocalInterfaceIps,
   isLanSourceIp,
+  isRemoteLanClientConnection,
 } from "@/features/lan-devices/model";
 import {
   addBlockedLanSourceIp,
   normalizeBlockedLanSourceIps,
 } from "@/features/lan-devices/state";
+import { useNetworkInterfaces } from "@/hooks/use-network";
 import parseTraffic from "@/utils/parse-traffic";
 import {
   closeConnectionsBySourceIp,
@@ -150,6 +153,7 @@ const ConnectionsPage = () => {
   const lanSettingsPersistPendingRef = useRef(false);
   const lanSettingsPersistRunningRef = useRef(false);
   const { clash, patchClash } = useClash();
+  const { networkInterfaces } = useNetworkInterfaces();
 
   const {
     response: { data: connections },
@@ -218,13 +222,14 @@ const ConnectionsPage = () => {
   }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIps]);
 
   const activeLanConnections = useMemo(() => {
+    const localInterfaceIps = extractLocalInterfaceIps(networkInterfaces);
     const active = connections?.activeConnections ?? [];
     return active.filter(
       (conn) =>
         !blockedLanIps.includes(conn.metadata?.sourceIP || "") &&
-        isLanSourceIp(conn.metadata?.sourceIP),
+        isRemoteLanClientConnection(conn, localInterfaceIps),
     );
-  }, [connections?.activeConnections, blockedLanIps]);
+  }, [connections?.activeConnections, blockedLanIps, networkInterfaces]);
   const silentDeviceItems = useMemo(() => {
     if (connectionsType !== "active") return [];
     const byIp = new Map<string, IConnectionsItem[]>();
@@ -295,10 +300,12 @@ const ConnectionsPage = () => {
     blockedLanIps,
   ]);
   const disconnectedDeviceItems = useMemo(() => {
+    const localInterfaceIps = extractLocalInterfaceIps(networkInterfaces);
     const active = connections?.activeConnections ?? [];
     const closed = connections?.closedConnections ?? [];
     const activeIpSet = new Set(
       active
+        .filter((conn) => isRemoteLanClientConnection(conn, localInterfaceIps))
         .map((conn) => conn.metadata?.sourceIP || "")
         .filter((ip) => ip.length > 0),
     );
@@ -306,6 +313,7 @@ const ConnectionsPage = () => {
     closed.forEach((conn) => {
       const ip = conn.metadata?.sourceIP || "";
       if (!ip) return;
+      if (!isRemoteLanClientConnection(conn, localInterfaceIps)) return;
       if (blockedLanIps.includes(ip)) return;
       if (activeIpSet.has(ip)) return;
       const startMs = new Date(conn.start || 0).getTime();
@@ -328,6 +336,7 @@ const ConnectionsPage = () => {
     connections?.closedConnections,
     blockedLanIps,
     silentDeviceItems,
+    networkInterfaces,
   ]);
 
   const onCloseAll = useLockFn(closeAllConnections);
@@ -464,18 +473,20 @@ const ConnectionsPage = () => {
   }, [clash]);
 
   useEffect(() => {
+    const localInterfaceIps = extractLocalInterfaceIps(networkInterfaces);
     const active = connections?.activeConnections ?? [];
     if (active.length === 0 || blockedLanIps.length === 0) return;
     const targets = Array.from(
       new Set(
         active
+          .filter((conn) => isRemoteLanClientConnection(conn, localInterfaceIps))
           .map((conn) => conn.metadata?.sourceIP || "")
           .filter((ip) => ip && blockedLanIps.includes(ip) && isLanSourceIp(ip)),
       ),
     );
     if (targets.length === 0) return;
     void Promise.allSettled(targets.map((ip) => closeConnectionsBySourceIp(ip)));
-  }, [connections?.activeConnections, blockedLanIps]);
+  }, [connections?.activeConnections, blockedLanIps, networkInterfaces]);
 
   return (
     <BasePage
