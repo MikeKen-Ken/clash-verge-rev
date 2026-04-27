@@ -20,12 +20,23 @@ import {
   TextSnippetOutlined,
 } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
-import { Box, Button, Divider, Grid, IconButton, Stack } from "@mui/material";
+import {
+  Box,
+  Button,
+  Divider,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  TextField,
+  Select,
+  Stack,
+} from "@mui/material";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
-import dayjs from "dayjs";
 import YAML from "js-yaml";
 import { throttle } from "lodash-es";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +63,7 @@ import {
   //restartCore,
   getRuntimeLogs,
   importProfile,
+  patchProfile,
   readProfileFile,
   reorderProfile,
   saveProfileFile,
@@ -170,6 +182,11 @@ const isValidProxyNode = (proxy: any) => {
   return true;
 };
 
+const GLOBAL_UPDATE_INTERVAL_OPTIONS = [8, 16, 24, 48, 72, 168] as const;
+const GLOBAL_UPDATE_INTERVAL_STORAGE_KEY = "profiles.global.updateIntervalHours";
+const CUSTOM_PROXY_ORDER_STORAGE_KEY = "profiles.customProxyOrder";
+const DEFAULT_CUSTOM_PROXY_ORDER = ["🇭🇰", "🇯🇵", "🇸🇬", "🇹🇼", "🇺🇸"] as const;
+
 const ProfilePage = () => {
   const { t } = useTranslation();
   const location = useLocation();
@@ -178,6 +195,15 @@ const ProfilePage = () => {
   const [disabled, setDisabled] = useState(false);
   const [activatings, setActivatings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [globalUpdateHours, setGlobalUpdateHours] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(GLOBAL_UPDATE_INTERVAL_STORAGE_KEY) || 0);
+    return GLOBAL_UPDATE_INTERVAL_OPTIONS.includes(saved as any) ? saved : 24;
+  });
+  const [customProxyOrderText, setCustomProxyOrderText] = useState<string>(() => {
+    const saved = localStorage.getItem(CUSTOM_PROXY_ORDER_STORAGE_KEY);
+    if (saved && saved.trim()) return saved;
+    return DEFAULT_CUSTOM_PROXY_ORDER.join(",");
+  });
 
   // 防止重复切换
   const switchingProfileRef = useRef<string | null>(null);
@@ -286,6 +312,202 @@ const ProfilePage = () => {
     };
   }, [addListener, mutateProfiles, t]);
 
+  const disablePerProfileAutoUpdate = useLockFn(async () => {
+    const remoteItems = (profiles.items || []).filter((item) => item?.type === "remote");
+    await Promise.allSettled(
+      remoteItems.map((item) =>
+        patchProfile(item.uid, {
+          option: {
+            ...(item.option || {}),
+            allow_auto_update: false,
+            update_interval: undefined,
+          },
+        }),
+      ),
+    );
+  });
+
+  const rotateLocalBackups = async (targetRaw: string) => {
+    const localItems = profileItems.filter((item) => item.type === "local");
+    const backups = localItems.filter((item) => /^Local-backup-\d+$/.test(item.name || ""));
+    backups.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+
+    // 删除多余备份，仅保留最近两个（第三个将由本次新建）
+    const keep = backups.slice(0, 2);
+    const remove = backups.slice(2);
+    await Promise.allSettled(remove.map((item) => deleteProfile(item.uid)));
+
+    const older = keep[1];
+    const newer = keep[0];
+
+    if (older) {
+      await patchProfile(older.uid, { name: "Local-backup-0" });
+    }
+    if (newer) {
+      await patchProfile(newer.uid, { name: "Local-backup-1" });
+    }
+
+    await createProfile(
+      {
+        type: "local",
+        name: "Local-backup-2",
+        desc: "auto backup before merge",
+        url: "",
+        option: {
+          with_proxy: false,
+          self_proxy: false,
+        },
+      },
+      targetRaw,
+    );
+  };
+
+  const parseCustomProxyOrder = useCallback(() => {
+    return customProxyOrderText
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }, [customProxyOrderText]);
+
+  const sortProxiesByCustomOrder = useCallback(
+    (proxies: any[]) => {
+      const customOrder = parseCustomProxyOrder();
+      const orderMap = new Map(customOrder.map((flag, index) => [flag, index]));
+      return proxies
+        .map((proxy, originalIndex) => ({
+          proxy,
+          originalIndex,
+          flag: resolveFlag(String(proxy?.name || "")),
+        }))
+        .sort((a, b) => {
+          const aOrder = orderMap.has(a.flag) ? (orderMap.get(a.flag) as number) : Number.MAX_SAFE_INTEGER;
+          const bOrder = orderMap.has(b.flag) ? (orderMap.get(b.flag) as number) : Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.originalIndex - b.originalIndex;
+        })
+        .map((item) => item.proxy);
+    },
+    [parseCustomProxyOrder],
+  );
+
+  const onGenerateMergedProfile = useLockFn(async () => {
+    showNotice.info("开始执行配置合并", 1500);
+    const items = profileItems;
+    const targetIndex = items.findIndex((item) => item.type === "local");
+    if (targetIndex === -1) {
+      showNotice.error("No local target profile found");
+      return;
+    }
+
+    const targetProfile = items[targetIndex];
+    const sourceProfiles = items
+      .slice(targetIndex + 1)
+      .filter((item) => item.type === "remote");
+
+    if (!sourceProfiles.length) {
+      showNotice.error("No remote source profiles found after target local profile");
+      return;
+    }
+
+    try {
+      const targetRaw = await readProfileFile(targetProfile.uid);
+      const targetYaml = YAML.load(targetRaw) as Record<string, any>;
+      if (!targetYaml || typeof targetYaml !== "object") {
+        throw new Error("Target profile content is invalid");
+      }
+
+      const generatedGroupNames: string[] = [];
+      const generatedProxies: any[] = [];
+      const usedNames = new Set<string>();
+
+      for (const source of sourceProfiles) {
+        const sourceRaw = await readProfileFile(source.uid);
+        const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
+        const sourceProxiesRaw = Array.isArray(sourceYaml?.proxies)
+          ? sourceYaml.proxies.filter(isValidProxyNode)
+          : [];
+        const sourceProxies = sortProxiesByCustomOrder(sourceProxiesRaw);
+
+        const sourceDisplayName = source.name || source.desc || source.uid;
+        const localFlagCounters = new Map<string, number>();
+
+        for (const proxy of sourceProxies) {
+          const proxyName = String(proxy?.name || "");
+          const flag = resolveFlag(proxyName);
+          const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
+          localFlagCounters.set(flag, nextIndex);
+          const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
+          const generatedName = ensureUniqueName(baseName, usedNames);
+
+          generatedGroupNames.push(generatedName);
+          generatedProxies.push({
+            ...proxy,
+            name: generatedName,
+          });
+        }
+      }
+
+      if (!generatedProxies.length) {
+        throw new Error("No valid proxies generated from source subscriptions");
+      }
+
+      const profileGroups = Array.isArray(targetYaml["proxy-groups"])
+        ? targetYaml["proxy-groups"]
+        : [];
+      const firstNodeGroup = profileGroups.find(
+        (group: any) => group?.name === "🚀 节点选择",
+      );
+      if (firstNodeGroup && typeof firstNodeGroup === "object") {
+        firstNodeGroup.proxies = generatedGroupNames;
+      }
+
+      targetYaml.proxies = generatedProxies;
+
+      await rotateLocalBackups(targetRaw);
+
+      const nextText = YAML.dump(targetYaml, {
+        lineWidth: -1,
+        noRefs: true,
+      });
+      await saveProfileFile(targetProfile.uid, nextText);
+      await mutateProfiles();
+      showNotice.success(`合并完成：已处理 ${sourceProfiles.length} 个远程配置`, 3000);
+    } catch (err: any) {
+      showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
+    }
+  });
+
+  const updateAllRemoteAndMerge = useLockFn(async (source: string) => {
+    showNotice.info(`${source}：开始更新远程规则`, 1500);
+    const throttleMutate = throttle(mutateProfiles, 2000, {
+      trailing: true,
+    });
+    const updateOne = async (uid: string) => {
+      try {
+        await updateProfile(uid);
+        throttleMutate();
+      } catch (err: any) {
+        console.error(`更新订阅 ${uid} 失败:`, err);
+      } finally {
+        setLoadingCache((cache) => ({ ...cache, [uid]: false }));
+      }
+    };
+
+    await new Promise<void>((resolve) => {
+      setLoadingCache((cache) => {
+        const items = profileItems.filter(
+          (e) => e.type === "remote" && !cache[e.uid],
+        );
+        const change = Object.fromEntries(items.map((e) => [e.uid, true]));
+        Promise.allSettled(items.map((e) => updateOne(e.uid))).then(() => resolve());
+        return { ...cache, ...change };
+      });
+    });
+
+    showNotice.success(`${source}：远程规则更新完成，开始合并`, 2000);
+    await onGenerateMergedProfile();
+  });
+
   // 添加紧急恢复功能
   const onEmergencyRefresh = useLockFn(async () => {
     debugLog("[紧急刷新] 开始强制刷新所有数据");
@@ -303,6 +525,7 @@ const ProfilePage = () => {
       // 等待状态稳定后增强配置
       await new Promise((resolve) => setTimeout(resolve, 500));
       await onEnhance(false);
+      await onGenerateMergedProfile();
 
       showNotice.success(
         "profiles.page.feedback.notices.forceRefreshCompleted",
@@ -677,35 +900,9 @@ const ProfilePage = () => {
     }
   });
 
-  // 更新所有订阅
   const setLoadingCache = useSetLoadingCache();
   const onUpdateAll = useLockFn(async () => {
-    const throttleMutate = throttle(mutateProfiles, 2000, {
-      trailing: true,
-    });
-    const updateOne = async (uid: string) => {
-      try {
-        await updateProfile(uid);
-        throttleMutate();
-      } catch (err: any) {
-        console.error(`更新订阅 ${uid} 失败:`, err);
-      } finally {
-        setLoadingCache((cache) => ({ ...cache, [uid]: false }));
-      }
-    };
-
-    return new Promise((resolve) => {
-      setLoadingCache((cache) => {
-        // 获取没有正在更新的订阅
-        const items = profileItems.filter(
-          (e) => e.type === "remote" && !cache[e.uid],
-        );
-        const change = Object.fromEntries(items.map((e) => [e.uid, true]));
-
-        Promise.allSettled(items.map((e) => updateOne(e.uid))).then(resolve);
-        return { ...cache, ...change };
-      });
-    });
+    await updateAllRemoteAndMerge("手动刷新");
   });
 
   const onCopyLink = async () => {
@@ -713,106 +910,28 @@ const ProfilePage = () => {
     if (text) setUrl(text);
   };
 
-  const onGenerateMergedProfile = useLockFn(async () => {
-    const items = profileItems;
-    const targetIndex = items.findIndex((item) => item.type === "local");
-    if (targetIndex === -1) {
-      showNotice.error("No local target profile found");
-      return;
-    }
+  useEffect(() => {
+    localStorage.setItem(
+      GLOBAL_UPDATE_INTERVAL_STORAGE_KEY,
+      String(globalUpdateHours),
+    );
+  }, [globalUpdateHours]);
 
-    const targetProfile = items[targetIndex];
-    const sourceProfiles = items
-      .slice(targetIndex + 1)
-      .filter((item) => item.type === "remote");
+  useEffect(() => {
+    localStorage.setItem(CUSTOM_PROXY_ORDER_STORAGE_KEY, customProxyOrderText);
+  }, [customProxyOrderText]);
 
-    if (!sourceProfiles.length) {
-      showNotice.error("No remote source profiles found after target local profile");
-      return;
-    }
+  useEffect(() => {
+    disablePerProfileAutoUpdate();
+  }, [disablePerProfileAutoUpdate]);
 
-    try {
-      const targetRaw = await readProfileFile(targetProfile.uid);
-      const targetYaml = YAML.load(targetRaw) as Record<string, any>;
-      if (!targetYaml || typeof targetYaml !== "object") {
-        throw new Error("Target profile content is invalid");
-      }
-
-      const generatedGroupNames: string[] = [];
-      const generatedProxies: any[] = [];
-      const usedNames = new Set<string>();
-
-      for (const source of sourceProfiles) {
-        const sourceRaw = await readProfileFile(source.uid);
-        const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
-        const sourceProxies = Array.isArray(sourceYaml?.proxies)
-          ? sourceYaml.proxies.filter(isValidProxyNode)
-          : [];
-
-        const sourceDisplayName = source.name || source.desc || source.uid;
-        const localFlagCounters = new Map<string, number>();
-
-        for (const proxy of sourceProxies) {
-          const proxyName = String(proxy?.name || "");
-          const flag = resolveFlag(proxyName);
-          const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
-          localFlagCounters.set(flag, nextIndex);
-          const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
-          const generatedName = ensureUniqueName(baseName, usedNames);
-
-          generatedGroupNames.push(generatedName);
-          generatedProxies.push({
-            ...proxy,
-            name: generatedName,
-          });
-        }
-      }
-
-      if (!generatedProxies.length) {
-        throw new Error("No valid proxies generated from source subscriptions");
-      }
-
-      const profileGroups = Array.isArray(targetYaml["proxy-groups"])
-        ? targetYaml["proxy-groups"]
-        : [];
-      const firstNodeGroup = profileGroups.find(
-        (group: any) => group?.name === "🚀 节点选择",
-      );
-      if (firstNodeGroup && typeof firstNodeGroup === "object") {
-        firstNodeGroup.proxies = generatedGroupNames;
-      }
-
-      targetYaml.proxies = generatedProxies;
-
-      const backupName = `${targetProfile.name || "local"}-backup-${dayjs().format("YYYYMMDD-HHmmss")}`;
-      await createProfile(
-        {
-          type: "local",
-          name: backupName,
-          desc: "auto backup before merge",
-          url: "",
-          option: {
-            with_proxy: false,
-            self_proxy: false,
-          },
-        },
-        targetRaw,
-      );
-
-      const nextText = YAML.dump(targetYaml, {
-        lineWidth: -1,
-        noRefs: true,
-      });
-      await saveProfileFile(targetProfile.uid, nextText);
-      await mutateProfiles();
-      showNotice.success(
-        `Merged ${sourceProfiles.length} subscriptions into ${targetProfile.name} and created backup: ${backupName}`,
-        3000,
-      );
-    } catch (err: any) {
-      showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
-    }
-  });
+  useEffect(() => {
+    const intervalMs = globalUpdateHours * 60 * 60 * 1000;
+    const timer = window.setInterval(() => {
+      void updateAllRemoteAndMerge("定时任务");
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [globalUpdateHours, updateAllRemoteAndMerge]);
 
   const mode = useThemeMode();
   const isLight = mode === "light";
@@ -916,6 +1035,33 @@ const ProfilePage = () => {
           >
             <DataObjectRounded />
           </IconButton>
+
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel id="global-update-hours-label">定时(小时)</InputLabel>
+            <Select
+              labelId="global-update-hours-label"
+              value={globalUpdateHours}
+              label="定时(小时)"
+              onChange={(event) =>
+                setGlobalUpdateHours(Number(event.target.value))
+              }
+            >
+              {GLOBAL_UPDATE_INTERVAL_OPTIONS.map((hours) => (
+                <MenuItem key={hours} value={hours}>
+                  {hours === 168 ? "168 (24*7)" : hours}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            size="small"
+            label="节点排序"
+            value={customProxyOrderText}
+            onChange={(event) => setCustomProxyOrderText(event.target.value)}
+            placeholder="🇭🇰,🇯🇵,🇸🇬,🇹🇼,🇺🇸"
+            sx={{ minWidth: 240 }}
+          />
 
           {(error || isStale) && (
             <IconButton

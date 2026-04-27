@@ -101,10 +101,9 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         if (option?.timeout_seconds) {
           option.timeout_seconds = +option.timeout_seconds;
         }
-        if (option?.update_interval) {
-          option.update_interval = +option.update_interval;
-        } else if (option) {
+        if (option) {
           option.update_interval = undefined;
+          option.allow_auto_update = false;
         }
         if (option?.user_agent === "") {
           option.user_agent = undefined;
@@ -324,30 +323,6 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         </>
       )}
 
-      {(isRemote || isLocal) && (
-        <Controller
-          name="option.update_interval"
-          control={control}
-          render={({ field }) => (
-            <TextField
-              {...text}
-              {...field}
-              type="number"
-              label={t("profiles.modals.profileForm.fields.updateInterval")}
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {t("shared.units.minutes")}
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-          )}
-        />
-      )}
-
       {isLocal && openType === "new" && (
         <FileInput
           onChange={(file, val) => {
@@ -398,18 +373,6 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
             )}
           />
 
-          <Controller
-            name="option.allow_auto_update"
-            control={control}
-            render={({ field }) => (
-              <StyledBox>
-                <InputLabel>
-                  {t("profiles.modals.profileForm.fields.allowAutoUpdate")}
-                </InputLabel>
-                <Switch checked={field.value} {...field} color="primary" />
-              </StyledBox>
-            )}
-          />
         </>
       )}
     </BaseDialog>
