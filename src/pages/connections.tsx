@@ -136,9 +136,6 @@ const ConnectionsPage = () => {
   const [connectionsType, setConnectionsType] = useState<"active" | "closed">(
     "active",
   );
-  const [connectionsView, setConnectionsView] = useState<"connections" | "devices">(
-    "connections",
-  );
   const [mergeByDomain, setMergeByDomain] = useState(false);
   const [blockedLanIps, setBlockedLanIps] = useState<string[]>([]);
   const [lanMaxDevices, setLanMaxDevices] = useState<number>(0);
@@ -161,6 +158,7 @@ const ConnectionsPage = () => {
   } = useConnectionData();
 
   const [setting, setSetting] = useConnectionSetting();
+  const connectionsView = setting?.connectionsView ?? "connections";
 
   const isTableLayout = setting.layout === "table";
 
@@ -589,7 +587,14 @@ const ConnectionsPage = () => {
             variant={connectionsType === "closed" ? "contained" : "outlined"}
             onClick={() => {
               setConnectionsType("closed");
-              setConnectionsView("connections");
+              setSetting((o) => ({
+                ...(o ?? {
+                  layout: "table",
+                  closedConnectionsRetentionHours: 8,
+                  connectionsView: "connections",
+                }),
+                connectionsView: "connections",
+              }));
             }}
           >
             {t("connections.components.actions.closed")}{" "}
@@ -601,9 +606,20 @@ const ConnectionsPage = () => {
             size="small"
             variant={connectionsView === "devices" ? "contained" : "outlined"}
             onClick={() =>
-              setConnectionsView((prev) =>
-                prev === "connections" ? "devices" : "connections",
-              )
+              setSetting((o) => {
+                const base: IConnectionSetting = o ?? {
+                  layout: "table",
+                  closedConnectionsRetentionHours: 8,
+                  connectionsView: "connections",
+                };
+                return {
+                  ...base,
+                  connectionsView:
+                    (base.connectionsView ?? "connections") === "connections"
+                      ? "devices"
+                      : "connections",
+                };
+              })
             }
           >
             设备视图 {activeLanDeviceCount}

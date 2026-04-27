@@ -6,6 +6,7 @@ export const CLOSED_CONNECTIONS_RETENTION_HOURS = [1, 3, 8, 24] as const;
 const defaultConnectionSetting: IConnectionSetting = {
   layout: "table",
   closedConnectionsRetentionHours: 8,
+  connectionsView: "connections",
 };
 
 /** 迁移旧设置：原 closedConnectionsLimit 转为 retentionHours（可选） */
@@ -20,9 +21,14 @@ const migrateSetting = (raw: unknown): IConnectionSetting => {
     return {
       ...rest,
       closedConnectionsRetentionHours: map[closedConnectionsLimit as number] ?? 8,
+      connectionsView: o.connectionsView ?? "connections",
     };
   }
-  return o;
+  return {
+    ...defaultConnectionSetting,
+    ...o,
+    connectionsView: o.connectionsView ?? "connections",
+  };
 };
 
 export const useConnectionSetting = () =>

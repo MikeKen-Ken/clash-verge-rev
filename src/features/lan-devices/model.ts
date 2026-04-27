@@ -9,10 +9,35 @@ export interface LanDeviceItem {
 
 export const isLanSourceIp = (ip: string | undefined): boolean => {
   if (!ip) return false;
-  if (ip === "127.0.0.1" || ip.startsWith("169.254.")) return false;
-  if (ip.startsWith("192.168.") || ip.startsWith("10.")) return true;
-  const second = Number(ip.split(".")[1] || "-1");
-  return ip.startsWith("172.") && second >= 16 && second <= 31;
+  const normalized = ip.trim().toLowerCase();
+  // Exclude loopback / unspecified / multicast
+  if (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::" ||
+    normalized.startsWith("ff")
+  ) {
+    return false;
+  }
+
+  // IPv6: ULA(fc00::/7) and link-local(fe80::/10)
+  if (normalized.includes(":")) {
+    return (
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe8") ||
+      normalized.startsWith("fe9") ||
+      normalized.startsWith("fea") ||
+      normalized.startsWith("feb")
+    );
+  }
+
+  // IPv4 private ranges; exclude IPv4 link-local
+  if (normalized.startsWith("169.254.")) return false;
+  if (normalized.startsWith("192.168.") || normalized.startsWith("10.")) return true;
+  const second = Number(normalized.split(".")[1] || "-1");
+  return normalized.startsWith("172.") && second >= 16 && second <= 31;
 };
 
 export const buildLanDeviceItems = (

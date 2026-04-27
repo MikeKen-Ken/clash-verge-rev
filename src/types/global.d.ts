@@ -274,6 +274,8 @@ interface IConnectionSetting {
   layout: "table" | "list";
   /** 已关闭连接保留时长（小时），默认 8 */
   closedConnectionsRetentionHours?: ClosedConnectionsRetentionHours;
+  /** 活跃连接页视图模式，默认 connections */
+  connectionsView?: "connections" | "devices";
 }
 
 /**
