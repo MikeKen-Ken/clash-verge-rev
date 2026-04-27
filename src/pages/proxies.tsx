@@ -38,6 +38,7 @@ import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
+import { closeLanConnections } from "@/utils/close-connections";
 
 const MODES = ["rule", "global", "direct"] as const;
 type Mode = (typeof MODES)[number];
@@ -290,6 +291,12 @@ const ProxyPage = () => {
                       false,
                     );
                     await patchClash({ "allow-lan": v });
+                    if (!v) {
+                      const closedCount = await closeLanConnections();
+                      if (closedCount > 0) {
+                        showNotice.success(`已断开局域网连接（${closedCount}）`);
+                      }
+                    }
                   }}
                 >
                   <Switch size="small" />

@@ -15,6 +15,7 @@ import {
 import {
   ClearRounded,
   ContentPasteRounded,
+  DataObjectRounded,
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
@@ -24,6 +25,7 @@ import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
+import YAML from "js-yaml";
 import { throttle } from "lodash-es";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -89,6 +91,49 @@ const isOperationAborted = (
     return true;
   }
   return false;
+};
+
+const SOURCE_MARKERS: Record<string, string> = {
+  stc: "",
+  ikuuu: "🎁",
+  feiniaoyun: "🦜",
+  mojie: "💍",
+  peiqian: "💸",
+};
+
+const TRAFFIC_NODE_REGEX = /剩余流量|套餐到期|traffic|expire/i;
+const FLAG_REGEX = /\p{Regional_Indicator}{2}/u;
+
+const normalizeSourceKey = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, "");
+
+const resolveSourceMarker = (sourceName: string) => {
+  const sourceKey = normalizeSourceKey(sourceName);
+  for (const key of Object.keys(SOURCE_MARKERS)) {
+    if (sourceKey.includes(key)) {
+      return SOURCE_MARKERS[key];
+    }
+  }
+  return "";
+};
+
+const resolveFlag = (proxyName: string) => {
+  const flagMatch = proxyName.match(FLAG_REGEX);
+  return flagMatch?.[0] ?? "🏳️";
+};
+
+const buildGeneratedName = (proxyName: string, marker: string, index: number) => {
+  const flag = resolveFlag(proxyName);
+  const suffix = String(index).padStart(2, "0");
+  return marker ? `${flag} ${marker} ${suffix}` : `${flag} ${suffix}`;
+};
+
+const isValidProxyNode = (proxy: any) => {
+  if (!proxy || typeof proxy !== "object") return false;
+  if (typeof proxy.name !== "string" || !proxy.name.trim()) return false;
+  if (TRAFFIC_NODE_REGEX.test(proxy.name)) return false;
+  if (proxy.server === "127.0.0.1") return false;
+  return true;
 };
 
 const ProfilePage = () => {
@@ -634,6 +679,108 @@ const ProfilePage = () => {
     if (text) setUrl(text);
   };
 
+  const onGenerateMergedProfile = useLockFn(async () => {
+    const items = profileItems;
+    const targetIndex = items.findIndex((item) => item.type === "local");
+    if (targetIndex === -1) {
+      showNotice.error("No local target profile found");
+      return;
+    }
+
+    const targetProfile = items[targetIndex];
+    const sourceProfiles = items
+      .slice(targetIndex + 1)
+      .filter((item) => item.type === "remote");
+
+    if (!sourceProfiles.length) {
+      showNotice.error("No remote source profiles found after target local profile");
+      return;
+    }
+
+    try {
+      const targetRaw = await readProfileFile(targetProfile.uid);
+      const targetYaml = YAML.load(targetRaw) as Record<string, any>;
+      if (!targetYaml || typeof targetYaml !== "object") {
+        throw new Error("Target profile content is invalid");
+      }
+
+      const generatedGroupNames: string[] = [];
+      const generatedProxies: any[] = [];
+      const usedNames = new Set<string>();
+
+      for (const source of sourceProfiles) {
+        const sourceRaw = await readProfileFile(source.uid);
+        const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
+        const sourceProxies = Array.isArray(sourceYaml?.proxies)
+          ? sourceYaml.proxies.filter(isValidProxyNode)
+          : [];
+
+        const marker = resolveSourceMarker(source.name || "");
+        let localIndex = 1;
+
+        for (const proxy of sourceProxies) {
+          let generatedName = buildGeneratedName(proxy.name, marker, localIndex);
+          while (usedNames.has(generatedName)) {
+            localIndex += 1;
+            generatedName = buildGeneratedName(proxy.name, marker, localIndex);
+          }
+          localIndex += 1;
+          usedNames.add(generatedName);
+
+          generatedGroupNames.push(generatedName);
+          generatedProxies.push({
+            ...proxy,
+            name: generatedName,
+          });
+        }
+      }
+
+      if (!generatedProxies.length) {
+        throw new Error("No valid proxies generated from source subscriptions");
+      }
+
+      const profileGroups = Array.isArray(targetYaml["proxy-groups"])
+        ? targetYaml["proxy-groups"]
+        : [];
+      const firstNodeGroup = profileGroups.find(
+        (group: any) => group?.name === "🚀 节点选择",
+      );
+      if (firstNodeGroup && typeof firstNodeGroup === "object") {
+        firstNodeGroup.proxies = generatedGroupNames;
+      }
+
+      targetYaml.proxies = generatedProxies;
+
+      const backupName = `${targetProfile.name || "local"}-backup-${dayjs().format("YYYYMMDD-HHmmss")}`;
+      await createProfile(
+        {
+          type: "local",
+          name: backupName,
+          desc: "auto backup before merge",
+          url: "",
+          option: {
+            with_proxy: false,
+            self_proxy: false,
+          },
+        },
+        targetRaw,
+      );
+
+      const nextText = YAML.dump(targetYaml, {
+        lineWidth: -1,
+        noRefs: true,
+      });
+      await saveProfileFile(targetProfile.uid, nextText);
+      await mutateProfiles();
+      showNotice.success(
+        `Merged ${sourceProfiles.length} subscriptions into ${targetProfile.name} and created backup: ${backupName}`,
+        3000,
+      );
+    } catch (err: any) {
+      showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
+    }
+  });
+
   const mode = useThemeMode();
   const isLight = mode === "light";
   const dividercolor = isLight
@@ -726,6 +873,15 @@ const ProfilePage = () => {
             onClick={() => configRef.current?.open()}
           >
             <TextSnippetOutlined />
+          </IconButton>
+
+          <IconButton
+            size="small"
+            color="inherit"
+            title="Generate merged local profile with backup"
+            onClick={onGenerateMergedProfile}
+          >
+            <DataObjectRounded />
           </IconButton>
 
           {(error || isStale) && (
@@ -860,7 +1016,7 @@ const ProfilePage = () => {
                       onDelete={() => onDelete(item.uid)}
                       batchMode={false}
                       isSelected={false}
-                      onSelectionChange={() => {}}
+                      onSelectionChange={() => { }}
                     />
                   </Grid>
                 ))}

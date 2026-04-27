@@ -343,6 +343,14 @@ const ConnectionsPage = () => {
     setBlockedLanIps(next);
     showNotice.success("已禁用该设备");
   });
+  const onDisconnectDevice = useLockFn(async (sourceIp: string) => {
+    const closedCount = await closeConnectionsBySourceIp(sourceIp);
+    if (closedCount > 0) {
+      showNotice.success(`已断开设备连接（${closedCount}）`);
+      return;
+    }
+    showNotice.success("该设备当前无可断开的连接");
+  });
   const onEnableDevice = useLockFn(async (sourceIp: string) => {
     const next = normalizeBlockedLanSourceIps(
       blockedLanIps.filter((ip) => ip !== sourceIp),
@@ -757,7 +765,15 @@ const ConnectionsPage = () => {
                 <Typography variant="caption" color="text.secondary">
                   ↓ {parseTraffic(device.download)} / ↑ {parseTraffic(device.upload)}
                 </Typography>
-                <Box sx={{ pt: 0.5 }}>
+                <Box sx={{ pt: 0.5, display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                  <Button
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                    onClick={() => onDisconnectDevice(device.sourceIp)}
+                  >
+                    断开设备
+                  </Button>
                   <Button
                     size="small"
                     color="warning"

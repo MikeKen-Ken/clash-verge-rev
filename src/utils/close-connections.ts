@@ -1,6 +1,36 @@
 import { closeConnection, getConnections } from "tauri-plugin-mihomo-api";
 import { debugLog } from "./debug";
 
+const isLanSourceIp = (ip: string | undefined): boolean => {
+  if (!ip) return false;
+  const normalized = ip.trim().toLowerCase();
+  if (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::" ||
+    normalized.startsWith("ff")
+  ) {
+    return false;
+  }
+
+  if (normalized.includes(":")) {
+    return (
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe8") ||
+      normalized.startsWith("fe9") ||
+      normalized.startsWith("fea") ||
+      normalized.startsWith("feb")
+    );
+  }
+
+  if (normalized.startsWith("169.254.")) return false;
+  if (normalized.startsWith("192.168.") || normalized.startsWith("10.")) return true;
+  const second = Number(normalized.split(".")[1] || "-1");
+  return normalized.startsWith("172.") && second >= 16 && second <= 31;
+};
+
 /**
  * 关闭所有连接，但排除包含 DIRECT 的连接
  * @returns 返回关闭的连接数量
@@ -88,6 +118,42 @@ export async function closeConnectionsBySourceIp(sourceIp: string): Promise<numb
     ).length;
   } catch (error) {
     console.error("[CloseConnectionsBySourceIp] Error closing connections:", error);
+    throw error;
+  }
+}
+
+/**
+ * 关闭全部局域网来源连接
+ * @returns 返回关闭的连接数量
+ */
+export async function closeLanConnections(): Promise<number> {
+  try {
+    const { connections } = await getConnections();
+    if (!connections || connections.length === 0) {
+      debugLog("[CloseLanConnections] No connections found");
+      return 0;
+    }
+
+    const connectionsToClose = connections.filter((conn) =>
+      isLanSourceIp(conn.metadata?.sourceIP),
+    );
+    if (connectionsToClose.length === 0) {
+      debugLog("[CloseLanConnections] No LAN connections to close");
+      return 0;
+    }
+
+    const closePromises = connectionsToClose.map((conn) =>
+      closeConnection(conn.id).catch((error) => {
+        console.error(`[CloseLanConnections] Failed to close connection ${conn.id}:`, error);
+        return null;
+      }),
+    );
+    const results = await Promise.allSettled(closePromises);
+    return results.filter(
+      (result) => result.status === "fulfilled" && result.value !== null,
+    ).length;
+  } catch (error) {
+    console.error("[CloseLanConnections] Error closing LAN connections:", error);
     throw error;
   }
 }
