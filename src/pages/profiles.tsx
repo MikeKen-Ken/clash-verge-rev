@@ -97,12 +97,53 @@ const isOperationAborted = (
 };
 
 const TRAFFIC_NODE_REGEX = /剩余流量|套餐到期|traffic|expire/i;
+const FLAG_REGEX = /\p{Regional_Indicator}{2}/u;
+const COUNTRY_FLAG_KEYWORDS: Array<{ flag: string; keywords: string[] }> = [
+  { flag: "🇯🇵", keywords: ["japan", "jp", "日本"] },
+  { flag: "🇭🇰", keywords: ["hongkong", "hong kong", "hk", "香港"] },
+  { flag: "🇹🇼", keywords: ["taiwan", "tw", "台湾"] },
+  { flag: "🇸🇬", keywords: ["singapore", "sg", "新加坡", "狮城"] },
+  { flag: "🇺🇸", keywords: ["united states", "usa", "us", "美国", "洛杉矶", "圣何塞", "阿什本"] },
+  { flag: "🇰🇷", keywords: ["korea", "kr", "韩国", "首尔"] },
+  { flag: "🇮🇳", keywords: ["india", "in", "印度"] },
+  { flag: "🇬🇧", keywords: ["united kingdom", "uk", "britain", "英国"] },
+  { flag: "🇩🇪", keywords: ["germany", "de", "德国"] },
+  { flag: "🇨🇦", keywords: ["canada", "ca", "加拿大"] },
+  { flag: "🇦🇺", keywords: ["australia", "au", "澳大利亚"] },
+  { flag: "🇦🇪", keywords: ["uae", "dubai", "迪拜", "阿联酋"] },
+  { flag: "🇷🇺", keywords: ["russia", "ru", "俄罗斯"] },
+  { flag: "🇹🇷", keywords: ["turkey", "tr", "土耳其"] },
+  { flag: "🇻🇳", keywords: ["vietnam", "vn", "越南"] },
+  { flag: "🇳🇱", keywords: ["netherlands", "nl", "荷兰"] },
+  { flag: "🇨🇭", keywords: ["switzerland", "ch", "瑞士"] },
+];
 
-const buildNodeBaseName = (sourceName: string, proxyName: string, index: number) => {
-  const source = (sourceName || "remote").trim();
-  const original = (proxyName || "").trim();
+const resolveFlag = (proxyName: string) => {
+  const flagMatch = proxyName.match(FLAG_REGEX);
+  if (flagMatch?.[0]) {
+    return flagMatch[0];
+  }
+
+  const loweredName = proxyName.toLowerCase();
+  for (const rule of COUNTRY_FLAG_KEYWORDS) {
+    if (rule.keywords.some((keyword) => loweredName.includes(keyword))) {
+      return rule.flag;
+    }
+  }
+
+  return "🏳️";
+};
+
+const buildGeneratedName = (
+  flag: string,
+  sourceName: string,
+  index: number,
+) => {
+  const cleanedSourceName = sourceName.trim();
   const suffix = String(index).padStart(2, "0");
-  return original ? `${source} ${suffix} | ${original}` : `${source} ${suffix}`;
+  return cleanedSourceName
+    ? `${flag} ${cleanedSourceName} ${suffix}`
+    : `${flag} ${suffix}`;
 };
 
 const ensureUniqueName = (baseName: string, usedNames: Set<string>) => {
@@ -709,16 +750,15 @@ const ProfilePage = () => {
           : [];
 
         const sourceDisplayName = source.name || source.desc || source.uid;
-        let localIndex = 1;
+        const localFlagCounters = new Map<string, number>();
 
         for (const proxy of sourceProxies) {
-          const baseName = buildNodeBaseName(
-            sourceDisplayName,
-            String(proxy?.name || ""),
-            localIndex,
-          );
+          const proxyName = String(proxy?.name || "");
+          const flag = resolveFlag(proxyName);
+          const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
+          localFlagCounters.set(flag, nextIndex);
+          const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
           const generatedName = ensureUniqueName(baseName, usedNames);
-          localIndex += 1;
 
           generatedGroupNames.push(generatedName);
           generatedProxies.push({
