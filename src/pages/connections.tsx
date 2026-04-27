@@ -142,11 +142,16 @@ const ConnectionsPage = () => {
   const [mergeByDomain, setMergeByDomain] = useState(false);
   const [blockedLanIps, setBlockedLanIps] = useState<string[]>([]);
   const [lanMaxDevices, setLanMaxDevices] = useState<number>(0);
-  const [lanOverLimitAction, setLanOverLimitAction] = useState<"reject" | "drop">("reject");
   const [lanSilentThresholdSeconds, setLanSilentThresholdSeconds] = useState<number>(
     DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
   );
   const lastActiveAtByIpRef = useRef<Map<string, number>>(new Map());
+  const lanSettingsRef = useRef({
+    lanMaxDevices: 0,
+    lanSilentThresholdSeconds: DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
+  });
+  const lanSettingsPersistPendingRef = useRef(false);
+  const lanSettingsPersistRunningRef = useRef(false);
   const { clash, patchClash } = useClash();
 
   const {
@@ -352,43 +357,51 @@ const ConnectionsPage = () => {
     setBlockedLanIps(next);
     showNotice.success("已从禁用列表移除");
   });
-  const onLanMaxDevicesChange = useLockFn(async (value: number) => {
+  const flushLanSettingsPersist = useCallback(async () => {
+    if (lanSettingsPersistRunningRef.current) return;
+    lanSettingsPersistRunningRef.current = true;
+    try {
+      while (lanSettingsPersistPendingRef.current) {
+        lanSettingsPersistPendingRef.current = false;
+        const current = lanSettingsRef.current;
+        await patchClash({
+          "clash-for-android": {
+            "lan-max-devices": current.lanMaxDevices,
+            "lan-over-limit-action": "reject",
+            "lan-silent-threshold-seconds": current.lanSilentThresholdSeconds,
+          },
+        } as Partial<IConfigData>);
+      }
+    } finally {
+      lanSettingsPersistRunningRef.current = false;
+    }
+  }, [patchClash]);
+  const queueLanSettingsPersist = useCallback(() => {
+    lanSettingsPersistPendingRef.current = true;
+    void flushLanSettingsPersist();
+  }, [flushLanSettingsPersist]);
+  const onLanMaxDevicesChange = useCallback((value: number) => {
     const normalized = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-    await patchClash({
-      "clash-for-android": {
-        "lan-max-devices": normalized,
-        "lan-over-limit-action": lanOverLimitAction,
-        "lan-silent-threshold-seconds": lanSilentThresholdSeconds,
-      },
-    } as Partial<IConfigData>);
+    lanSettingsRef.current = {
+      ...lanSettingsRef.current,
+      lanMaxDevices: normalized,
+    };
     setLanMaxDevices(normalized);
+    queueLanSettingsPersist();
     showNotice.success("设备数量限制已生效");
-  });
-  const onLanOverLimitActionChange = useLockFn(async (action: "reject" | "drop") => {
-    await patchClash({
-      "clash-for-android": {
-        "lan-max-devices": lanMaxDevices,
-        "lan-over-limit-action": action,
-        "lan-silent-threshold-seconds": lanSilentThresholdSeconds,
-      },
-    } as Partial<IConfigData>);
-    setLanOverLimitAction(action);
-    showNotice.success("超限策略已生效");
-  });
-  const onLanSilentThresholdChange = useLockFn(async (value: number) => {
+  }, [queueLanSettingsPersist]);
+  const onLanSilentThresholdChange = useCallback((value: number) => {
     const normalized = Number.isFinite(value)
       ? Math.max(5, Math.min(3600, Math.floor(value)))
       : DEFAULT_LAN_SILENT_THRESHOLD_SECONDS;
-    await patchClash({
-      "clash-for-android": {
-        "lan-max-devices": lanMaxDevices,
-        "lan-over-limit-action": lanOverLimitAction,
-        "lan-silent-threshold-seconds": normalized,
-      },
-    } as Partial<IConfigData>);
+    lanSettingsRef.current = {
+      ...lanSettingsRef.current,
+      lanSilentThresholdSeconds: normalized,
+    };
     setLanSilentThresholdSeconds(normalized);
+    queueLanSettingsPersist();
     showNotice.success("静默阈值已生效");
-  });
+  }, [queueLanSettingsPersist]);
 
   const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
   const isCloseMenuOpen = Boolean(closeMenuAnchor);
@@ -426,22 +439,22 @@ const ConnectionsPage = () => {
   useEffect(() => {
     const fromConfig =
       clash?.["clash-for-android"]?.["lan-blocked-devices"] ?? [];
+    const nextLanMaxDevices = Math.max(
+      0,
+      clash?.["clash-for-android"]?.["lan-max-devices"] ?? 0,
+    );
+    const nextLanSilentThresholdSeconds = Math.max(
+      5,
+      clash?.["clash-for-android"]?.["lan-silent-threshold-seconds"] ??
+      DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
+    );
     setBlockedLanIps(normalizeBlockedLanSourceIps(fromConfig));
-    setLanMaxDevices(
-      Math.max(0, clash?.["clash-for-android"]?.["lan-max-devices"] ?? 0),
-    );
-    setLanOverLimitAction(
-      clash?.["clash-for-android"]?.["lan-over-limit-action"] === "drop"
-        ? "drop"
-        : "reject",
-    );
-    setLanSilentThresholdSeconds(
-      Math.max(
-        5,
-        clash?.["clash-for-android"]?.["lan-silent-threshold-seconds"] ??
-        DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
-      ),
-    );
+    setLanMaxDevices(nextLanMaxDevices);
+    setLanSilentThresholdSeconds(nextLanSilentThresholdSeconds);
+    lanSettingsRef.current = {
+      lanMaxDevices: nextLanMaxDevices,
+      lanSilentThresholdSeconds: nextLanSilentThresholdSeconds,
+    };
   }, [clash]);
 
   useEffect(() => {
@@ -611,29 +624,14 @@ const ConnectionsPage = () => {
               ))}
             </BaseStyledSelect>
             <BaseStyledSelect
-              value={lanOverLimitAction}
-              onChange={(e) =>
-                onLanOverLimitActionChange(e.target.value as "reject" | "drop")
-              }
-              sx={{ minWidth: 110 }}
-              title="超限处理动作"
-            >
-              <MenuItem value="reject">
-                <span style={{ fontSize: 14 }}>超限策略: REJECT</span>
-              </MenuItem>
-              <MenuItem value="drop">
-                <span style={{ fontSize: 14 }}>超限策略: DROP</span>
-              </MenuItem>
-            </BaseStyledSelect>
-            <BaseStyledSelect
               value={String(lanSilentThresholdSeconds)}
               onChange={(e) => onLanSilentThresholdChange(Number(e.target.value))}
-              sx={{ minWidth: 120 }}
+              sx={{ minWidth: 170 }}
               title="静默判定阈值（秒）"
             >
               {[15, 30, 45, 60, 90, 120, 180, 300, 600].map((value) => (
                 <MenuItem key={value} value={String(value)}>
-                  <span style={{ fontSize: 14 }}>静默阈值: {value}s</span>
+                  <span style={{ fontSize: 14 }}>静默阈值：{value} 秒</span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>
