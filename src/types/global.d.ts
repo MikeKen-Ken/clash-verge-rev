@@ -84,6 +84,9 @@ interface IConfigData {
   "proxy-groups"?: IProxyGroupItem[];
   "clash-for-android"?: {
     "lan-blocked-devices"?: string[];
+    "lan-max-devices"?: number;
+    "lan-over-limit-action"?: "reject" | "drop";
+    "lan-silent-threshold-seconds"?: number;
   };
 }
 
@@ -857,45 +860,45 @@ interface IProxySnellConfig extends IProxyBaseConfig {
 }
 interface IProxyConfig
   extends
-    IProxyBaseConfig,
-    IProxyDirectConfig,
-    IProxyDnsConfig,
-    IProxyHttpConfig,
-    IProxySocks5Config,
-    IProxySshConfig,
-    IProxyTrojanConfig,
-    IProxyAnyTLSConfig,
-    IProxyTuicConfig,
-    IProxyMieruConfig,
-    IProxyVlessConfig,
-    IProxyVmessConfig,
-    IProxyWireguardConfig,
-    IProxyHysteriaConfig,
-    IProxyHysteria2Config,
-    IProxyShadowsocksConfig,
-    IProxySudokuConfig,
-    IProxyshadowsocksRConfig,
-    IProxySmuxConfig,
-    IProxySnellConfig {
+  IProxyBaseConfig,
+  IProxyDirectConfig,
+  IProxyDnsConfig,
+  IProxyHttpConfig,
+  IProxySocks5Config,
+  IProxySshConfig,
+  IProxyTrojanConfig,
+  IProxyAnyTLSConfig,
+  IProxyTuicConfig,
+  IProxyMieruConfig,
+  IProxyVlessConfig,
+  IProxyVmessConfig,
+  IProxyWireguardConfig,
+  IProxyHysteriaConfig,
+  IProxyHysteria2Config,
+  IProxyShadowsocksConfig,
+  IProxySudokuConfig,
+  IProxyshadowsocksRConfig,
+  IProxySmuxConfig,
+  IProxySnellConfig {
   type:
-    | "ss"
-    | "ssr"
-    | "direct"
-    | "dns"
-    | "snell"
-    | "http"
-    | "trojan"
-    | "anytls"
-    | "hysteria"
-    | "hysteria2"
-    | "tuic"
-    | "wireguard"
-    | "ssh"
-    | "socks5"
-    | "vmess"
-    | "vless"
-    | "mieru"
-    | "sudoku";
+  | "ss"
+  | "ssr"
+  | "direct"
+  | "dns"
+  | "snell"
+  | "http"
+  | "trojan"
+  | "anytls"
+  | "hysteria"
+  | "hysteria2"
+  | "tuic"
+  | "wireguard"
+  | "ssh"
+  | "socks5"
+  | "vmess"
+  | "vless"
+  | "mieru"
+  | "sudoku";
 }
 
 interface IVergeConfig {
@@ -904,11 +907,11 @@ interface IVergeConfig {
   app_log_max_count?: number;
   language?: string;
   tray_event?:
-    | "main_window"
-    | "tray_menu"
-    | "system_proxy"
-    | "tun_mode"
-    | string;
+  | "main_window"
+  | "tray_menu"
+  | "system_proxy"
+  | "tun_mode"
+  | string;
   env_type?: "bash" | "cmd" | "powershell" | "fish" | string;
   startup_script?: string;
   start_page?: string;
@@ -1094,12 +1097,12 @@ interface ITrafficWorkerSnapshotMessage {
   rangeMinutes: number;
   lastTimestamp?: number;
   reason:
-    | "init"
-    | "interval"
-    | "range-change"
-    | "request"
-    | "append-throttle"
-    | "clear";
+  | "init"
+  | "interval"
+  | "range-change"
+  | "request"
+  | "append-throttle"
+  | "clear";
 }
 
 interface ITrafficWorkerLogMessage {

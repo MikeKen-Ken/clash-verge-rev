@@ -83,6 +83,7 @@ const ORDER_OPTIONS = [
       list.sort((a, b) => b.curDownload! - a.curDownload!),
   },
 ] as const;
+const DEFAULT_LAN_SILENT_THRESHOLD_SECONDS = 60;
 
 type OrderKey = (typeof ORDER_OPTIONS)[number]["id"];
 
@@ -140,6 +141,12 @@ const ConnectionsPage = () => {
   );
   const [mergeByDomain, setMergeByDomain] = useState(false);
   const [blockedLanIps, setBlockedLanIps] = useState<string[]>([]);
+  const [lanMaxDevices, setLanMaxDevices] = useState<number>(0);
+  const [lanOverLimitAction, setLanOverLimitAction] = useState<"reject" | "drop">("reject");
+  const [lanSilentThresholdSeconds, setLanSilentThresholdSeconds] = useState<number>(
+    DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
+  );
+  const lastActiveAtByIpRef = useRef<Map<string, number>>(new Map());
   const { clash, patchClash } = useClash();
 
   const {
@@ -207,14 +214,64 @@ const ConnectionsPage = () => {
     return [matchConns];
   }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIps]);
 
+  const activeLanConnections = useMemo(() => {
+    const active = connections?.activeConnections ?? [];
+    return active.filter(
+      (conn) =>
+        !blockedLanIps.includes(conn.metadata?.sourceIP || "") &&
+        isLanSourceIp(conn.metadata?.sourceIP),
+    );
+  }, [connections?.activeConnections, blockedLanIps]);
+  const silentDeviceItems = useMemo(() => {
+    if (connectionsType !== "active") return [];
+    const byIp = new Map<string, IConnectionsItem[]>();
+    activeLanConnections.forEach((conn) => {
+      const sourceIp = conn.metadata?.sourceIP || "";
+      if (!sourceIp) return;
+      if (!byIp.has(sourceIp)) byIp.set(sourceIp, []);
+      byIp.get(sourceIp)!.push(conn);
+    });
+    const now = Date.now();
+    const result: { ip: string; lastUsed: number }[] = [];
+    byIp.forEach((list, ip) => {
+      const hasTraffic = list.some(
+        (conn) => (conn.curUpload ?? 0) > 0 || (conn.curDownload ?? 0) > 0,
+      );
+      const latestStart = list.reduce(
+        (latest, conn) => Math.max(latest, new Date(conn.start || 0).getTime()),
+        0,
+      );
+      if (hasTraffic) {
+        lastActiveAtByIpRef.current.set(ip, now);
+        return;
+      }
+      const lastActiveAt = lastActiveAtByIpRef.current.get(ip) ?? latestStart;
+      if (lastActiveAt > 0 && now - lastActiveAt >= lanSilentThresholdSeconds * 1000) {
+        result.push({ ip, lastUsed: lastActiveAt });
+      }
+    });
+    return result.sort((a, b) => b.lastUsed - a.lastUsed);
+  }, [activeLanConnections, connectionsType, lanSilentThresholdSeconds]);
+  const silentIpSet = useMemo(
+    () => new Set(silentDeviceItems.map((item) => item.ip)),
+    [silentDeviceItems],
+  );
+  const activeLanDeviceCount = useMemo(
+    () =>
+      new Set(
+        activeLanConnections
+          .map((conn) => conn.metadata?.sourceIP || "")
+          .filter((ip) => ip.length > 0),
+      ).size,
+    [activeLanConnections],
+  );
   const lanDeviceItems = useMemo(() => {
     if (connectionsType !== "active") return [];
-    const active = connections?.activeConnections ?? [];
-    const visible = active.filter(
-      (conn) => !blockedLanIps.includes(conn.metadata?.sourceIP || ""),
+    const nonSilent = activeLanConnections.filter(
+      (conn) => !silentIpSet.has(conn.metadata?.sourceIP || ""),
     );
-    return buildLanDeviceItems(visible);
-  }, [connections?.activeConnections, connectionsType, blockedLanIps]);
+    return buildLanDeviceItems(nonSilent);
+  }, [activeLanConnections, connectionsType, silentIpSet]);
   const blockedLastUsedMap = useMemo(() => {
     const map = new Map<string, number>();
     const all = [
@@ -252,13 +309,22 @@ const ConnectionsPage = () => {
       if (!Number.isFinite(startMs)) return;
       closedLastUsed.set(ip, Math.max(closedLastUsed.get(ip) ?? 0, startMs));
     });
-    return Array.from(closedLastUsed.entries())
-      .map(([ip, lastUsed]) => ({ ip, lastUsed }))
-      .sort((a, b) => b.lastUsed - a.lastUsed);
+    const disconnected = Array.from(closedLastUsed.entries()).map(([ip, lastUsed]) => ({
+      ip,
+      lastUsed,
+      status: "disconnected" as const,
+    }));
+    const silent = silentDeviceItems.map((item) => ({
+      ip: item.ip,
+      lastUsed: item.lastUsed,
+      status: "silent" as const,
+    }));
+    return [...silent, ...disconnected].sort((a, b) => b.lastUsed - a.lastUsed);
   }, [
     connections?.activeConnections,
     connections?.closedConnections,
     blockedLanIps,
+    silentDeviceItems,
   ]);
 
   const onCloseAll = useLockFn(closeAllConnections);
@@ -285,6 +351,43 @@ const ConnectionsPage = () => {
     } as Partial<IConfigData>);
     setBlockedLanIps(next);
     showNotice.success("已从禁用列表移除");
+  });
+  const onLanMaxDevicesChange = useLockFn(async (value: number) => {
+    const normalized = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    await patchClash({
+      "clash-for-android": {
+        "lan-max-devices": normalized,
+        "lan-over-limit-action": lanOverLimitAction,
+        "lan-silent-threshold-seconds": lanSilentThresholdSeconds,
+      },
+    } as Partial<IConfigData>);
+    setLanMaxDevices(normalized);
+    showNotice.success("设备数量限制已生效");
+  });
+  const onLanOverLimitActionChange = useLockFn(async (action: "reject" | "drop") => {
+    await patchClash({
+      "clash-for-android": {
+        "lan-max-devices": lanMaxDevices,
+        "lan-over-limit-action": action,
+        "lan-silent-threshold-seconds": lanSilentThresholdSeconds,
+      },
+    } as Partial<IConfigData>);
+    setLanOverLimitAction(action);
+    showNotice.success("超限策略已生效");
+  });
+  const onLanSilentThresholdChange = useLockFn(async (value: number) => {
+    const normalized = Number.isFinite(value)
+      ? Math.max(5, Math.min(3600, Math.floor(value)))
+      : DEFAULT_LAN_SILENT_THRESHOLD_SECONDS;
+    await patchClash({
+      "clash-for-android": {
+        "lan-max-devices": lanMaxDevices,
+        "lan-over-limit-action": lanOverLimitAction,
+        "lan-silent-threshold-seconds": normalized,
+      },
+    } as Partial<IConfigData>);
+    setLanSilentThresholdSeconds(normalized);
+    showNotice.success("静默阈值已生效");
   });
 
   const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
@@ -324,6 +427,21 @@ const ConnectionsPage = () => {
     const fromConfig =
       clash?.["clash-for-android"]?.["lan-blocked-devices"] ?? [];
     setBlockedLanIps(normalizeBlockedLanSourceIps(fromConfig));
+    setLanMaxDevices(
+      Math.max(0, clash?.["clash-for-android"]?.["lan-max-devices"] ?? 0),
+    );
+    setLanOverLimitAction(
+      clash?.["clash-for-android"]?.["lan-over-limit-action"] === "drop"
+        ? "drop"
+        : "reject",
+    );
+    setLanSilentThresholdSeconds(
+      Math.max(
+        5,
+        clash?.["clash-for-android"]?.["lan-silent-threshold-seconds"] ??
+        DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
+      ),
+    );
   }, [clash]);
 
   useEffect(() => {
@@ -475,8 +593,51 @@ const ConnectionsPage = () => {
               )
             }
           >
-            设备视图
+            设备视图 {activeLanDeviceCount}
           </Button>
+        )}
+        {connectionsType === "active" && connectionsView === "devices" && (
+          <>
+            <BaseStyledSelect
+              value={String(lanMaxDevices)}
+              onChange={(e) => onLanMaxDevicesChange(Number(e.target.value))}
+              sx={{ minWidth: 110 }}
+              title="最大设备数（0=无限制）"
+            >
+              {[0, 1, 2, 3, 4, 5, 8, 10, 15, 20].map((value) => (
+                <MenuItem key={value} value={String(value)}>
+                  <span style={{ fontSize: 14 }}>设备上限: {value}</span>
+                </MenuItem>
+              ))}
+            </BaseStyledSelect>
+            <BaseStyledSelect
+              value={lanOverLimitAction}
+              onChange={(e) =>
+                onLanOverLimitActionChange(e.target.value as "reject" | "drop")
+              }
+              sx={{ minWidth: 110 }}
+              title="超限处理动作"
+            >
+              <MenuItem value="reject">
+                <span style={{ fontSize: 14 }}>超限策略: REJECT</span>
+              </MenuItem>
+              <MenuItem value="drop">
+                <span style={{ fontSize: 14 }}>超限策略: DROP</span>
+              </MenuItem>
+            </BaseStyledSelect>
+            <BaseStyledSelect
+              value={String(lanSilentThresholdSeconds)}
+              onChange={(e) => onLanSilentThresholdChange(Number(e.target.value))}
+              sx={{ minWidth: 120 }}
+              title="静默判定阈值（秒）"
+            >
+              {[15, 30, 45, 60, 90, 120, 180, 300, 600].map((value) => (
+                <MenuItem key={value} value={String(value)}>
+                  <span style={{ fontSize: 14 }}>静默阈值: {value}s</span>
+                </MenuItem>
+              ))}
+            </BaseStyledSelect>
+          </>
         )}
         {!isTableLayout && (
           <BaseStyledSelect
@@ -650,7 +811,7 @@ const ConnectionsPage = () => {
                   {item.ip}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  已断开
+                  {item.status === "silent" ? "静默（连接仍存在）" : "已断开"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   最后使用: {dayjs(item.lastUsed).format("YYYY-MM-DD HH:mm:ss")}
