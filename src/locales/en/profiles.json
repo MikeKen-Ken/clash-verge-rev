@@ -177,6 +177,19 @@
     },
     "logViewer": {
       "title": "Script Console"
+    },
+    "runtimeShare": {
+      "title": "Share runtime YAML (LAN)",
+      "shareActionTitle": "Share via LAN QR code",
+      "hint": "Keep the phone on the same Wi-Fi as this PC. Import this URL as a remote profile.",
+      "firewall": "If the phone cannot download, allow Clash Verge through the firewall on this OS.",
+      "cleartext": "Plain HTTP may be blocked on Android unless cleartext traffic is permitted for this app/network.",
+      "ttl": "Sharing stops automatically after about {{minutes}} minutes, or when you close the runtime viewer / this dialog.",
+      "candidateUrls": "URLs on each interface",
+      "copyPrimary": "Copy primary URL",
+      "stopSharing": "Stop sharing",
+      "startFailed": "Could not start LAN sharing",
+      "copyDone": "Copied to clipboard"
     }
   }
 }

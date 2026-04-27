@@ -168,6 +168,8 @@ mod app_init {
             cmd::change_clash_core,
             cmd::get_runtime_config,
             cmd::get_runtime_yaml,
+            cmd::start_runtime_config_lan_share,
+            cmd::stop_runtime_config_lan_share,
             cmd::get_runtime_exists,
             cmd::get_runtime_logs,
             cmd::get_runtime_proxy_chain_config,

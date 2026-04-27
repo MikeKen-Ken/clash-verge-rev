@@ -1,35 +1,7 @@
 import { closeConnection, getConnections } from "tauri-plugin-mihomo-api";
+
+import { isLanSourceIp } from "@/features/lan-devices/model";
 import { debugLog } from "./debug";
-
-const isLanSourceIp = (ip: string | undefined): boolean => {
-  if (!ip) return false;
-  const normalized = ip.trim().toLowerCase();
-  if (
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized === "0.0.0.0" ||
-    normalized === "::" ||
-    normalized.startsWith("ff")
-  ) {
-    return false;
-  }
-
-  if (normalized.includes(":")) {
-    return (
-      normalized.startsWith("fc") ||
-      normalized.startsWith("fd") ||
-      normalized.startsWith("fe8") ||
-      normalized.startsWith("fe9") ||
-      normalized.startsWith("fea") ||
-      normalized.startsWith("feb")
-    );
-  }
-
-  if (normalized.startsWith("169.254.")) return false;
-  if (normalized.startsWith("192.168.") || normalized.startsWith("10.")) return true;
-  const second = Number(normalized.split(".")[1] || "-1");
-  return normalized.startsWith("172.") && second >= 16 && second <= 31;
-};
 
 /**
  * 关闭所有连接，但排除包含 DIRECT 的连接

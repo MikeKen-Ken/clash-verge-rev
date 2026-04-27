@@ -330,6 +330,12 @@ interface IProfileOption {
   groups?: string;
 }
 
+interface RuntimeLanShareInfo {
+  urls: string[];
+  primaryUrl: string;
+  ttlSecs: number;
+}
+
 interface IProfilesConfig {
   current?: string;
   items?: IProfileItem[];

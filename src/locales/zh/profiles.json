@@ -177,6 +177,19 @@
     },
     "logViewer": {
       "title": "脚本控制台输出"
+    },
+    "runtimeShare": {
+      "title": "局域网分享运行时 YAML（扫码）",
+      "shareActionTitle": "局域网二维码分享",
+      "hint": "手机需与本电脑连接同一 Wi-Fi，在手机端将该地址作为远程订阅导入（HTTP）。",
+      "firewall": "若手机无法下载，请在系统中放行本程序的防火墙访问。",
+      "cleartext": "明文 HTTP 可能在 Android 上受限制；需在系统或应用中允许明文流量或使用允许 HTTP 的配置。",
+      "ttl": "约 {{minutes}} 分钟后自动关闭分享；关闭运行时订阅窗口或本对话框也会停止服务。",
+      "candidateUrls": "各网卡可选地址",
+      "copyPrimary": "复制首选地址",
+      "stopSharing": "停止分享",
+      "startFailed": "无法启动局域网分享",
+      "copyDone": "已复制到剪贴板"
     }
   }
 }

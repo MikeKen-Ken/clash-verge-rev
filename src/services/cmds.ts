@@ -82,6 +82,14 @@ export async function getRuntimeYaml() {
   return invoke<string | null>("get_runtime_yaml");
 }
 
+export async function startRuntimeConfigLanShare() {
+  return invoke<RuntimeLanShareInfo>("start_runtime_config_lan_share");
+}
+
+export async function stopRuntimeConfigLanShare() {
+  return invoke<void>("stop_runtime_config_lan_share");
+}
+
 export async function getRuntimeExists() {
   return invoke<string[]>("get_runtime_exists");
 }
