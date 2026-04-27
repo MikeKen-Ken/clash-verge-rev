@@ -96,39 +96,29 @@ const isOperationAborted = (
   return false;
 };
 
-const SOURCE_MARKERS: Record<string, string> = {
-  stc: "",
-  ikuuu: "🎁",
-  feiniaoyun: "🦜",
-  mojie: "💍",
-  peiqian: "💸",
-};
-
 const TRAFFIC_NODE_REGEX = /剩余流量|套餐到期|traffic|expire/i;
-const FLAG_REGEX = /\p{Regional_Indicator}{2}/u;
 
-const normalizeSourceKey = (value: string) =>
-  value.toLowerCase().replace(/\s+/g, "");
-
-const resolveSourceMarker = (sourceName: string) => {
-  const sourceKey = normalizeSourceKey(sourceName);
-  for (const key of Object.keys(SOURCE_MARKERS)) {
-    if (sourceKey.includes(key)) {
-      return SOURCE_MARKERS[key];
-    }
-  }
-  return "";
-};
-
-const resolveFlag = (proxyName: string) => {
-  const flagMatch = proxyName.match(FLAG_REGEX);
-  return flagMatch?.[0] ?? "🏳️";
-};
-
-const buildGeneratedName = (proxyName: string, marker: string, index: number) => {
-  const flag = resolveFlag(proxyName);
+const buildNodeBaseName = (sourceName: string, proxyName: string, index: number) => {
+  const source = (sourceName || "remote").trim();
+  const original = (proxyName || "").trim();
   const suffix = String(index).padStart(2, "0");
-  return marker ? `${flag} ${marker} ${suffix}` : `${flag} ${suffix}`;
+  return original ? `${source} ${suffix} | ${original}` : `${source} ${suffix}`;
+};
+
+const ensureUniqueName = (baseName: string, usedNames: Set<string>) => {
+  if (!usedNames.has(baseName)) {
+    usedNames.add(baseName);
+    return baseName;
+  }
+
+  let duplicateIndex = 2;
+  let nextName = `${baseName} #${duplicateIndex}`;
+  while (usedNames.has(nextName)) {
+    duplicateIndex += 1;
+    nextName = `${baseName} #${duplicateIndex}`;
+  }
+  usedNames.add(nextName);
+  return nextName;
 };
 
 const isValidProxyNode = (proxy: any) => {
@@ -718,17 +708,17 @@ const ProfilePage = () => {
           ? sourceYaml.proxies.filter(isValidProxyNode)
           : [];
 
-        const marker = resolveSourceMarker(source.name || "");
+        const sourceDisplayName = source.name || source.desc || source.uid;
         let localIndex = 1;
 
         for (const proxy of sourceProxies) {
-          let generatedName = buildGeneratedName(proxy.name, marker, localIndex);
-          while (usedNames.has(generatedName)) {
-            localIndex += 1;
-            generatedName = buildGeneratedName(proxy.name, marker, localIndex);
-          }
+          const baseName = buildNodeBaseName(
+            sourceDisplayName,
+            String(proxy?.name || ""),
+            localIndex,
+          );
+          const generatedName = ensureUniqueName(baseName, usedNames);
           localIndex += 1;
-          usedNames.add(generatedName);
 
           generatedGroupNames.push(generatedName);
           generatedProxies.push({
