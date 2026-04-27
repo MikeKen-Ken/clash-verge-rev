@@ -25,6 +25,7 @@ import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
+import dayjs from "dayjs";
 import YAML from "js-yaml";
 import { throttle } from "lodash-es";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,7 +52,9 @@ import {
   //restartCore,
   getRuntimeLogs,
   importProfile,
+  readProfileFile,
   reorderProfile,
+  saveProfileFile,
   updateProfile,
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
