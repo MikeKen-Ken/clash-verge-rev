@@ -655,15 +655,15 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         clash_config,
         clash_core,
         enable_tun,
+        enable_tun_override,
         enable_builtin,
+        socks_enabled,
+        http_enabled,
         enable_dns_settings,
-        enable_tun_override: _,
-        socks_enabled: _,
-        http_enabled: _,
         #[cfg(not(target_os = "windows"))]
-        redir_enabled: _,
+        redir_enabled,
         #[cfg(target_os = "linux")]
-        tproxy_enabled: _,
+        tproxy_enabled,
     } = cfg_vals;
 
     // collect profile items
@@ -694,9 +694,19 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         &profile_name,
     );
 
-    // 用户要求禁止 clash_config 合并，避免客户端改写 mihomo 配置。
-    // 这里保留 clash_config 仅用于后续读取 mode，不再写入运行配置。
-    let config = config;
+    // merge default clash config
+    let config = merge_default_config(
+        config,
+        clash_config.clone(),
+        enable_tun_override,
+        socks_enabled,
+        http_enabled,
+        #[cfg(not(target_os = "windows"))]
+        redir_enabled,
+        #[cfg(target_os = "linux")]
+        tproxy_enabled,
+    )
+    .await;
 
     // builtin scripts
     let mut config = apply_builtin_scripts(config, clash_core, enable_builtin);
