@@ -312,12 +312,7 @@ const ProxyPage = () => {
                   valueProps="checked"
                   onFormat={(_, v) => v}
                   onGuard={async (v) => {
-                    const patchPayload = {
-                      "allow-lan": v,
-                      tun: {
-                        "strict-route": !v,
-                      },
-                    } as Partial<IConfigData>;
+                    const patchPayload: Partial<IConfigData> = { "allow-lan": v };
                     if (v && preferredLanIpv4) {
                       patchPayload["bind-address"] = preferredLanIpv4;
                     }
@@ -327,10 +322,6 @@ const ProxyPage = () => {
                           ? {
                             ...prev,
                             "allow-lan": v,
-                            tun: {
-                              ...(prev.tun ?? {}),
-                              "strict-route": !v,
-                            },
                             ...(v && preferredLanIpv4
                               ? { "bind-address": preferredLanIpv4 }
                               : {}),
