@@ -158,6 +158,7 @@ const ConnectionsPage = () => {
 
   const {
     response: { data: connections },
+    refreshGetClashConnection,
     clearClosedConnections,
     sessionStartMs,
   } = useConnectionData();
@@ -212,7 +213,8 @@ const ConnectionsPage = () => {
       );
     });
 
-    if (orderFunc) matchConns = orderFunc(matchConns ?? []);
+    // 避免原地 sort 修改上游数据，导致虚拟列表/表格在每次推送时反复重排闪烁
+    if (orderFunc) matchConns = orderFunc([...matchConns]);
 
     if (connectionsType === "closed" && mergeByDomain && matchConns.length > 0) {
       matchConns = mergeClosedConnectionsByHost(matchConns);
@@ -451,6 +453,11 @@ const ConnectionsPage = () => {
     lanDeviceItems.length > 0 ||
     blockedLanIps.length > 0 ||
     disconnectedDeviceItems.length > 0;
+
+  useEffect(() => {
+    // 进入页面主动触发一次连接订阅重建，降低首次进入空白概率。
+    refreshGetClashConnection();
+  }, [refreshGetClashConnection]);
 
   useEffect(() => {
     const fromConfig =
@@ -776,6 +783,9 @@ const ConnectionsPage = () => {
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   ↓ {parseTraffic(device.download)} / ↑ {parseTraffic(device.upload)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  最新链接主机: {device.latestHost || "-"}
                 </Typography>
                 <Box sx={{ pt: 0.5, display: "flex", gap: 0.75, flexWrap: "wrap" }}>
                   <Button

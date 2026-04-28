@@ -14,6 +14,7 @@ import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 import { useVerge } from "./use-verge";
 
 const DEFAULT_CLOSED_RETENTION_HOURS = 8;
+const EMPTY_SNAPSHOT_GRACE_MS = 1200;
 
 /** 持久化保留时长（小时）：仅超过此时长或手动清除时才会从列表移除 */
 const PERSIST_RETENTION_HOURS = 24;
@@ -134,6 +135,7 @@ export const useConnectionData = () => {
    */
   const [sessionStartMs, setSessionStartMs] = useState(currentSessionStartMs);
   const prevTunEnabledRef = useRef(tunEnabled);
+  const emptySnapshotStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     sessionListeners.add(setSessionStartMs);
@@ -187,8 +189,26 @@ export const useConnectionData = () => {
 
           try {
             const parsed = JSON.parse(data) as IConnections;
+            const nextConnections = parsed.connections ?? [];
             next(null, (old = initConnData) =>
-              normalizeTotals(mergeConnectionSnapshot(parsed, old)),
+              {
+                // 部分环境下重连后会短暂收到空 connections 快照，容易导致连接页闪空。
+                // 这里给一个短暂宽限期，连续空快照超过阈值才认定为真实空列表。
+                if (nextConnections.length === 0 && (old.activeConnections?.length ?? 0) > 0) {
+                  const now = Date.now();
+                  if (emptySnapshotStartedAtRef.current == null) {
+                    emptySnapshotStartedAtRef.current = now;
+                    return old;
+                  }
+                  if (now - emptySnapshotStartedAtRef.current < EMPTY_SNAPSHOT_GRACE_MS) {
+                    return old;
+                  }
+                } else {
+                  emptySnapshotStartedAtRef.current = null;
+                }
+
+                return normalizeTotals(mergeConnectionSnapshot(parsed, old));
+              },
             );
           } catch (error) {
             next(error);

@@ -5,6 +5,7 @@ export interface LanDeviceItem {
   upload: number;
   download: number;
   latestStart: number;
+  latestHost: string;
 }
 
 export const isLanSourceIp = (ip: string | undefined): boolean => {
@@ -52,17 +53,31 @@ export const buildLanDeviceItems = (
   });
 
   return Array.from(byIp.entries())
-    .map(([sourceIp, list]) => ({
-      sourceIp,
-      connections: list,
-      connectionCount: list.length,
-      upload: list.reduce((sum, conn) => sum + (conn.upload ?? 0), 0),
-      download: list.reduce((sum, conn) => sum + (conn.download ?? 0), 0),
-      latestStart: list.reduce(
-        (latest, conn) => Math.max(latest, new Date(conn.start || 0).getTime()),
-        0,
-      ),
-    }))
+    .map(([sourceIp, list]) => {
+      const latestConnection = list.reduce<IConnectionsItem | null>((latest, conn) => {
+        if (!latest) return conn;
+        return new Date(conn.start || 0).getTime() > new Date(latest.start || 0).getTime()
+          ? conn
+          : latest;
+      }, null);
+      const latestHost = latestConnection
+        ? latestConnection.metadata?.host
+          ? `${latestConnection.metadata.host}:${latestConnection.metadata.destinationPort}`
+          : `${latestConnection.metadata?.remoteDestination || latestConnection.metadata?.destinationIP || ""}:${latestConnection.metadata.destinationPort}`
+        : "";
+      return {
+        sourceIp,
+        connections: list,
+        connectionCount: list.length,
+        upload: list.reduce((sum, conn) => sum + (conn.upload ?? 0), 0),
+        download: list.reduce((sum, conn) => sum + (conn.download ?? 0), 0),
+        latestStart: list.reduce(
+          (latest, conn) => Math.max(latest, new Date(conn.start || 0).getTime()),
+          0,
+        ),
+        latestHost,
+      };
+    })
     .sort((a, b) => b.connectionCount - a.connectionCount || b.latestStart - a.latestStart);
 };
 
