@@ -70,7 +70,7 @@ fn collect_lan_urls(port: u16, token: &str) -> CmdResult<Vec<String>> {
         }
     }
 
-    ips.sort_unstable_by_key(std::net::Ipv4Addr::to_bits);
+    ips.sort_unstable_by_key(|ip| ip.to_bits());
     ips.dedup();
 
     Ok(ips
@@ -109,7 +109,7 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
         .ok_or_else(|| "failed to read runtime config for LAN share".to_string())?;
     let yaml_text = serde_yaml_ng::to_string(config).stringify_err()?;
 
-    let token = nanoid::nanoid(24);
+    let token = nanoid::nanoid!(24);
 
     let std_listener = std::net::TcpListener::bind("0.0.0.0:0").stringify_err()?;
     std_listener.set_nonblocking(true).stringify_err()?;

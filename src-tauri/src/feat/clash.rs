@@ -79,7 +79,6 @@ pub async fn change_clash_mode(mode: String) {
     let clash_data = Config::clash().await.data_arc();
     let _ = clash_data.save_config().await;
 
-    let mode_lower = mode.to_lowercase();
     // 任意模式切换都走「重新生成 + 应用」：直连/全局时 enhance 会覆盖 rules+dns，规则/脚本时不再覆盖，恢复完整配置
     match crate::core::CoreManager::global().update_config().await {
         Ok(_) => {
