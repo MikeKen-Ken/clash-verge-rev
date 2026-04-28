@@ -60,6 +60,8 @@ const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 const LAN_ENDPOINT_OFFSET_X = -2;
 const WIFI_INTERFACE_NAME_RE = /wi-?fi|wlan|wireless/i;
+const VIRTUAL_INTERFACE_NAME_RE =
+  /tun|tap|wintun|wireguard|vpn|hyper-v|vethernet|virtual|vmware|vbox|loopback/i;
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -186,7 +188,12 @@ const ProxyPage = () => {
   }, [networkInterfaces]);
 
   const preferredLanIpv4 = useMemo(() => {
-    const orderedInterfaces = [...networkInterfaces].sort((a, b) => {
+    const nonVirtualInterfaces = networkInterfaces.filter(
+      (iface) => !VIRTUAL_INTERFACE_NAME_RE.test(iface.name),
+    );
+    const candidateInterfaces =
+      nonVirtualInterfaces.length > 0 ? nonVirtualInterfaces : networkInterfaces;
+    const orderedInterfaces = [...candidateInterfaces].sort((a, b) => {
       const aWifi = WIFI_INTERFACE_NAME_RE.test(a.name);
       const bWifi = WIFI_INTERFACE_NAME_RE.test(b.name);
       if (aWifi !== bWifi) return aWifi ? -1 : 1;
@@ -305,7 +312,13 @@ const ProxyPage = () => {
                   valueProps="checked"
                   onFormat={(_, v) => v}
                   onGuard={async (v) => {
-                    const patchPayload: Partial<IConfigData> = { "allow-lan": v };
+                    const patchPayload: Partial<IConfigData> = {
+                      "allow-lan": v,
+                      tun: {
+                        ...(clash?.tun ?? {}),
+                        "strict-route": !v,
+                      },
+                    };
                     if (v && preferredLanIpv4) {
                       patchPayload["bind-address"] = preferredLanIpv4;
                     }
@@ -315,6 +328,10 @@ const ProxyPage = () => {
                           ? {
                             ...prev,
                             "allow-lan": v,
+                            tun: {
+                              ...(prev.tun ?? {}),
+                              "strict-route": !v,
+                            },
                             ...(v && preferredLanIpv4
                               ? { "bind-address": preferredLanIpv4 }
                               : {}),
