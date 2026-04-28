@@ -59,6 +59,7 @@ const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 const LAN_ENDPOINT_OFFSET_X = -2;
+const WIFI_INTERFACE_NAME_RE = /wi-?fi|wlan|wireless/i;
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -185,7 +186,14 @@ const ProxyPage = () => {
   }, [networkInterfaces]);
 
   const preferredLanIpv4 = useMemo(() => {
-    for (const iface of networkInterfaces) {
+    const orderedInterfaces = [...networkInterfaces].sort((a, b) => {
+      const aWifi = WIFI_INTERFACE_NAME_RE.test(a.name);
+      const bWifi = WIFI_INTERFACE_NAME_RE.test(b.name);
+      if (aWifi !== bWifi) return aWifi ? -1 : 1;
+      return 0;
+    });
+
+    for (const iface of orderedInterfaces) {
       for (const addr of iface.addr) {
         const ip = addr.V4?.ip;
         if (!ip) continue;
