@@ -44,36 +44,40 @@ const SettingClash = ({ onError, embedded }: Props) => {
   };
   const content = (
     <>
-      <ClashPortViewer ref={portRef} />
+      {!embedded && <ClashPortViewer ref={portRef} />}
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
-      <TunnelsViewer ref={tunnelRef} />
-      <SettingItem label={t("settings.sections.clash.form.fields.ipv6")}>
-        <GuardState
-          value={ipv6 ?? false}
-          valueProps="checked"
-          onCatch={onError}
-          onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ ipv6: e })}
-          onGuard={(e) => patchClash({ ipv6: e })}
-        >
-          <Switch edge="end" />
-        </GuardState>
-      </SettingItem>
+      {!embedded && <TunnelsViewer ref={tunnelRef} />}
+      {!embedded && (
+        <SettingItem label={t("settings.sections.clash.form.fields.ipv6")}>
+          <GuardState
+            value={ipv6 ?? false}
+            valueProps="checked"
+            onCatch={onError}
+            onFormat={onSwitchFormat}
+            onChange={(e) => onChangeData({ ipv6: e })}
+            onGuard={(e) => patchClash({ ipv6: e })}
+          >
+            <Switch edge="end" />
+          </GuardState>
+        </SettingItem>
+      )}
 
-      <SettingItem label={t("settings.sections.clash.form.fields.portConfig")}>
-        <TextField
-          autoComplete="new-password"
-          disabled={false}
-          size="small"
-          value={verge_mixed_port ?? 7897}
-          sx={{ width: 100, input: { py: "7.5px", cursor: "pointer" } }}
-          onClick={(e) => {
-            portRef.current?.open();
-            (e.target as any).blur();
-          }}
-        />
-      </SettingItem>
+      {!embedded && (
+        <SettingItem label={t("settings.sections.clash.form.fields.portConfig")}>
+          <TextField
+            autoComplete="new-password"
+            disabled={false}
+            size="small"
+            value={verge_mixed_port ?? 7897}
+            sx={{ width: 100, input: { py: "7.5px", cursor: "pointer" } }}
+            onClick={(e) => {
+              portRef.current?.open();
+              (e.target as any).blur();
+            }}
+          />
+        </SettingItem>
+      )}
 
       <SettingItem
         label={t("settings.sections.clash.form.fields.clashCore")}
@@ -100,10 +104,12 @@ const SettingClash = ({ onError, embedded }: Props) => {
         />
       )}
 
-      <SettingItem
-        label={t("settings.sections.clash.form.fields.tunnels.title")}
-        onClick={() => tunnelRef.current?.open()}
-      />
+      {!embedded && (
+        <SettingItem
+          label={t("settings.sections.clash.form.fields.tunnels.title")}
+          onClick={() => tunnelRef.current?.open()}
+        />
+      )}
     </>
   );
 

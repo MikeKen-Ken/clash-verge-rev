@@ -9,6 +9,7 @@ use std::{
 use parking_lot::Mutex;
 use serde::Serialize;
 use tokio::sync::oneshot;
+use tauri::Emitter as _;
 use warp::Filter as _;
 
 use crate::{
@@ -174,6 +175,8 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
                     "Content-Type",
                     "application/yaml; charset=utf-8",
                 );
+                let _ = crate::core::handle::Handle::app_handle()
+                    .emit("verge://runtime-lan-share-consumed", ());
                 stop_share_if_active(share_id);
                 Ok::<_, warp::Rejection>(reply)
             }

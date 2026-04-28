@@ -60,8 +60,9 @@ const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 const LAN_ENDPOINT_OFFSET_X = -2;
 const WIFI_INTERFACE_NAME_RE = /wi-?fi|wlan|wireless/i;
+const ETHERNET_INTERFACE_NAME_RE = /ethernet|eth|en\d/i;
 const VIRTUAL_INTERFACE_NAME_RE =
-  /tun|tap|wintun|wireguard|vpn|hyper-v|vethernet|virtual|vmware|vbox|loopback/i;
+  /vpn|tun|tap|tailscale|wireguard|wg|v2ray|utun|ppp|loopback|virtual|vmware|hyper-v|vbox|docker|zerotier/i;
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -188,19 +189,22 @@ const ProxyPage = () => {
   }, [networkInterfaces]);
 
   const preferredLanIpv4 = useMemo(() => {
-    const nonVirtualInterfaces = networkInterfaces.filter(
-      (iface) => !VIRTUAL_INTERFACE_NAME_RE.test(iface.name),
-    );
-    const candidateInterfaces =
-      nonVirtualInterfaces.length > 0 ? nonVirtualInterfaces : networkInterfaces;
-    const orderedInterfaces = [...candidateInterfaces].sort((a, b) => {
-      const aWifi = WIFI_INTERFACE_NAME_RE.test(a.name);
-      const bWifi = WIFI_INTERFACE_NAME_RE.test(b.name);
-      if (aWifi !== bWifi) return aWifi ? -1 : 1;
-      return 0;
+    const scoreInterface = (name: string) => {
+      const lowered = name.toLowerCase();
+      if (VIRTUAL_INTERFACE_NAME_RE.test(lowered)) return 100;
+      if (WIFI_INTERFACE_NAME_RE.test(lowered)) return 0;
+      if (ETHERNET_INTERFACE_NAME_RE.test(lowered)) return 1;
+      return 10;
+    };
+
+    const orderedInterfaces = [...networkInterfaces].sort((a, b) => {
+      const scoreDiff = scoreInterface(a.name) - scoreInterface(b.name);
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.name.localeCompare(b.name);
     });
 
     for (const iface of orderedInterfaces) {
+      if (VIRTUAL_INTERFACE_NAME_RE.test(iface.name.toLowerCase())) continue;
       for (const addr of iface.addr) {
         const ip = addr.V4?.ip;
         if (!ip) continue;
