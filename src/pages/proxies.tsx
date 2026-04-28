@@ -27,7 +27,7 @@ import { useClash } from "@/hooks/use-clash";
 import { useNetworkInterfaces } from "@/hooks/use-network";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import { patchClashMode } from "@/services/cmds";
+import { patchClashMode, patchRuntimeConfig } from "@/services/cmds";
 import {
   DELAY_CHECK_CONCURRENCY_PRESETS,
   getDelayCheckConcurrency,
@@ -69,7 +69,7 @@ const ProxyPage = () => {
 
   const { clashConfig, refreshClashConfig, refreshProxy } = useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
-  const { clash, patchClash, mutateClash } = useClash();
+  const { clash, mutateClash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
   const { isTunModeAvailable } = useSystemState();
 
@@ -333,7 +333,7 @@ const ProxyPage = () => {
                           : prev,
                       false,
                     );
-                    await patchClash(patchPayload);
+                    await patchRuntimeConfig(patchPayload);
                     if (!v) {
                       const closedCount = await closeLanConnections();
                       if (closedCount > 0) {
@@ -401,7 +401,7 @@ const ProxyPage = () => {
                     );
                   }}
                   onGuard={async (checked) => {
-                    await patchClash({ "proxy-ads-block": checked });
+                    await patchRuntimeConfig({ "proxy-ads-block": checked });
                   }}
                 >
                   <Switch size="small" />

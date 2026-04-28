@@ -3,7 +3,7 @@ import { TextField, Typography } from "@mui/material";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import { DialogRef, Switch, TooltipIcon } from "@/components/base";
+import { DialogRef, TooltipIcon } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { invoke_uwp_tool } from "@/services/cmds";
@@ -11,10 +11,8 @@ import getSystem from "@/utils/get-system";
 
 import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { ClashPortViewer } from "./mods/clash-port-viewer";
-import { GuardState } from "./mods/guard-state";
 import { NetworkInterfaceViewer } from "./mods/network-interface-viewer";
 import { SettingItem, SettingList } from "./mods/setting-comp";
-import { TunnelsViewer } from "./mods/tunnels-viewer";
 
 const isWIN = getSystem() === "windows";
 
@@ -26,54 +24,35 @@ interface Props {
 const SettingClash = ({ onError, embedded }: Props) => {
   const { t } = useTranslation();
 
-  const { clash, version, mutateClash, patchClash } = useClash();
+  const { version } = useClash();
   const { verge } = useVerge();
-
-  const { ipv6 } = clash ?? {};
 
   const { verge_mixed_port } = verge ?? {};
 
   const portRef = useRef<DialogRef>(null);
   const coreRef = useRef<DialogRef>(null);
   const networkRef = useRef<DialogRef>(null);
-  const tunnelRef = useRef<DialogRef>(null);
-
-  const onSwitchFormat = (_e: any, value: boolean) => value;
-  const onChangeData = (patch: Partial<IConfigData>) => {
-    mutateClash((old) => ({ ...old!, ...patch }), false);
-  };
   const content = (
     <>
-      <ClashPortViewer ref={portRef} />
+      {!embedded && <ClashPortViewer ref={portRef} />}
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
-      <TunnelsViewer ref={tunnelRef} />
-      <SettingItem label={t("settings.sections.clash.form.fields.ipv6")}>
-        <GuardState
-          value={ipv6 ?? false}
-          valueProps="checked"
-          onCatch={onError}
-          onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ ipv6: e })}
-          onGuard={(e) => patchClash({ ipv6: e })}
-        >
-          <Switch edge="end" />
-        </GuardState>
-      </SettingItem>
 
-      <SettingItem label={t("settings.sections.clash.form.fields.portConfig")}>
-        <TextField
-          autoComplete="new-password"
-          disabled={false}
-          size="small"
-          value={verge_mixed_port ?? 7897}
-          sx={{ width: 100, input: { py: "7.5px", cursor: "pointer" } }}
-          onClick={(e) => {
-            portRef.current?.open();
-            (e.target as any).blur();
-          }}
-        />
-      </SettingItem>
+      {!embedded && (
+        <SettingItem label={t("settings.sections.clash.form.fields.portConfig")}>
+          <TextField
+            autoComplete="new-password"
+            disabled={false}
+            size="small"
+            value={verge_mixed_port ?? 7897}
+            sx={{ width: 100, input: { py: "7.5px", cursor: "pointer" } }}
+            onClick={(e) => {
+              portRef.current?.open();
+              (e.target as any).blur();
+            }}
+          />
+        </SettingItem>
+      )}
 
       <SettingItem
         label={t("settings.sections.clash.form.fields.clashCore")}
@@ -99,11 +78,6 @@ const SettingClash = ({ onError, embedded }: Props) => {
           }
         />
       )}
-
-      <SettingItem
-        label={t("settings.sections.clash.form.fields.tunnels.title")}
-        onClick={() => tunnelRef.current?.open()}
-      />
     </>
   );
 

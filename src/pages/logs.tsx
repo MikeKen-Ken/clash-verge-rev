@@ -19,6 +19,7 @@ import LogItem from "@/components/log/log-item";
 import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
 import { useLogData } from "@/hooks/use-log-data";
+import { patchRuntimeConfig } from "@/services/cmds";
 
 const KERNEL_LOG_LEVELS = [
   "debug",
@@ -30,7 +31,7 @@ const KERNEL_LOG_LEVELS = [
 
 const LogPage = () => {
   const { t } = useTranslation();
-  const { clash, patchClash } = useClash();
+  const { clash } = useClash();
   const [clashLog, setClashLog] = useClashLog();
   const enableLog = clashLog.enable;
   const logState = clashLog.logFilter;
@@ -80,7 +81,7 @@ const LogPage = () => {
 
   const handleKernelLogLevelChange = async (newLevel: string) => {
     setClashLog((pre: any) => ({ ...pre, logLevel: newLevel }));
-    await patchClash({ "log-level": newLevel });
+    await patchRuntimeConfig({ "log-level": newLevel });
   };
 
   const handleToggleLog = async () => {

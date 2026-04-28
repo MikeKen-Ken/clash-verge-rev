@@ -5,7 +5,7 @@ import { getVersion } from "tauri-plugin-mihomo-api";
 import {
   getClashInfo,
   getRuntimeConfig,
-  patchClashConfig,
+  patchRuntimeConfig,
 } from "@/services/cmds";
 
 const PORT_KEYS = [
@@ -64,7 +64,7 @@ export const useClash = () => {
   );
 
   const patchClash = useLockFn(async (patch: Partial<IConfigData>) => {
-    await patchClashConfig(patch);
+    await patchRuntimeConfig(patch);
     mutateClash();
   });
 
@@ -92,7 +92,7 @@ export const useClashInfo = () => {
 
     validatePorts(patch);
 
-    await patchClashConfig(patch);
+    await patchRuntimeConfig(patch);
     mutateInfo();
     mutate("getClashConfig");
   };

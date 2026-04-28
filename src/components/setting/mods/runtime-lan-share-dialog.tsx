@@ -92,9 +92,7 @@ export function RuntimeLanShareDialog({ open, info, onClosed }: Props) {
         </Typography>
         {consumed ? (
           <Typography variant="body2" color="warning.main" sx={{ mb: 2 }}>
-            {t("profiles.modals.runtimeShare.consumedNotice", {
-              defaultValue: "This QR code has expired after first scan.",
-            })}
+            This QR code has expired after first scan.
           </Typography>
         ) : null}
 

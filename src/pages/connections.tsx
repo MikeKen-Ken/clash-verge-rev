@@ -59,6 +59,7 @@ import {
   closeConnectionsBySourceIp,
   closeConnectionsExcludingDirect,
 } from "@/utils/close-connections";
+import { patchRuntimeConfig } from "@/services/cmds";
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
 
@@ -152,7 +153,7 @@ const ConnectionsPage = () => {
   });
   const lanSettingsPersistPendingRef = useRef(false);
   const lanSettingsPersistRunningRef = useRef(false);
-  const { clash, patchClash } = useClash();
+  const { clash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
 
   const {
@@ -344,7 +345,7 @@ const ConnectionsPage = () => {
   const onDisableDevice = useLockFn(async (sourceIp: string) => {
     await closeConnectionsBySourceIp(sourceIp);
     const next = addBlockedLanSourceIp(blockedLanIps, sourceIp);
-    await patchClash({
+    await patchRuntimeConfig({
       "clash-for-android": {
         "lan-blocked-devices": next,
       },
@@ -364,7 +365,7 @@ const ConnectionsPage = () => {
     const next = normalizeBlockedLanSourceIps(
       blockedLanIps.filter((ip) => ip !== sourceIp),
     );
-    await patchClash({
+    await patchRuntimeConfig({
       "clash-for-android": {
         "lan-blocked-devices": next,
       },
@@ -379,7 +380,7 @@ const ConnectionsPage = () => {
       while (lanSettingsPersistPendingRef.current) {
         lanSettingsPersistPendingRef.current = false;
         const current = lanSettingsRef.current;
-        await patchClash({
+        await patchRuntimeConfig({
           "clash-for-android": {
             "lan-max-devices": current.lanMaxDevices,
             "lan-over-limit-action": "reject",
@@ -390,7 +391,7 @@ const ConnectionsPage = () => {
     } finally {
       lanSettingsPersistRunningRef.current = false;
     }
-  }, [patchClash]);
+  }, []);
   const queueLanSettingsPersist = useCallback(() => {
     lanSettingsPersistPendingRef.current = true;
     void flushLanSettingsPersist();

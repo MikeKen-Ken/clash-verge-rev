@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import { DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { SysproxyViewer } from "@/components/setting/mods/sysproxy-viewer";
-import { TunViewer } from "@/components/setting/mods/tun-viewer";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
 import { useServiceInstaller } from "@/hooks/use-service-installer";
@@ -122,7 +121,6 @@ const ProxyControlSwitches = ({
     useSystemState();
 
   const sysproxyRef = useRef<DialogRef>(null);
-  const tunRef = useRef<DialogRef>(null);
 
   const { enable_tun_mode } = verge ?? {};
 
@@ -210,7 +208,6 @@ const ProxyControlSwitches = ({
           }
           active={enable_tun_mode || false}
           infoTitle={t("settings.sections.proxyControl.tooltips.tunMode")}
-          onInfoClick={() => tunRef.current?.open()}
           onToggle={handleTunToggle}
           onError={onError}
           disabled={!isTunModeAvailable}
@@ -254,7 +251,6 @@ const ProxyControlSwitches = ({
       )}
 
       <SysproxyViewer ref={sysproxyRef} />
-      <TunViewer ref={tunRef} />
     </Box>
   );
 };

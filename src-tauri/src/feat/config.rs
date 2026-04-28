@@ -11,51 +11,13 @@ use serde_yaml_ng::Mapping;
 
 /// Patch Clash configuration
 pub async fn patch_clash(patch: &Mapping) -> Result<()> {
-    Config::clash().await.edit_draft(|d| d.patch_config(patch));
-
-    let res = {
-        // 激活订阅
-        if patch.get("secret").is_some() || patch.get("external-controller").is_some() {
-            Config::generate().await?;
-            CoreManager::global().restart_core().await?;
-        } else {
-            if patch.get("mode").is_some() {
-                logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
-                logging_error!(
-                    Type::Tray,
-                    tray::Tray::global()
-                        .update_icon(&Config::verge().await.data_arc())
-                        .await
-                );
-            }
-            Config::runtime().await.edit_draft(|d| d.patch_config(patch));
-            CoreManager::global().update_config().await?;
-        }
-        // 仅 log-level / allow-lan / ipv6 时只刷新 clash 配置，不触发前端重新跑 fallback 健康检测
-        let light_keys: &[&str] = &["log-level", "allow-lan", "ipv6", "proxy-ads-block"];
-        let only_light = patch.iter().all(|(k, _)| {
-            k.as_str().map_or(false, |s| light_keys.contains(&s))
-        });
-        if only_light {
-            handle::Handle::refresh_clash_config_only();
-        } else {
-            handle::Handle::refresh_clash();
-        }
-        <Result<()>>::Ok(())
-    };
-    match res {
-        Ok(()) => {
-            Config::clash().await.apply();
-            // 分离数据获取和异步调用
-            let clash_data = Config::clash().await.data_arc();
-            clash_data.save_config().await?;
-            Ok(())
-        }
-        Err(err) => {
-            Config::clash().await.discard();
-            Err(err)
-        }
-    }
+    logging!(
+        warn,
+        Type::Config,
+        "patch_clash is disabled by policy, ignored patch keys: {:?}",
+        patch.keys().collect::<Vec<_>>()
+    );
+    Ok(())
 }
 
 // Define update flags as bitflags for better performance

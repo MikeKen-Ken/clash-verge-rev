@@ -1,5 +1,9 @@
 use super::CmdResult;
-use crate::{cmd::StringifyErr as _, config::Config, core::CoreManager};
+use crate::{
+    cmd::StringifyErr as _,
+    config::Config,
+    core::{CoreManager, handle},
+};
 use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging_error};
 use serde_yaml_ng::Mapping;
@@ -101,5 +105,17 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
     }
     logging_error!(Type::Core, CoreManager::global().apply_generate_config().await);
 
+    Ok(())
+}
+
+/// 仅更新运行时配置并应用到核心，不写入 clash_config。
+#[tauri::command]
+pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
+    {
+        let runtime = Config::runtime().await;
+        runtime.edit_draft(|d| d.patch_config(&payload));
+    }
+    CoreManager::global().apply_generate_config().await.stringify_err()?;
+    handle::Handle::refresh_clash();
     Ok(())
 }

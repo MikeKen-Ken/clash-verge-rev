@@ -110,8 +110,13 @@ export async function updateProxyChainConfigInRuntime(proxyChainConfig: any) {
   });
 }
 
+export async function patchRuntimeConfig(payload: Partial<IConfigData>) {
+  return invoke<void>("patch_runtime_config", { payload });
+}
+
+/** @deprecated 请改用 patchRuntimeConfig，避免写入 clash_config。 */
 export async function patchClashConfig(payload: Partial<IConfigData>) {
-  return invoke<void>("patch_clash_config", { payload });
+  return patchRuntimeConfig(payload);
 }
 
 export async function patchClashMode(payload: string) {
