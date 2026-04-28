@@ -1,7 +1,8 @@
 //! 局域网短时 HTTP 提供运行时 YAML，供手机等设备扫码后以 URL 订阅导入。
 
 use std::{
-    net::{Ipv4Addr, UdpSocket},
+    cmp::Ordering as CmpOrdering,
+    net::Ipv4Addr,
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Duration,
 };
@@ -65,10 +66,14 @@ pub async fn stop_runtime_config_lan_share() -> CmdResult<()> {
 }
 
 fn collect_lan_urls(port: u16, token: &str) -> CmdResult<Vec<String>> {
+    let active_names = tauri_plugin_clash_verge_sysinfo::list_network_interfaces();
     let interfaces = NetworkInterface::show().stringify_err()?;
     let mut ips: Vec<Ipv4Addr> = Vec::new();
 
     for iface in interfaces {
+        if !active_names.contains(&iface.name) {
+            continue;
+        }
         for addr in iface.addr {
             match addr {
                 network_interface::Addr::V4(v4if) => {
@@ -91,17 +96,64 @@ fn collect_lan_urls(port: u16, token: &str) -> CmdResult<Vec<String>> {
         .collect())
 }
 
-fn detect_preferred_ipv4() -> Option<Ipv4Addr> {
-    // 通过系统路由选择一个对外 UDP 目标，读取本地绑定地址作为默认网卡 IPv4。
-    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
-    socket.connect("223.5.5.5:80").ok()?;
-    let local = socket.local_addr().ok()?;
-    match local.ip() {
-        std::net::IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_multicast() => {
-            Some(ip)
-        }
-        _ => None,
+fn is_virtual_interface(name: &str) -> bool {
+    let lowered = name.to_ascii_lowercase();
+    [
+        "vpn", "tun", "tap", "tailscale", "wireguard", "wg", "v2ray", "utun", "ppp", "loopback",
+        "virtual", "vmware", "hyper-v", "vbox", "docker", "zerotier",
+    ]
+    .iter()
+    .any(|k| lowered.contains(k))
+}
+
+fn interface_priority(name: &str) -> u8 {
+    let lowered = name.to_ascii_lowercase();
+    if is_virtual_interface(&lowered) {
+        return 100;
     }
+    if lowered.contains("wi-fi") || lowered.contains("wifi") || lowered.contains("wlan") || lowered.contains("wireless") {
+        return 0;
+    }
+    if lowered.contains("ethernet") || lowered.contains("eth") || lowered.contains("en") {
+        return 1;
+    }
+    10
+}
+
+fn is_usable_lan_ipv4(ip: Ipv4Addr) -> bool {
+    !ip.is_loopback()
+        && !ip.is_unspecified()
+        && !ip.is_multicast()
+        && !ip.is_link_local()
+}
+
+fn detect_preferred_ipv4() -> Option<Ipv4Addr> {
+    let active_names = tauri_plugin_clash_verge_sysinfo::list_network_interfaces();
+    let mut interfaces = NetworkInterface::show().ok()?;
+    interfaces.retain(|iface| active_names.contains(&iface.name));
+    interfaces.sort_by(|a, b| {
+        let score_a = interface_priority(&a.name);
+        let score_b = interface_priority(&b.name);
+        match score_a.cmp(&score_b) {
+            CmpOrdering::Equal => a.name.cmp(&b.name),
+            other => other,
+        }
+    });
+
+    for iface in interfaces {
+        if is_virtual_interface(&iface.name) {
+            continue;
+        }
+        for addr in iface.addr {
+            if let network_interface::Addr::V4(v4if) = addr {
+                let ip = v4if.ip;
+                if is_usable_lan_ipv4(ip) {
+                    return Some(ip);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn pick_primary_url(urls: &[String]) -> Option<String> {
