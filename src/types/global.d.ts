@@ -27,6 +27,7 @@ interface IConfigData {
   ipv6: boolean;
   "socket-port": number;
   "allow-lan": boolean;
+  "bind-address"?: string;
   "log-level": string;
   "mixed-port": number;
   "redir-port": number;
