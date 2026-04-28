@@ -147,12 +147,15 @@ const ConnectionsPage = () => {
     DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
   );
   const lastActiveAtByIpRef = useRef<Map<string, number>>(new Map());
+  const blockedLanIpsRef = useRef<string[]>([]);
   const lanSettingsRef = useRef({
     lanMaxDevices: 0,
     lanSilentThresholdSeconds: DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
   });
   const lanSettingsPersistPendingRef = useRef(false);
   const lanSettingsPersistRunningRef = useRef(false);
+  const closingBlockedIpsRef = useRef<Set<string>>(new Set());
+  const blockedCloseLastRunAtRef = useRef<Map<string, number>>(new Map());
   const { clash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
 
@@ -166,6 +169,11 @@ const ConnectionsPage = () => {
   const connectionsView = setting?.connectionsView ?? "connections";
 
   const isTableLayout = setting.layout === "table";
+  const blockedLanIpSet = useMemo(() => new Set(blockedLanIps), [blockedLanIps]);
+  const localInterfaceIps = useMemo(
+    () => extractLocalInterfaceIps(networkInterfaces),
+    [networkInterfaces],
+  );
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
 
@@ -178,7 +186,14 @@ const ConnectionsPage = () => {
     const closed = connections?.closedConnections ?? [];
     let download = 0;
     let upload = 0;
-    for (const c of [...active, ...closed]) {
+    for (const c of active) {
+      if (c.chains?.includes?.("DIRECT")) continue;
+      const connStartMs = new Date(c.start || 0).getTime();
+      if (connStartMs < sessionStartMs) continue;
+      download += c.download ?? 0;
+      upload += c.upload ?? 0;
+    }
+    for (const c of closed) {
       if (c.chains?.includes?.("DIRECT")) continue;
       // Skip connections that were established before the current session started
       // (e.g. restored from IndexedDB cache from a previous run or pre-TUN-toggle session).
@@ -203,7 +218,7 @@ const ConnectionsPage = () => {
         : closedForDisplay;
     const visibleConns =
       connectionsType === "active"
-        ? conns.filter((conn) => !blockedLanIps.includes(conn.metadata?.sourceIP || ""))
+        ? conns.filter((conn) => !blockedLanIpSet.has(conn.metadata?.sourceIP || ""))
         : conns;
     let matchConns = visibleConns.filter((conn) => {
       const { host, destinationIP, process } = conn.metadata;
@@ -212,7 +227,8 @@ const ConnectionsPage = () => {
       );
     });
 
-    if (orderFunc) matchConns = orderFunc(matchConns ?? []);
+    // 避免原地排序修改引用，减少高频推送时的重排与闪动
+    if (orderFunc) matchConns = orderFunc([...matchConns]);
 
     if (connectionsType === "closed" && mergeByDomain && matchConns.length > 0) {
       matchConns = mergeClosedConnectionsByHost(matchConns);
@@ -220,17 +236,16 @@ const ConnectionsPage = () => {
     }
 
     return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIps]);
+  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIpSet]);
 
   const activeLanConnections = useMemo(() => {
-    const localInterfaceIps = extractLocalInterfaceIps(networkInterfaces);
     const active = connections?.activeConnections ?? [];
     return active.filter(
       (conn) =>
-        !blockedLanIps.includes(conn.metadata?.sourceIP || "") &&
+        !blockedLanIpSet.has(conn.metadata?.sourceIP || "") &&
         isRemoteLanClientConnection(conn, localInterfaceIps),
     );
-  }, [connections?.activeConnections, blockedLanIps, networkInterfaces]);
+  }, [connections?.activeConnections, blockedLanIpSet, localInterfaceIps]);
   const silentDeviceItems = useMemo(() => {
     if (connectionsType !== "active") return [];
     const byIp = new Map<string, IConnectionsItem[]>();
@@ -289,7 +304,7 @@ const ConnectionsPage = () => {
     ];
     all.forEach((conn) => {
       const sourceIp = conn.metadata?.sourceIP || "";
-      if (!sourceIp || !blockedLanIps.includes(sourceIp)) return;
+      if (!sourceIp || !blockedLanIpSet.has(sourceIp)) return;
       const startMs = new Date(conn.start || 0).getTime();
       if (!Number.isFinite(startMs)) return;
       map.set(sourceIp, Math.max(map.get(sourceIp) ?? 0, startMs));
@@ -298,10 +313,9 @@ const ConnectionsPage = () => {
   }, [
     connections?.activeConnections,
     connections?.closedConnections,
-    blockedLanIps,
+    blockedLanIpSet,
   ]);
   const disconnectedDeviceItems = useMemo(() => {
-    const localInterfaceIps = extractLocalInterfaceIps(networkInterfaces);
     const active = connections?.activeConnections ?? [];
     const closed = connections?.closedConnections ?? [];
     const activeIpSet = new Set(
@@ -315,7 +329,7 @@ const ConnectionsPage = () => {
       const ip = conn.metadata?.sourceIP || "";
       if (!ip) return;
       if (!isRemoteLanClientConnection(conn, localInterfaceIps)) return;
-      if (blockedLanIps.includes(ip)) return;
+      if (blockedLanIpSet.has(ip)) return;
       if (activeIpSet.has(ip)) return;
       const startMs = new Date(conn.start || 0).getTime();
       if (!Number.isFinite(startMs)) return;
@@ -335,9 +349,9 @@ const ConnectionsPage = () => {
   }, [
     connections?.activeConnections,
     connections?.closedConnections,
-    blockedLanIps,
+    blockedLanIpSet,
     silentDeviceItems,
-    networkInterfaces,
+    localInterfaceIps,
   ]);
 
   const onCloseAll = useLockFn(closeAllConnections);
@@ -464,9 +478,19 @@ const ConnectionsPage = () => {
       clash?.["clash-for-android"]?.["lan-silent-threshold-seconds"] ??
       DEFAULT_LAN_SILENT_THRESHOLD_SECONDS,
     );
-    setBlockedLanIps(normalizeBlockedLanSourceIps(fromConfig));
-    setLanMaxDevices(nextLanMaxDevices);
-    setLanSilentThresholdSeconds(nextLanSilentThresholdSeconds);
+    const nextBlocked = normalizeBlockedLanSourceIps(fromConfig);
+    const prevBlocked = blockedLanIpsRef.current;
+    const blockedChanged =
+      nextBlocked.length !== prevBlocked.length ||
+      nextBlocked.some((ip, index) => ip !== prevBlocked[index]);
+    if (blockedChanged) {
+      blockedLanIpsRef.current = nextBlocked;
+      setBlockedLanIps(nextBlocked);
+    }
+    setLanMaxDevices((prev) => (prev === nextLanMaxDevices ? prev : nextLanMaxDevices));
+    setLanSilentThresholdSeconds((prev) =>
+      prev === nextLanSilentThresholdSeconds ? prev : nextLanSilentThresholdSeconds,
+    );
     lanSettingsRef.current = {
       lanMaxDevices: nextLanMaxDevices,
       lanSilentThresholdSeconds: nextLanSilentThresholdSeconds,
@@ -482,12 +506,32 @@ const ConnectionsPage = () => {
         active
           .filter((conn) => isRemoteLanClientConnection(conn, localInterfaceIps))
           .map((conn) => conn.metadata?.sourceIP || "")
-          .filter((ip) => ip && blockedLanIps.includes(ip) && isLanSourceIp(ip)),
+          .filter((ip) => ip && blockedLanIpSet.has(ip) && isLanSourceIp(ip)),
       ),
     );
     if (targets.length === 0) return;
-    void Promise.allSettled(targets.map((ip) => closeConnectionsBySourceIp(ip)));
-  }, [connections?.activeConnections, blockedLanIps, networkInterfaces]);
+    const now = Date.now();
+    const runnableTargets = targets.filter((ip) => {
+      if (closingBlockedIpsRef.current.has(ip)) return false;
+      const lastRunAt = blockedCloseLastRunAtRef.current.get(ip) ?? 0;
+      // 同一设备短时间内不重复执行关闭，避免高频 ws 更新触发风暴调用
+      return now - lastRunAt >= 2000;
+    });
+    if (runnableTargets.length === 0) return;
+    runnableTargets.forEach((ip) => {
+      closingBlockedIpsRef.current.add(ip);
+      blockedCloseLastRunAtRef.current.set(ip, now);
+    });
+    void Promise.allSettled(
+      runnableTargets.map(async (ip) => {
+        try {
+          await closeConnectionsBySourceIp(ip);
+        } finally {
+          closingBlockedIpsRef.current.delete(ip);
+        }
+      }),
+    );
+  }, [connections?.activeConnections, blockedLanIpSet, localInterfaceIps]);
 
   return (
     <BasePage
