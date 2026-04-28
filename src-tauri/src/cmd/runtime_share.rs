@@ -1,8 +1,8 @@
 //! 局域网短时 HTTP 提供运行时 YAML，供手机等设备扫码后以 URL 订阅导入。
 
 use std::{
-    net::Ipv4Addr,
-    sync::atomic::{AtomicU64, Ordering},
+    net::{Ipv4Addr, UdpSocket},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -45,6 +45,17 @@ fn stop_previous_inner() {
     }
 }
 
+fn stop_share_if_active(share_id: u64) {
+    let mut guard = ACTIVE_LAN_SHARE.lock();
+    if let Some(active) = guard.as_ref() {
+        if active.id == share_id {
+            if let Some(active) = guard.take() {
+                let _ = active.stop_tx.send(());
+            }
+        }
+    }
+}
+
 /// 停止局域网运行时配置分享 HTTP 服务。
 #[tauri::command]
 pub async fn stop_runtime_config_lan_share() -> CmdResult<()> {
@@ -79,7 +90,27 @@ fn collect_lan_urls(port: u16, token: &str) -> CmdResult<Vec<String>> {
         .collect())
 }
 
+fn detect_preferred_ipv4() -> Option<Ipv4Addr> {
+    // 通过系统路由选择一个对外 UDP 目标，读取本地绑定地址作为默认网卡 IPv4。
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("223.5.5.5:80").ok()?;
+    let local = socket.local_addr().ok()?;
+    match local.ip() {
+        std::net::IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() && !ip.is_multicast() => {
+            Some(ip)
+        }
+        _ => None,
+    }
+}
+
 fn pick_primary_url(urls: &[String]) -> Option<String> {
+    if let Some(preferred_ip) = detect_preferred_ipv4() {
+        let expected = format!("//{preferred_ip}:");
+        if let Some(url) = urls.iter().find(|u| u.contains(&expected)) {
+            return Some(url.clone());
+        }
+    }
+
     urls
         .iter()
         .min_by_key(|u| {
@@ -119,12 +150,23 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
     let yaml_arc = std::sync::Arc::new(yaml_text);
     let token_expect = token.clone();
 
+    let share_id = SHARE_SEQ.fetch_add(1, Ordering::SeqCst);
+    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let used_once = std::sync::Arc::new(AtomicBool::new(false));
+
     let route = warp::path!("share" / String / "runtime.yaml").and_then(
         move |path_token: String| {
             let yaml_arc = yaml_arc.clone();
             let token_expect = token_expect.clone();
+            let used_once = used_once.clone();
             async move {
                 if path_token != token_expect {
+                    return Err(warp::reject::not_found());
+                }
+                if used_once
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_err()
+                {
                     return Err(warp::reject::not_found());
                 }
                 let reply = warp::reply::with_header(
@@ -132,13 +174,12 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
                     "Content-Type",
                     "application/yaml; charset=utf-8",
                 );
+                stop_share_if_active(share_id);
                 Ok::<_, warp::Rejection>(reply)
             }
         },
     );
 
-    let share_id = SHARE_SEQ.fetch_add(1, Ordering::SeqCst);
-    let (stop_tx, stop_rx) = oneshot::channel::<()>();
     {
         let mut guard = ACTIVE_LAN_SHARE.lock();
         *guard = Some(ActiveLanShare {

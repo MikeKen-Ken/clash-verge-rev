@@ -184,6 +184,18 @@ const ProxyPage = () => {
     return Array.from(ipv4Set);
   }, [networkInterfaces]);
 
+  const preferredLanIpv4 = useMemo(() => {
+    for (const iface of networkInterfaces) {
+      for (const addr of iface.addr) {
+        const ip = addr.V4?.ip;
+        if (!ip) continue;
+        if (ip === "127.0.0.1" || ip.startsWith("169.254.")) continue;
+        return ip;
+      }
+    }
+    return undefined;
+  }, [networkInterfaces]);
+
   const lanEndpointItems = useMemo(() => {
     if (!allowLan || lanIpv4List.length === 0) return [] as string[];
     const ports: number[] = [];
@@ -285,12 +297,24 @@ const ProxyPage = () => {
                   valueProps="checked"
                   onFormat={(_, v) => v}
                   onGuard={async (v) => {
+                    const patchPayload: Partial<IConfigData> = { "allow-lan": v };
+                    if (v && preferredLanIpv4) {
+                      patchPayload["bind-address"] = preferredLanIpv4;
+                    }
                     mutateClash(
                       (prev) =>
-                        prev != null ? { ...prev, "allow-lan": v } : prev,
+                        prev != null
+                          ? {
+                            ...prev,
+                            "allow-lan": v,
+                            ...(v && preferredLanIpv4
+                              ? { "bind-address": preferredLanIpv4 }
+                              : {}),
+                          }
+                          : prev,
                       false,
                     );
-                    await patchClash({ "allow-lan": v });
+                    await patchClash(patchPayload);
                     if (!v) {
                       const closedCount = await closeLanConnections();
                       if (closedCount > 0) {
