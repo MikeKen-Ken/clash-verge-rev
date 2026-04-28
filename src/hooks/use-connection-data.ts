@@ -38,6 +38,8 @@ export const initConnData: ConnectionMonitorData = {
   activeConnections: [],
   closedConnections: [],
 };
+// 跨页面保留最近一次稳定连接数据，避免路由切回时先闪回空状态。
+let latestStableConnData: ConnectionMonitorData = initConnData;
 
 export interface ConnectionMonitorData {
   uploadTotal: number;
@@ -177,7 +179,7 @@ export const useConnectionData = () => {
     useMihomoWsSubscription<ConnectionMonitorData>({
       storageKey: "mihomo_connection_date",
       buildSubscriptKey: (date) => `getClashConnection-${date}`,
-      fallbackData: initConnData,
+      fallbackData: latestStableConnData,
       connect: () => MihomoWebSocket.connect_connections(),
       setupHandlers: ({ next, scheduleReconnect }) => ({
         handleMessage: (data) => {
@@ -223,6 +225,7 @@ export const useConnectionData = () => {
     getConnectionSnapshot()
       .then((snapshot) => {
         if (snapshot && (snapshot.activeConnections?.length > 0 || snapshot.closedConnections?.length > 0)) {
+          latestStableConnData = snapshot;
           mutate(subscriptionCacheKey, snapshot, { revalidate: false });
           return;
         }
@@ -240,7 +243,9 @@ export const useConnectionData = () => {
           (prev: ConnectionMonitorData | undefined) => {
             const current = prev ?? initConnData;
             if ((current.closedConnections?.length ?? 0) > 0) return current;
-            return { ...current, closedConnections: closed };
+            const next = { ...current, closedConnections: closed };
+            latestStableConnData = next;
+            return next;
           },
           { revalidate: false },
         );
@@ -252,6 +257,7 @@ export const useConnectionData = () => {
   useEffect(() => {
     const data = response.data;
     if (data && (data.activeConnections?.length > 0 || data.closedConnections?.length > 0)) {
+      latestStableConnData = data;
       setConnectionSnapshot(data);
     }
   }, [response.data]);
@@ -264,6 +270,7 @@ export const useConnectionData = () => {
       activeConnections: response.data?.activeConnections ?? [],
       closedConnections: [],
     };
+    latestStableConnData = next;
     mutate(subscriptionCacheKey, next);
     void setClosedConnectionsInStorage([]);
     setConnectionSnapshot(next);
