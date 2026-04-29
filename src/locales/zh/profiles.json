@@ -186,7 +186,7 @@
       "cleartext": "明文 HTTP 可能在 Android 上受限制；需在系统或应用中允许明文流量或使用允许 HTTP 的配置。",
       "ttl": "约 {{minutes}} 分钟后自动关闭分享；关闭运行时订阅窗口或本对话框也会停止服务。",
       "candidateUrls": "各网卡可选地址",
-      "copyPrimary": "复制首选地址",
+      "copyPrimary": "复制地址",
       "stopSharing": "停止分享",
       "startFailed": "无法启动局域网分享",
       "copyDone": "已复制到剪贴板"

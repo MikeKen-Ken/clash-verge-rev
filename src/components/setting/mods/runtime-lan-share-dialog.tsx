@@ -5,8 +5,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  List,
-  ListItem,
   Typography,
 } from "@mui/material";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
@@ -61,7 +59,7 @@ export function RuntimeLanShareDialog({ open, info, onClosed }: Props) {
 
   const minutes = info ? Math.max(1, Math.round(info.ttlSecs / 60)) : 0;
 
-  const handleCopyPrimary = async () => {
+  const handleCopyAddress = async () => {
     if (!info?.primaryUrl || consumed) return;
     try {
       await writeText(info.primaryUrl);
@@ -125,24 +123,12 @@ export function RuntimeLanShareDialog({ open, info, onClosed }: Props) {
             >
               {info.primaryUrl}
             </Typography>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              {t("profiles.modals.runtimeShare.candidateUrls")}
-            </Typography>
-            <List dense disablePadding sx={{ mb: 2 }}>
-              {info.urls.map((u) => (
-                <ListItem key={u} disablePadding sx={{ py: 0.25 }}>
-                  <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
-                    {u}
-                  </Typography>
-                </ListItem>
-              ))}
-            </List>
           </>
         ) : null}
       </DialogContent>
       <DialogActions>
         <Button
-          onClick={() => void handleCopyPrimary()}
+          onClick={() => void handleCopyAddress()}
           disabled={!info?.primaryUrl || consumed}
         >
           {t("profiles.modals.runtimeShare.copyPrimary")}

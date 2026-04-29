@@ -186,7 +186,7 @@
       "cleartext": "Plain HTTP may be blocked on Android unless cleartext traffic is permitted for this app/network.",
       "ttl": "Sharing stops automatically after about {{minutes}} minutes, or when you close the runtime viewer / this dialog.",
       "candidateUrls": "URLs on each interface",
-      "copyPrimary": "Copy primary URL",
+      "copyPrimary": "Copy URL",
       "stopSharing": "Stop sharing",
       "startFailed": "Could not start LAN sharing",
       "copyDone": "Copied to clipboard"
