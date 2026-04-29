@@ -816,6 +816,9 @@ const ConnectionsPage = () => {
                   连接数: {device.connectionCount}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
+                  最新链接: {device.latestHost || "-"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
                   开始时间: {dayjs(device.latestStart).format("YYYY-MM-DD HH:mm:ss")}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
