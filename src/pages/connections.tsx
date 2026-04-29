@@ -905,6 +905,24 @@ const ConnectionsPage = () => {
                 <Typography variant="caption" color="text.secondary">
                   最后使用: {dayjs(item.lastUsed).format("YYYY-MM-DD HH:mm:ss")}
                 </Typography>
+                <Box sx={{ pt: 0.5, display: "flex", gap: 0.75, flexWrap: "wrap" }}>
+                  <Button
+                    size="small"
+                    color="info"
+                    variant="outlined"
+                    onClick={() => onDisconnectDevice(item.ip)}
+                  >
+                    断开设备
+                  </Button>
+                  <Button
+                    size="small"
+                    color="warning"
+                    variant="outlined"
+                    onClick={() => onDisableDevice(item.ip)}
+                  >
+                    禁用设备
+                  </Button>
+                </Box>
               </Box>
             ))}
           </Box>
