@@ -184,6 +184,9 @@ const isValidProxyNode = (proxy: any) => {
 
 const GLOBAL_UPDATE_INTERVAL_OPTIONS = [8, 16, 24, 48, 72, 168] as const;
 const GLOBAL_UPDATE_INTERVAL_STORAGE_KEY = "profiles.global.updateIntervalHours";
+const GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY = "profiles.global.nextUpdateAt";
+const GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY =
+  "profiles.global.updateIntervalHours.applied";
 const CUSTOM_PROXY_ORDER_STORAGE_KEY = "profiles.customProxyOrder";
 const DEFAULT_CUSTOM_PROXY_ORDER = ["🇭🇰", "🇯🇵", "🇸🇬", "🇹🇼", "🇺🇸"] as const;
 
@@ -927,10 +930,53 @@ const ProfilePage = () => {
 
   useEffect(() => {
     const intervalMs = globalUpdateHours * 60 * 60 * 1000;
-    const timer = window.setInterval(() => {
-      void updateAllRemoteAndMerge("定时任务");
-    }, intervalMs);
-    return () => window.clearInterval(timer);
+    const now = Date.now();
+    const appliedInterval = Number(
+      localStorage.getItem(GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY) || 0,
+    );
+    const intervalChanged = appliedInterval !== globalUpdateHours;
+    let timeoutId: number | undefined;
+    let disposed = false;
+
+    const schedule = (baseNow: number) => {
+      if (disposed) return;
+
+      let nextUpdateAt = Number(
+        localStorage.getItem(GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY) || 0,
+      );
+      if (!Number.isFinite(nextUpdateAt) || nextUpdateAt <= 0 || intervalChanged) {
+        nextUpdateAt = baseNow + intervalMs;
+      }
+
+      if (nextUpdateAt <= baseNow) {
+        void updateAllRemoteAndMerge("定时任务(启动补偿)");
+        nextUpdateAt = baseNow + intervalMs;
+      }
+
+      localStorage.setItem(
+        GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY,
+        String(globalUpdateHours),
+      );
+      localStorage.setItem(
+        GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY,
+        String(nextUpdateAt),
+      );
+
+      const delay = Math.max(1000, nextUpdateAt - baseNow);
+      timeoutId = window.setTimeout(() => {
+        void updateAllRemoteAndMerge("定时任务");
+        schedule(Date.now() + 1000);
+      }, delay);
+    };
+
+    schedule(now);
+
+    return () => {
+      disposed = true;
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [globalUpdateHours, updateAllRemoteAndMerge]);
 
   const mode = useThemeMode();
