@@ -170,6 +170,7 @@ const ProxyPage = () => {
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
+  const strictRoute = clash?.tun?.["strict-route"] ?? false;
   const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
   const mixedPort = clash?.["mixed-port"];
   const httpPort = clash?.port;
@@ -348,6 +349,43 @@ const ProxyPage = () => {
               label={
                 <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
                   {t("settings.sections.clash.form.fields.allowLan")}
+                </Typography>
+              }
+            />
+            <FormControlLabel
+              control={
+                <GuardState
+                  value={strictRoute}
+                  valueProps="checked"
+                  onFormat={(_, v) => v}
+                  onGuard={async (v) => {
+                    mutateClash(
+                      (prev) =>
+                        prev != null
+                          ? {
+                            ...prev,
+                            tun: {
+                              ...(prev.tun ?? {}),
+                              "strict-route": v,
+                            },
+                          }
+                          : prev,
+                      false,
+                    );
+                    await patchRuntimeConfig({
+                      tun: {
+                        ...(clash?.tun ?? {}),
+                        "strict-route": v,
+                      },
+                    });
+                  }}
+                >
+                  <Switch size="small" />
+                </GuardState>
+              }
+              label={
+                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
+                  {t("settings.sections.tun.fields.strictRoute")}
                 </Typography>
               }
             />
