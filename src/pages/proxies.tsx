@@ -172,7 +172,7 @@ const ProxyPage = () => {
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
-  const strictRoute = clash?.tun?.["strict-route"] ?? false;
+  const strictRoute = clash?.tun?.["strict-route"] ?? true;
   const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
   const mixedPort = clash?.["mixed-port"];
   const httpPort = clash?.port;

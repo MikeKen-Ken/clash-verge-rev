@@ -57,7 +57,7 @@ impl IClashTemp {
         tun_config.insert("enable".into(), false.into());
         tun_config.insert("stack".into(), tun_const::DEFAULT_STACK.into());
         tun_config.insert("auto-route".into(), true.into());
-        tun_config.insert("strict-route".into(), false.into());
+        tun_config.insert("strict-route".into(), true.into());
         tun_config.insert("auto-detect-interface".into(), true.into());
         tun_config.insert("dns-hijack".into(), tun_const::DNS_HIJACK.into());
 
