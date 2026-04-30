@@ -56,6 +56,8 @@ const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
 
 /** 健康检测相关下拉预设（ms） */
 const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
+/** 失败重置间隔下拉预设（ms） */
+const HEALTH_FAILURE_RESET_PRESETS = [1000, 3000, 5000, 8000, 10000] as const;
 
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 const LAN_ENDPOINT_OFFSET_X = -2;
@@ -260,16 +262,15 @@ const ProxyPage = () => {
     await patchVerge({ enable_tun_mode: value });
   });
 
-  /** 只接受预设值或 undefined，避免写入异常大数或字符串 */
-  const clampHealthValue = (
+  /** 只接受指定预设值或 undefined，避免写入异常大数或字符串 */
+  const clampHealthValueByPresets = (
     raw: string,
+    presets: readonly number[],
   ): number | undefined => {
     if (raw === "") return undefined;
     const n = Number(raw);
     if (!Number.isInteger(n) || n < 0) return undefined;
-    return (HEALTH_CHECK_PRESETS as readonly number[]).includes(n)
-      ? n
-      : undefined;
+    return presets.includes(n) ? n : undefined;
   };
 
   return (
@@ -464,10 +465,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v = clampHealthValue(
+                    const v = clampHealthValueByPresets(
                       typeof e.target.value === "string"
                         ? e.target.value
                         : String(e.target.value),
+                      HEALTH_CHECK_PRESETS,
                     );
                     mutateVerge(
                       { ...verge, health_check_timeout: v },
@@ -504,10 +506,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v = clampHealthValue(
+                    const v = clampHealthValueByPresets(
                       typeof e.target.value === "string"
                         ? e.target.value
                         : String(e.target.value),
+                      HEALTH_CHECK_PRESETS,
                     );
                     mutateVerge(
                       { ...verge, health_check_selected_timeout: v },
@@ -540,7 +543,7 @@ const ProxyPage = () => {
                 <Select
                   value={
                     verge?.health_check_failure_reset_interval != null &&
-                      (HEALTH_CHECK_PRESETS as readonly number[]).includes(
+                      (HEALTH_FAILURE_RESET_PRESETS as readonly number[]).includes(
                         verge.health_check_failure_reset_interval,
                       )
                       ? String(verge.health_check_failure_reset_interval)
@@ -548,10 +551,11 @@ const ProxyPage = () => {
                   }
                   displayEmpty
                   onChange={(e) => {
-                    const v = clampHealthValue(
+                    const v = clampHealthValueByPresets(
                       typeof e.target.value === "string"
                         ? e.target.value
                         : String(e.target.value),
+                      HEALTH_FAILURE_RESET_PRESETS,
                     );
                     mutateVerge(
                       { ...verge, health_check_failure_reset_interval: v },
@@ -569,7 +573,7 @@ const ProxyPage = () => {
                   <MenuItem value="">
                     <em>—</em>
                   </MenuItem>
-                  {HEALTH_CHECK_PRESETS.map((n) => (
+                  {HEALTH_FAILURE_RESET_PRESETS.map((n) => (
                     <MenuItem key={n} value={String(n)}>
                       {n} ms
                     </MenuItem>
