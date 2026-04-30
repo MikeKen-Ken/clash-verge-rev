@@ -360,6 +360,8 @@ const ProxyPage = () => {
                   valueProps="checked"
                   onFormat={(_, v) => v}
                   onGuard={async (v) => {
+                    const currentTun = clash?.tun;
+                    if (!currentTun) return;
                     mutateClash(
                       (prev) =>
                         prev != null
@@ -375,7 +377,7 @@ const ProxyPage = () => {
                     );
                     await patchRuntimeConfig({
                       tun: {
-                        ...(clash?.tun ?? {}),
+                        ...currentTun,
                         "strict-route": v,
                       },
                     });
@@ -386,7 +388,7 @@ const ProxyPage = () => {
               }
               label={
                 <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                  {t("settings.sections.tun.fields.strictRoute")}
+                  {t("settings.modals.tun.fields.strictRoute")}
                 </Typography>
               }
             />
