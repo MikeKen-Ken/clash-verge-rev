@@ -1,8 +1,6 @@
 name: Auto Build
 
 on:
-  push:
-    branches: [dev, main]
   workflow_dispatch:
 permissions: write-all
 env:
@@ -21,7 +19,7 @@ jobs:
     uses: clash-verge-rev/clash-verge-rev/.github/workflows/check-commit-needs-build.yml@dev
     with:
       tag_name: autobuild
-      force_build: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+      force_build: ${{ github.event_name == 'workflow_dispatch' }}
 
   update_tag:
     name: Update tag
