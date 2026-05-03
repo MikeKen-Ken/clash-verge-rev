@@ -341,10 +341,10 @@ export const EnhancedCanvasTrafficGraph = memo(
           // 格式化时间戳
           const timeStr = dataPoint.timestamp
             ? new Date(dataPoint.timestamp).toLocaleTimeString("zh-CN", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })
             : "未知时间";
 
           // 计算数据点对应的Y坐标位置（用于高亮）

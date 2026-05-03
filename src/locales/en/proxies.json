@@ -39,6 +39,7 @@
     "tooltips": {
       "locate": "locate",
       "delayCheck": "Delay check",
+      "flushFakeIp": "Flush DNS cache",
       "sortDefault": "Sort by default",
       "sortDelay": "Sort by delay",
       "sortName": "Sort by name",

@@ -428,9 +428,15 @@ impl Timer {
             Self::emit_update_event(uid, true);
 
             let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
-            logging!(info, Type::Timer, "配置 {} 是否为当前激活配置: {}", uid, is_current);
+            logging!(
+                info,
+                Type::Timer,
+                "配置 {} 是否为当前激活配置: {}，定时更新仅保存订阅文件，不立即应用运行配置",
+                uid,
+                is_current
+            );
 
-            feat::update_profile(uid, None, is_current, false).await
+            feat::update_profile(uid, None, false, false).await
         })
         .await
         {

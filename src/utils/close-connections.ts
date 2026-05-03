@@ -4,6 +4,53 @@ import { isLanSourceIp } from "@/features/lan-devices/model";
 import { debugLog } from "./debug";
 
 /**
+ * 关闭链路中包含指定代理组的连接（手动切换组内节点后使用）。
+ */
+export async function closeConnectionsForProxyGroup(groupName: string): Promise<number> {
+  if (!groupName) {
+    return 0;
+  }
+  try {
+    const { connections } = await getConnections();
+    if (!connections || connections.length === 0) {
+      debugLog("[CloseConnectionsForProxyGroup] No connections found");
+      return 0;
+    }
+
+    const connectionsToClose = connections.filter((conn) =>
+      conn.chains.includes(groupName),
+    );
+
+    if (connectionsToClose.length === 0) {
+      debugLog(`[CloseConnectionsForProxyGroup] No connections via group ${groupName}`);
+      return 0;
+    }
+
+    debugLog(
+      `[CloseConnectionsForProxyGroup] Closing ${connectionsToClose.length} connections for group ${groupName}`,
+    );
+
+    const closePromises = connectionsToClose.map((conn) =>
+      closeConnection(conn.id).catch((error) => {
+        console.error(
+          `[CloseConnectionsForProxyGroup] Failed to close connection ${conn.id}:`,
+          error,
+        );
+        return null;
+      }),
+    );
+
+    const results = await Promise.allSettled(closePromises);
+    return results.filter(
+      (result) => result.status === "fulfilled" && result.value !== null,
+    ).length;
+  } catch (error) {
+    console.error("[CloseConnectionsForProxyGroup] Error:", error);
+    throw error;
+  }
+}
+
+/**
  * 关闭所有连接，但排除包含 DIRECT 的连接
  * @returns 返回关闭的连接数量
  */

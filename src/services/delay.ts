@@ -53,17 +53,23 @@ export interface DelayUpdate {
 
 const CACHE_TTL = 30 * 60 * 1000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
-export const DELAY_CHECK_CONCURRENCY_PRESETS = [10, 20, 30, 40, 50] as const;
+export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
 const DEFAULT_DELAY_CHECK_CONCURRENCY = 30;
+
+const LEGACY_DELAY_CHECK_CONCURRENCY = new Set([10, 20, 40]);
 
 function resolveInitialDelayCheckConcurrency(): number {
   if (typeof window === "undefined") return DEFAULT_DELAY_CHECK_CONCURRENCY;
   try {
     const raw = localStorage.getItem(DELAY_CHECK_CONCURRENCY_STORAGE_KEY);
     const parsed = Number(raw);
-    return (DELAY_CHECK_CONCURRENCY_PRESETS as readonly number[]).includes(parsed)
-      ? parsed
-      : DEFAULT_DELAY_CHECK_CONCURRENCY;
+    if ((DELAY_CHECK_CONCURRENCY_PRESETS as readonly number[]).includes(parsed)) {
+      return parsed;
+    }
+    if (LEGACY_DELAY_CHECK_CONCURRENCY.has(parsed)) {
+      return 30;
+    }
+    return DEFAULT_DELAY_CHECK_CONCURRENCY;
   } catch {
     return DEFAULT_DELAY_CHECK_CONCURRENCY;
   }

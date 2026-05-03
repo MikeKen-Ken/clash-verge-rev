@@ -541,7 +541,6 @@ export const CurrentProxyCard = () => {
 
       const newProxy = event.target.value;
       const currentGroup = state.selection.group;
-      const previousProxy = state.selection.proxy;
 
       debouncedSetState((prev: ProxyState) => ({
         ...prev,
@@ -558,7 +557,7 @@ export const CurrentProxyCard = () => {
 
       // 仅直连模式不写入 profile（全局模式需持久化 GLOBAL 节点选择以便重载配置后恢复）
       const skipConfigSave = isDirectMode;
-      handleSelectChange(currentGroup, previousProxy, skipConfigSave)(event);
+      handleSelectChange(currentGroup, skipConfigSave)(event);
 
       // 手动切换节点后立即检测新节点延迟，以显示最新速度
       const newProxyRecord = state.proxyData.records?.[newProxy] ?? null;

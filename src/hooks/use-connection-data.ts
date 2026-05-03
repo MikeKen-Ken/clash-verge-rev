@@ -110,11 +110,14 @@ const mergeConnectionSnapshot = (
     .map((conn) => ({ ...conn, closedAt: now } as IConnectionsItem));
 
   // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
+  const previousClosed = previous.closedConnections ?? [];
   const closedConnections = filterClosedConnectionsByRetention(
-    [...(previous.closedConnections ?? []), ...newlyClosed],
+    [...previousClosed, ...newlyClosed],
     PERSIST_RETENTION_HOURS,
   );
-  void setClosedConnectionsInStorage(closedConnections);
+  if (newlyClosed.length > 0 || closedConnections.length !== previousClosed.length) {
+    void setClosedConnectionsInStorage(closedConnections);
+  }
 
   return {
     uploadTotal: payload.uploadTotal ?? 0,

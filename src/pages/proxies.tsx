@@ -1,5 +1,6 @@
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
+import DnsRounded from "@mui/icons-material/DnsRounded";
 import {
   Box,
   Button,
@@ -17,7 +18,7 @@ import {
 import { useLockFn } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { closeAllConnections } from "tauri-plugin-mihomo-api";
+import { closeAllConnections, flushFakeIp } from "tauri-plugin-mihomo-api";
 
 import { BasePage } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
@@ -247,6 +248,11 @@ const ProxyPage = () => {
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
+  });
+
+  const handleFlushFakeIp = useLockFn(async () => {
+    await flushFakeIp();
+    showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
   });
 
   const handleTunToggle = useLockFn(async (value: boolean) => {
@@ -641,6 +647,15 @@ const ProxyPage = () => {
                 aria-label={t("shared.actions.refresh")}
               >
                 <RefreshRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={t("proxies.page.tooltips.flushFakeIp")}>
+              <IconButton
+                size="small"
+                onClick={handleFlushFakeIp}
+                aria-label={t("proxies.page.tooltips.flushFakeIp")}
+              >
+                <DnsRounded fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title={t("proxies.page.tooltips.delayCheck")}>
