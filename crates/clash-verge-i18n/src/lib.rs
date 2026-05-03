@@ -35,33 +35,20 @@ fn resolve_supported_language(language: &str) -> Option<&'static str> {
     None
 }
 
-#[inline]
-fn current_language(language: Option<&str>) -> &str {
-    language
-        .as_ref()
-        .filter(|lang| !lang.is_empty())
-        .and_then(|lang| resolve_supported_language(lang))
-        .unwrap_or_else(system_language)
-}
-
+/// 本分支固定为简体中文：不随系统区域或配置文件切换（托盘/原生通知等始终 zh）
 #[inline]
 pub fn system_language() -> &'static str {
-    sys_locale::get_locale()
-        .as_deref()
-        .and_then(resolve_supported_language)
-        .unwrap_or(DEFAULT_LANGUAGE)
+    DEFAULT_LANGUAGE
 }
 
 #[inline]
-pub fn sync_locale(language: Option<&str>) {
-    let language = current_language(language);
-    set_locale(language);
+pub fn sync_locale(_language: Option<&str>) {
+    rust_i18n::set_locale(DEFAULT_LANGUAGE);
 }
 
 #[inline]
-pub fn set_locale(language: &str) {
-    let lang = resolve_supported_language(language).unwrap_or(DEFAULT_LANGUAGE);
-    rust_i18n::set_locale(lang);
+pub fn set_locale(_language: &str) {
+    rust_i18n::set_locale(DEFAULT_LANGUAGE);
 }
 
 #[inline]

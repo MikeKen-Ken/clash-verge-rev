@@ -1,48 +1,13 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-export const supportedLanguages = [
-  "en",
-  "ru",
-  "zh",
-  "fa",
-  "tt",
-  "id",
-  "ar",
-  "ko",
-  "tr",
-  "de",
-  "es",
-  "jp",
-  "zhtw",
-];
+/** 本分支仅使用简体中文：运行时与类型层面均不再解析为多语言代码 */
+export const supportedLanguages = ["zh"] as const;
 
 export const FALLBACK_LANGUAGE = "zh";
 const LANGUAGE_STORAGE_KEY = "verge-language";
 
-const normalizeLanguage = (language?: string) =>
-  language?.toLowerCase().replace(/_/g, "-");
-
-export const resolveLanguage = (language?: string) => {
-  const normalized = normalizeLanguage(language);
-  if (!normalized) {
-    return FALLBACK_LANGUAGE;
-  }
-
-  if (normalized === "zh-tw") return "zhtw";
-  if (normalized === "zh-cn") return "zh";
-
-  if (supportedLanguages.includes(normalized)) {
-    return normalized;
-  }
-
-  const baseLanguage = normalized.split("-")[0];
-  if (supportedLanguages.includes(baseLanguage)) {
-    return baseLanguage;
-  }
-
-  return FALLBACK_LANGUAGE;
-};
+export const resolveLanguage = (_language?: string) => FALLBACK_LANGUAGE;
 
 const getLanguageStorage = () => {
   if (typeof window === "undefined") return null;
@@ -81,7 +46,7 @@ type LocaleModule = {
   default: Record<string, unknown>;
 };
 
-const localeModules = import.meta.glob<LocaleModule>("@/locales/*/index.ts");
+const localeModules = import.meta.glob<LocaleModule>("@/locales/zh/index.ts");
 
 const localeLoaders = Object.entries(localeModules).reduce<
   Record<string, () => Promise<LocaleModule>>
@@ -131,6 +96,7 @@ i18n.use(initReactI18next).init({
   resources: {},
   lng: FALLBACK_LANGUAGE,
   fallbackLng: FALLBACK_LANGUAGE,
+  supportedLngs: [FALLBACK_LANGUAGE],
   interpolation: {
     escapeValue: false,
   },

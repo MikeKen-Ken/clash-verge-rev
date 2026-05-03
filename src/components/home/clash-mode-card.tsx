@@ -12,7 +12,6 @@ import { closeAllConnections } from "tauri-plugin-mihomo-api";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { patchClashMode } from "@/services/cmds";
-import type { TranslationKey } from "@/types/generated/i18n-keys";
 
 const CLASH_MODES = ["rule", "global", "direct"] as const;
 type ClashMode = (typeof CLASH_MODES)[number];
@@ -22,7 +21,7 @@ const isClashMode = (mode: string): mode is ClashMode =>
 
 const MODE_META: Record<
   ClashMode,
-  { label: TranslationKey; description: TranslationKey }
+  { label: string; description: string }
 > = {
   rule: {
     label: "home.components.clashMode.labels.rule",

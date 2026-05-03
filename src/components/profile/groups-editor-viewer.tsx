@@ -57,7 +57,6 @@ import {
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import { useThemeMode } from "@/services/states";
-import type { TranslationKey } from "@/types/generated/i18n-keys";
 import getSystem from "@/utils/get-system";
 
 interface Props {
@@ -72,7 +71,7 @@ interface Props {
 
 const builtinProxyPolicies = ["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
-const PROXY_STRATEGY_LABEL_KEYS: Record<string, TranslationKey> = {
+const PROXY_STRATEGY_LABEL_KEYS: Record<string, string> = {
   select: "proxies.components.enums.strategies.select",
   "url-test": "proxies.components.enums.strategies.url-test",
   fallback: "proxies.components.enums.strategies.fallback",
@@ -80,14 +79,13 @@ const PROXY_STRATEGY_LABEL_KEYS: Record<string, TranslationKey> = {
   relay: "proxies.components.enums.strategies.relay",
 };
 
-const PROXY_POLICY_LABEL_KEYS: Record<string, TranslationKey> =
+const PROXY_POLICY_LABEL_KEYS: Record<string, string> =
   builtinProxyPolicies.reduce(
     (acc, policy) => {
-      acc[policy] =
-        `proxies.components.enums.policies.${policy}` as TranslationKey;
+      acc[policy] = `proxies.components.enums.policies.${policy}`;
       return acc;
     },
-    {} as Record<string, TranslationKey>,
+    {} as Record<string, string>,
   );
 
 const normalizeDeleteSeq = (input?: unknown): string[] => {

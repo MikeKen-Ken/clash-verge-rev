@@ -1,9 +1,8 @@
 import { getVergeConfig } from "./cmds";
 import {
   cacheLanguage,
-  getCachedLanguage,
+  FALLBACK_LANGUAGE,
   initializeLanguage,
-  resolveLanguage,
 } from "./i18n";
 
 let vergeConfigCache: IVergeConfig | null | undefined;
@@ -57,41 +56,13 @@ export const preloadConfig = async () => {
   }
 };
 
+/** 仅中文：忽略本地缓存、配置与系统语言，始终加载 zh */
 export const preloadLanguage = async (
-  vergeConfig?: IVergeConfig | null,
-  loadConfig: () => Promise<IVergeConfig | null> = preloadConfig,
+  _vergeConfig?: IVergeConfig | null,
+  _loadConfig?: () => Promise<IVergeConfig | null>,
 ) => {
-  const cachedLanguage = getCachedLanguage();
-  if (cachedLanguage) {
-    return cachedLanguage;
-  }
-
-  let resolvedConfig = vergeConfig;
-
-  if (resolvedConfig === undefined) {
-    try {
-      resolvedConfig = await loadConfig();
-    } catch (error) {
-      console.warn(
-        "[preload.ts] Failed to read language from Verge config:",
-        error,
-      );
-      resolvedConfig = null;
-    }
-  }
-
-  const languageFromConfig = resolvedConfig?.language;
-  if (languageFromConfig) {
-    const resolved = resolveLanguage(languageFromConfig);
-    cacheLanguage(resolved);
-    return resolved;
-  }
-
-  const browserLanguage = resolveLanguage(
-    typeof navigator !== "undefined" ? navigator.language : undefined,
-  );
-  cacheLanguage(browserLanguage);
-  return browserLanguage;
+  cacheLanguage(FALLBACK_LANGUAGE);
+  return FALLBACK_LANGUAGE;
 };
 
 export const preloadAppData = async () => {

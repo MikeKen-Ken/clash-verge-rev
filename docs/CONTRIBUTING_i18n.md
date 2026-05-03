@@ -2,10 +2,12 @@
 
 Thanks for helping localize Clash Verge Rev. This guide reflects the current architecture, where the React frontend and the Tauri backend keep their translation bundles separate. Follow the steps below to keep both sides in sync without stepping on each other.
 
+> **This fork** ships the web UI with **`src/locales/zh` only** (`import.meta.glob` is limited to `zh`; other folders remain in the repo as reference but are not bundled). Runtime language resolution on the frontend always uses `zh`.
+
 ## Quick workflow
 
-- Update the language folder under `src/locales/<lang>/`; use `src/locales/en/` as the canonical reference for keys and intent.
-- Run `pnpm i18n:format` to align structure (frontend JSON + backend YAML) and `pnpm i18n:types` to refresh generated typings.
+- Maintain strings under `src/locales/zh/` (and keep `src/locales/en/` in sync as a **key reference** for contributors if desired).
+- Run `pnpm i18n:format` to align structure (frontend JSON + backend YAML).
 - If you touch backend copy, edit the matching YAML file in `crates/clash-verge-i18n/locales/<lang>.yml`.
 - Preview UI changes with `pnpm dev` (desktop shell) or `pnpm web:dev` (web only).
 - Keep PRs focused and add screenshots whenever layout could be affected by text length.
@@ -37,12 +39,13 @@ Because backend translations now live in their own directory, you no longer need
 
 - `pnpm i18n:format` → `node scripts/cleanup-unused-i18n.mjs --align --apply`. It aligns key ordering, removes unused entries, and keeps all locales in lock-step with English across both JSON and YAML bundles.
 - `pnpm i18n:check` performs a dry-run audit of frontend and backend keys. It scans TS/TSX usage plus Rust `t!(...)` calls in `src-tauri/` and `crates/` to spot missing or extra entries.
-- `pnpm i18n:types` regenerates `src/types/generated/i18n-keys.ts` and `src/types/generated/i18n-resources.ts`, ensuring TypeScript catches invalid key usage.
 - For dynamic keys that the analyzer cannot statically detect, add explicit references in code or update the script whitelist to avoid false positives.
 
 ## Backend (Tauri) locale bundles
 
 Native UI strings (tray menu, notifications, dialogs) use `rust-i18n` with YAML bundles stored in `crates/clash-verge-i18n/locales/<lang>.yml`. These files are completely independent from the frontend JSON modules.
+
+> **This fork** fixes the active Rust locale to **Simplified Chinese (`zh`)** at runtime (`sync_locale` / `set_locale` / `system_language` in `clash-verge-i18n`), regardless of OS language or `verge.language` in config.
 
 - Keep `en.yml` semantically aligned with the Simplified Chinese baseline (`zh.yml`). Other locales may temporarily copy English if no translation is available yet.
 - When a backend feature introduces new strings, update every YAML file to keep the key set consistent. Missing keys fall back to the default language (`zh`), so catching gaps early avoids mixed-language output.
@@ -55,7 +58,7 @@ Native UI strings (tray menu, notifications, dialogs) use `rust-i18n` with YAML 
 2. Update the locale’s `index.ts` to import every namespace. Matching the English file is the easiest way to avoid missing exports.
 3. Append the language code to `supportedLanguages` in `src/services/i18n.ts`.
 4. If the backend should expose the language, create `crates/clash-verge-i18n/<new-lang>.yml` and translate the keys used in existing YAML files.
-5. Run `pnpm i18n:format`, `pnpm i18n:types`, and (optionally) `pnpm i18n:check` in dry-run mode to confirm structure.
+5. Run `pnpm i18n:format` and (optionally) `pnpm i18n:check` in dry-run mode to confirm structure.
 
 ## Authoring guidelines
 
@@ -76,4 +79,4 @@ Native UI strings (tray menu, notifications, dialogs) use `rust-i18n` with YAML 
 
 - File an issue for missing context, tooling bugs, or localization gaps so we can track them.
 - PRs that touch UI should include screenshots or GIFs whenever text length may affect layout.
-- Mention the commands you ran (formatting, type generation, tests) in the PR checklist. If you need extra context or review help, request it via a PR comment.
+- Mention the commands you ran (formatting, tests) in the PR checklist. If you need extra context or review help, request it via a PR comment.

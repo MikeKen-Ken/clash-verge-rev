@@ -15,7 +15,6 @@ import {
   getSnapshotNotices,
   showNotice,
 } from "@/services/notice-service";
-import type { TranslationKey } from "@/types/generated/i18n-keys";
 
 type NoticePosition = NonNullable<IVergeConfig["notice_position"]>;
 type NoticeItem = ReturnType<typeof getSnapshotNotices>[number];
@@ -60,7 +59,7 @@ const resolveNoticeMessage = (
 
   const resolvedPrefix =
     typeof prefixKey === "string"
-      ? t(prefixKey as TranslationKey, {
+      ? t(prefixKey, {
           defaultValue: prefixKey,
           ...(prefixKeyParams ?? {}),
           ...restParams,
@@ -78,7 +77,7 @@ const resolveNoticeMessage = (
         ? `${resolvedPrefix} ${messageStr}`
         : messageStr;
 
-  return t(i18n.key as TranslationKey, {
+  return t(i18n.key, {
     defaultValue,
     ...restParams,
     ...(resolvedPrefix !== undefined ? { prefix: resolvedPrefix } : {}),
