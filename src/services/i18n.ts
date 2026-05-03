@@ -4,10 +4,13 @@ import { initReactI18next } from "react-i18next";
 /** 本分支仅使用简体中文：运行时与类型层面均不再解析为多语言代码 */
 export const supportedLanguages = ["zh"] as const;
 
-export const FALLBACK_LANGUAGE = "zh";
+export type SupportedLanguage = (typeof supportedLanguages)[number];
+
+export const FALLBACK_LANGUAGE: SupportedLanguage = "zh";
 const LANGUAGE_STORAGE_KEY = "verge-language";
 
-export const resolveLanguage = (_language?: string) => FALLBACK_LANGUAGE;
+export const resolveLanguage = (_language?: string): SupportedLanguage =>
+  FALLBACK_LANGUAGE;
 
 const getLanguageStorage = () => {
   if (typeof window === "undefined") return null;
