@@ -431,13 +431,16 @@ class DelayManager {
     nameList: string[],
     group: string,
     timeout: number,
-    concurrency = 36,
+    /** 显式并发上限；省略时使用代理页「Health check concurrency」所选值 */
+    concurrency?: number,
     /** 本次测速会话的开始时间戳（ms）。提供后只复用本次会话中已测出的新结果，不复用历史缓存。 */
     sessionStart?: number,
   ) {
     const names = nameList.filter(Boolean);
+    const requested = concurrency ?? delayCheckConcurrency;
+    const actualConcurrency = Math.min(requested, delayCheckConcurrency, names.length);
     debugLog(
-      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${concurrency} timeout:${timeout}ms`,
+      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${actualConcurrency} timeout:${timeout}ms`,
     );
     const startTime = Date.now();
     let reusedCount = 0;
@@ -488,11 +491,6 @@ class DelayManager {
       return help();
     };
 
-    const actualConcurrency = Math.min(
-      concurrency,
-      names.length,
-      delayCheckConcurrency,
-    );
     const promiseList: Promise<void>[] = [];
     for (let i = 0; i < actualConcurrency; i++) {
       promiseList.push(help());

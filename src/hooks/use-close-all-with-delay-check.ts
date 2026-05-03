@@ -90,7 +90,13 @@ export const useCloseAllWithDelayCheck = () => {
               debugLog(`[CloseAll] delayGroup error for group ${group.name}:`, error);
             });
 
-          await delayManager.checkListDelay(groupProxyNames, group.name, timeout, 36, sessionStart);
+          await delayManager.checkListDelay(
+            groupProxyNames,
+            group.name,
+            timeout,
+            undefined,
+            sessionStart,
+          );
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);

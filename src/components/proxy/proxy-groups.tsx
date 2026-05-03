@@ -490,7 +490,7 @@ export const ProxyGroups = (props: Props) => {
           names,
           groupName,
           timeout,
-          36,
+          undefined,
           sessionStart,
         );
       }

@@ -770,8 +770,7 @@ export const CurrentProxyCard = () => {
         // 全局模式仅用 checkListDelay，不跑 delayGroup。电脑端与安卓端使用相同核心（本仓库 mihomo）。
         // 规则模式：GET /group/Proxy/delay 的组内节点数通常几十，核内 group.URLTest() 并行即可快速返回。
         // 全局模式：GLOBAL 的 GetProxies 返回所有一级组/全部叶子，一次 GET /group/GLOBAL/delay 会触发对「全部节点」
-        // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；安卓测速走 HealthCheck，provider 内 SetLimit(30)。
-        // 故全局只跑 checkListDelay（约 30 并发单节点），与安卓体感一致。
+        // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；因此全局仅串行调用单节点 delay API（并发由代理页 Health check concurrency 限制）。
         if (isGlobalMode) {
           await delayManager.checkListDelay(proxyNames, groupName, timeout);
         } else {
