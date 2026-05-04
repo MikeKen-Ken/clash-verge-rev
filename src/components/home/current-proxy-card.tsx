@@ -15,6 +15,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   FormControl,
   IconButton,
   InputLabel,
@@ -47,7 +48,9 @@ import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
+  shouldSkipDelayCheck,
 } from "@/services/delay";
+import { hideNotice, showNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -259,7 +262,19 @@ export const CurrentProxyCard = () => {
   });
 
   const autoCheckInProgressRef = useRef(false);
+  const [manualDelayChecking, setManualDelayChecking] = useState(false);
+  const manualDelayNoticeIdRef = useRef<number | null>(null);
   const latestProxyRecordRef = useRef<any | null>(null);
+
+  useEffect(() => {
+    return () => {
+      const noticeId = manualDelayNoticeIdRef.current;
+      if (noticeId != null) {
+        manualDelayNoticeIdRef.current = null;
+        hideNotice(noticeId);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!state.selection.proxy) {
@@ -678,60 +693,59 @@ export const CurrentProxyCard = () => {
     const t0 = Date.now();
     const groupName = state.selection.group;
     if (!groupName || isDirectMode) return;
+    if (manualDelayChecking) return;
+    setManualDelayChecking(true);
 
-    debugLog(`[CurrentProxyCard] 开始测试所有延迟，组: ${groupName}`);
-    // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
-    markManualDelayCheckStarted();
-    
-    // 测速时清空该组的手动选择（对齐安卓端：后端会调用 ClearManualSelection）
-    if (currentProfile) {
-      const next = (currentProfile.selected ?? []).filter(
-        (s: { name?: string }) => s.name !== groupName,
+    try {
+      debugLog(`[CurrentProxyCard] 开始测试所有延迟，组: ${groupName}`);
+      manualDelayNoticeIdRef.current = showNotice.info(
+        `${t("home.components.currentProxy.actions.refreshDelay")}...`,
+        0,
       );
-      if (next.length !== (currentProfile.selected ?? []).length) {
-        patchCurrent({ selected: next }).catch(() => {});
-      }
-    }
+      // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
+      markManualDelayCheckStarted();
 
-    const group =
-      state.proxyData.records?.[groupName] ??
-      state.proxyData.groups.find((g: any) => g.name === groupName);
-    const timeout =
-      getGroupDelayTimeout(group ?? null, false) || DEFAULT_GROUP_TIMEOUT_MS;
-    const timeoutSource =
-      group?.timeout != null && group.timeout > 0
-        ? "group"
-        : "verge_or_default";
-    debugLog(
-      `[CurrentProxyCard] 测速开始 组:${groupName} timeout:${timeout}ms 来源:${timeoutSource} 组配置:${group?.timeout ?? "无"}`,
-    );
-
-    // 获取当前组的所有代理
-    const proxyNames: string[] = [];
-    const providers: Set<string> = new Set();
-
-    if (isGlobalMode && proxies?.global) {
-      // 全局模式
-      const allProxies = proxies.global.all
-        .filter((p: any) => {
-          const name = typeof p === "string" ? p : p.name;
-          return name !== "DIRECT" && name !== "REJECT";
-        })
-        .map((p: any) => (typeof p === "string" ? p : p.name));
-
-      allProxies.forEach((name: string) => {
-        const proxy = state.proxyData.records[name];
-        if (proxy?.provider) {
-          providers.add(proxy.provider);
-        } else {
-          proxyNames.push(name);
+      // 测速时清空该组的手动选择（对齐安卓端：后端会调用 ClearManualSelection）
+      if (currentProfile) {
+        const next = (currentProfile.selected ?? []).filter(
+          (s: { name?: string }) => s.name !== groupName,
+        );
+        if (next.length !== (currentProfile.selected ?? []).length) {
+          patchCurrent({ selected: next }).catch(() => {});
         }
-      });
-    } else {
-      // 规则模式
-      const group = state.proxyData.groups.find((g) => g.name === groupName);
-      if (group) {
-        group.all.forEach((name: string) => {
+      }
+
+      const group =
+        state.proxyData.records?.[groupName] ??
+        state.proxyData.groups.find((g: any) => g.name === groupName);
+      const timeout =
+        getGroupDelayTimeout(group ?? null, false) || DEFAULT_GROUP_TIMEOUT_MS;
+      const timeoutSource =
+        group?.timeout != null && group.timeout > 0
+          ? "group"
+          : "verge_or_default";
+      debugLog(
+        `[CurrentProxyCard] 测速开始 组:${groupName} timeout:${timeout}ms 来源:${timeoutSource} 组配置:${group?.timeout ?? "无"}`,
+      );
+
+      // 获取当前组的所有代理
+      const proxyNames: string[] = [];
+      const providers: Set<string> = new Set();
+
+      if (isGlobalMode && proxies?.global) {
+        // 全局模式
+        const allProxies = proxies.global.all
+          .filter((p: any) => {
+            const name = typeof p === "string" ? p : p.name;
+            return (
+              name !== "DIRECT" &&
+              name !== "REJECT" &&
+              !shouldSkipDelayCheck(name)
+            );
+          })
+          .map((p: any) => (typeof p === "string" ? p : p.name));
+
+        allProxies.forEach((name: string) => {
           const proxy = state.proxyData.records[name];
           if (proxy?.provider) {
             providers.add(proxy.provider);
@@ -739,64 +753,93 @@ export const CurrentProxyCard = () => {
             proxyNames.push(name);
           }
         });
-      }
-    }
-
-    debugLog(
-      `[CurrentProxyCard] 找到代理数量: ${proxyNames.length}, 提供者数量: ${providers.size}`,
-    );
-
-    // 测试提供者的节点
-    if (providers.size > 0) {
-      const tProv = Date.now();
-      debugLog(`[CurrentProxyCard] 开始测试提供者节点`);
-      await Promise.allSettled(
-        [...providers].map((p) => healthcheckProxyProvider(p)),
-      );
-      debugLog(
-        `[CurrentProxyCard] 提供者测速耗时: ${Date.now() - tProv}ms`,
-      );
-    }
-
-    // 测试非提供者的节点
-    if (proxyNames.length > 0) {
-      const url = delayManager.getUrl(groupName);
-      debugLog(
-        `[CurrentProxyCard] 测试URL: ${url}, 超时: ${timeout}ms, 节点数: ${proxyNames.length}`,
-      );
-
-      try {
-        const tList = Date.now();
-        // 全局模式仅用 checkListDelay，不跑 delayGroup。电脑端与安卓端使用相同核心（本仓库 mihomo）。
-        // 规则模式：GET /group/Proxy/delay 的组内节点数通常几十，核内 group.URLTest() 并行即可快速返回。
-        // 全局模式：GLOBAL 的 GetProxies 返回所有一级组/全部叶子，一次 GET /group/GLOBAL/delay 会触发对「全部节点」
-        // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；因此全局仅串行调用单节点 delay API（并发由代理页 Health check concurrency 限制）。
-        if (isGlobalMode) {
-          await delayManager.checkListDelay(proxyNames, groupName, timeout);
-        } else {
-          await Promise.race([
-            delayManager.checkListDelay(proxyNames, groupName, timeout),
-            delayGroup(groupName, url, timeout),
-          ]);
+      } else {
+        // 规则模式
+        const group = state.proxyData.groups.find((g) => g.name === groupName);
+        if (group) {
+          group.all.forEach((name: string) => {
+            if (shouldSkipDelayCheck(name)) return;
+            const proxy = state.proxyData.records[name];
+            if (proxy?.provider) {
+              providers.add(proxy.provider);
+            } else {
+              proxyNames.push(name);
+            }
+          });
         }
-        debugLog(
-          `[CurrentProxyCard] checkListDelay/delayGroup 耗时: ${Date.now() - tList}ms, 组: ${groupName}`,
+      }
+
+      debugLog(
+        `[CurrentProxyCard] 找到代理数量: ${proxyNames.length}, 提供者数量: ${providers.size}`,
+      );
+
+      // 测试提供者的节点
+      if (providers.size > 0) {
+        const tProv = Date.now();
+        debugLog(`[CurrentProxyCard] 开始测试提供者节点`);
+        await Promise.allSettled(
+          [...providers].map((p) => healthcheckProxyProvider(p)),
         );
         debugLog(
-          `[CurrentProxyCard] 测速总耗时: ${Date.now() - t0}ms`,
-        );
-      } catch (error) {
-        console.error(
-          `[CurrentProxyCard] 延迟测试出错，组: ${groupName}`,
-          error,
+          `[CurrentProxyCard] 提供者测速耗时: ${Date.now() - tProv}ms`,
         );
       }
-    }
 
-    refreshProxy();
-    await closeConnectionsExcludingDirect();
-    if (sortType === 1) {
-      setDelaySortRefresh((prev) => prev + 1);
+      // 测试非提供者的节点
+      if (proxyNames.length > 0) {
+        const url = delayManager.getUrl(groupName);
+        debugLog(
+          `[CurrentProxyCard] 测试URL: ${url}, 超时: ${timeout}ms, 节点数: ${proxyNames.length}`,
+        );
+
+        try {
+          const tList = Date.now();
+          // 全局模式仅用 checkListDelay，不跑 delayGroup。电脑端与安卓端使用相同核心（本仓库 mihomo）。
+          // 规则模式：GET /group/Proxy/delay 的组内节点数通常几十，核内 group.URLTest() 并行即可快速返回。
+          // 全局模式：GLOBAL 的 GetProxies 返回所有一级组/全部叶子，一次 GET /group/GLOBAL/delay 会触发对「全部节点」
+          // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；因此全局仅串行调用单节点 delay API（并发由代理页 Health check concurrency 限制）。
+          if (isGlobalMode) {
+            await delayManager.checkListDelay(proxyNames, groupName, timeout);
+          } else {
+            await Promise.race([
+              delayManager.checkListDelay(proxyNames, groupName, timeout),
+              delayGroup(groupName, url, timeout),
+            ]);
+          }
+          debugLog(
+            `[CurrentProxyCard] checkListDelay/delayGroup 耗时: ${Date.now() - tList}ms, 组: ${groupName}`,
+          );
+          debugLog(
+            `[CurrentProxyCard] 测速总耗时: ${Date.now() - t0}ms`,
+          );
+        } catch (error) {
+          console.error(
+            `[CurrentProxyCard] 延迟测试出错，组: ${groupName}`,
+            error,
+          );
+        }
+      }
+
+      refreshProxy();
+      await closeConnectionsExcludingDirect();
+      if (sortType === 1) {
+        setDelaySortRefresh((prev) => prev + 1);
+      }
+      showNotice.success(
+        `${t("home.components.currentProxy.actions.refreshDelay")} ${t("tests.statuses.test.completed")}`,
+      );
+    } catch (error) {
+      console.error(
+        `[CurrentProxyCard] 手动测速流程异常，组: ${groupName}`,
+        error,
+      );
+    } finally {
+      const noticeId = manualDelayNoticeIdRef.current;
+      if (noticeId != null) {
+        manualDelayNoticeIdRef.current = null;
+        hideNotice(noticeId);
+      }
+      setManualDelayChecking(false);
     }
   });
 
@@ -936,16 +979,24 @@ export const CurrentProxyCard = () => {
       action={
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Tooltip
-            title={t("home.components.currentProxy.actions.refreshDelay")}
+            title={
+              manualDelayChecking
+                ? `${t("home.components.currentProxy.actions.refreshDelay")}...`
+                : t("home.components.currentProxy.actions.refreshDelay")
+            }
           >
             <span>
               <IconButton
                 size="small"
                 color="inherit"
                 onClick={handleCheckDelay}
-                disabled={isDirectMode}
+                disabled={isDirectMode || manualDelayChecking}
               >
-                <NetworkCheckRounded />
+                {manualDelayChecking ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <NetworkCheckRounded />
+                )}
               </IconButton>
             </span>
           </Tooltip>

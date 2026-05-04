@@ -55,6 +55,7 @@ const CACHE_TTL = 30 * 60 * 1000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
 const DEFAULT_DELAY_CHECK_CONCURRENCY = 30;
+const DELAY_CHECK_EXCLUDED_NAMES = new Set(["⬆️", "↩️"]);
 
 const LEGACY_DELAY_CHECK_CONCURRENCY = new Set([10, 20, 40]);
 
@@ -96,6 +97,11 @@ export function setDelayCheckConcurrency(value: number) {
       // ignore localStorage failure
     }
   }
+}
+
+export function shouldSkipDelayCheck(name: string | null | undefined): boolean {
+  if (typeof name !== "string") return false;
+  return DELAY_CHECK_EXCLUDED_NAMES.has(name.trim());
 }
 
 class DelayManager {
@@ -381,6 +387,10 @@ class DelayManager {
     );
 
     const silent = options?.silentGlobal ?? false;
+    if (shouldSkipDelayCheck(name)) {
+      debugLog(`[DelayManager] 跳过测速，代理: ${name}, 组: ${group}`);
+      return this.setDelay(name, group, -1, { silentGlobal: silent });
+    }
     // 先将状态设置为测试中
     this.setDelay(name, group, -2, { silentGlobal: silent });
 
@@ -436,7 +446,7 @@ class DelayManager {
     /** 本次测速会话的开始时间戳（ms）。提供后只复用本次会话中已测出的新结果，不复用历史缓存。 */
     sessionStart?: number,
   ) {
-    const names = nameList.filter(Boolean);
+    const names = nameList.filter((name) => name && !shouldSkipDelayCheck(name));
     const requested = concurrency ?? delayCheckConcurrency;
     const actualConcurrency = Math.min(requested, delayCheckConcurrency, names.length);
     debugLog(

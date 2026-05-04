@@ -21,7 +21,11 @@ import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
-import delayManager, { getGroupDelayTimeout } from "@/services/delay";
+import delayManager, {
+  getGroupDelayTimeout,
+  shouldSkipDelayCheck,
+} from "@/services/delay";
+import { hideNotice, showNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -86,6 +90,17 @@ export const ProxyGroups = (props: Props) => {
     message: string;
   }>({ open: false, message: "" });
   const isDelayCheckingRef = useRef(false);
+  const delayCheckingNoticeIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      const noticeId = delayCheckingNoticeIdRef.current;
+      if (noticeId != null) {
+        delayCheckingNoticeIdRef.current = null;
+        hideNotice(noticeId);
+      }
+    };
+  }, []);
 
   const { verge } = useVerge();
   const { proxies: proxiesData } = useAppData();
@@ -118,14 +133,14 @@ export const ProxyGroups = (props: Props) => {
   const lastCleanupRef = useRef<string>("");
   useEffect(() => {
     if (!current?.selected?.length || !groups?.length) return;
-    
+
     const validGroupNames = new Set(
       (groups as any[]).map((g: any) => g.name).filter(Boolean)
     );
     const invalidGroups = (current.selected ?? [])
       .map((s: any) => s.name)
       .filter((name: string) => !validGroupNames.has(name));
-    
+
     if (invalidGroups.length > 0) {
       const cleanupKey = invalidGroups.sort().join(",");
       // 避免重复清理同一批记录
@@ -440,6 +455,10 @@ export const ProxyGroups = (props: Props) => {
     }
     isDelayCheckingRef.current = true;
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
+    delayCheckingNoticeIdRef.current = showNotice.info(
+      `${t("proxies.page.tooltips.delayCheck")}...`,
+      0,
+    );
     markManualDelayCheckStarted();
 
     // 本次测速会话时间戳：只有 updatedAt >= sessionStart 的缓存才可跨组复用
@@ -454,7 +473,7 @@ export const ProxyGroups = (props: Props) => {
         (s) => !allGroupNames.has(s.name),
       );
       if (next.length !== (current.selected ?? []).length) {
-        patchCurrent({ selected: next }).catch(() => {});
+        patchCurrent({ selected: next }).catch(() => { });
       }
     }
 
@@ -472,7 +491,7 @@ export const ProxyGroups = (props: Props) => {
         });
 
         const names = proxies
-          .filter((p) => !p.provider)
+          .filter((p) => !p.provider && !shouldSkipDelayCheck(p.name))
           .map((p) => p.name)
           .filter(Boolean);
 
@@ -484,7 +503,7 @@ export const ProxyGroups = (props: Props) => {
         );
 
         // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
-        delayGroup(groupName, url, timeout).catch(() => {});
+        delayGroup(groupName, url, timeout).catch(() => { });
 
         await delayManager.checkListDelay(
           names,
@@ -521,7 +540,7 @@ export const ProxyGroups = (props: Props) => {
           if (next.length !== (current.selected ?? []).length) {
             patchCurrent({ selected: next })
               .then(() => mutateProfiles())
-              .catch(() => {});
+              .catch(() => { });
           }
         }
 
@@ -535,7 +554,15 @@ export const ProxyGroups = (props: Props) => {
 
         await closeConnectionsExcludingDirect();
         onProxies();
+        showNotice.success(
+          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}`,
+        );
       } finally {
+        const noticeId = delayCheckingNoticeIdRef.current;
+        if (noticeId != null) {
+          delayCheckingNoticeIdRef.current = null;
+          hideNotice(noticeId);
+        }
         isDelayCheckingRef.current = false;
       }
     }
@@ -687,7 +714,6 @@ export const ProxyGroups = (props: Props) => {
                   key={renderList[index].key}
                   item={renderList[index]}
                   indent={mode === "rule" || mode === "script"}
-                  onCheckAll={handleCheckAll}
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
@@ -827,7 +853,6 @@ export const ProxyGroups = (props: Props) => {
             key={renderList[index].key}
             item={renderList[index]}
             indent={mode === "rule" || mode === "script"}
-            onCheckAll={handleCheckAll}
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
