@@ -461,7 +461,7 @@ export const ProxyGroups = (props: Props) => {
     isDelayCheckingRef.current = true;
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     delayCheckingNoticeIdRef.current = showNotice.info(
-      `${t("proxies.page.tooltips.delayCheck")}...`,
+      `${t("proxies.page.tooltips.delayCheck")}进行中...`,
       0,
     );
     markManualDelayCheckStarted();
@@ -594,10 +594,17 @@ export const ProxyGroups = (props: Props) => {
           }
         }
 
-        await closeConnectionsExcludingDirect();
+        // 关闭连接可能较慢，不应阻塞测速完成后的 UI 刷新与通知收尾
+        void closeConnectionsExcludingDirect()
+          .then(() => {
+            onProxies();
+          })
+          .catch((error) => {
+            console.error("[ProxyGroups] 关闭非 DIRECT 连接失败", error);
+          });
         onProxies();
         showNotice.success(
-          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}`,
+          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
         );
       } finally {
         const noticeId = delayCheckingNoticeIdRef.current;
