@@ -51,10 +51,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
 
-      // 本次测速会话时间戳：第一组强制真实测速，后续组复用本次会话已测出的节点结果
-      const sessionStart = Date.now();
-
-      // 按顺序逐组测速
+      // 按顺序逐组测速（每组独立请求核心，与安卓端一致）
       for (const group of groups as IProxyGroupItem[]) {
         if (!group.all || group.all.length === 0) continue;
 
@@ -90,13 +87,7 @@ export const useCloseAllWithDelayCheck = () => {
               debugLog(`[CloseAll] delayGroup error for group ${group.name}:`, error);
             });
 
-          await delayManager.checkListDelay(
-            groupProxyNames,
-            group.name,
-            timeout,
-            undefined,
-            sessionStart,
-          );
+          await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);

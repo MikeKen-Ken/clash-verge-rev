@@ -21,10 +21,7 @@ import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
-import delayManager, {
-  getGroupDelayTimeout,
-  shouldSkipDelayCheck,
-} from "@/services/delay";
+import delayManager, { getGroupDelayTimeout } from "@/services/delay";
 import { hideNotice, showNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
@@ -443,8 +440,7 @@ export const ProxyGroups = (props: Props) => {
     [handleProxyGroupChange, isChainMode, t],
   );
 
-  // 测全部延迟：不管点击哪个组，始终对所有组按顺序测速。
-  // 第一个组强制重新测速（sessionStart 过滤历史缓存），后续组自动复用第一组本次会话的结果。
+  // 测全部延迟：不管点击哪个组，始终对所有组按顺序测速（每组独立请求核心，与安卓端一致，不跨组复用前端缓存）。
   const handleCheckAll = useCallback(async (_groupName: string) => {
     if (isDelayCheckingRef.current) {
       setDelayCheckBusyWarning({
@@ -460,9 +456,6 @@ export const ProxyGroups = (props: Props) => {
       0,
     );
     markManualDelayCheckStarted();
-
-    // 本次测速会话时间戳：只有 updatedAt >= sessionStart 的缓存才可跨组复用
-    const sessionStart = Date.now();
 
     // 测速前清空所有组的手动选择
     if (current) {
@@ -480,7 +473,7 @@ export const ProxyGroups = (props: Props) => {
     const allProviders = new Set<string>();
 
     try {
-      // 按顺序逐组测速：第一组全量真实测速，后续组复用本次会话已测出的节点结果
+      // 按顺序逐组测速：每组节点均走 delay API（不在前端跨组复用测速结果）
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
         const timeout = getGroupDelayTimeout(group, false);
@@ -491,7 +484,7 @@ export const ProxyGroups = (props: Props) => {
         });
 
         const names = proxies
-          .filter((p) => !p.provider && !shouldSkipDelayCheck(p.name))
+          .filter((p) => !p.provider)
           .map((p) => p.name)
           .filter(Boolean);
 
@@ -505,13 +498,7 @@ export const ProxyGroups = (props: Props) => {
         // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
         delayGroup(groupName, url, timeout).catch(() => { });
 
-        await delayManager.checkListDelay(
-          names,
-          groupName,
-          timeout,
-          undefined,
-          sessionStart,
-        );
+        await delayManager.checkListDelay(names, groupName, timeout);
       }
       debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
     } catch (error) {
@@ -714,6 +701,7 @@ export const ProxyGroups = (props: Props) => {
                   key={renderList[index].key}
                   item={renderList[index]}
                   indent={mode === "rule" || mode === "script"}
+                  onCheckAll={handleCheckAll}
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
@@ -853,6 +841,7 @@ export const ProxyGroups = (props: Props) => {
             key={renderList[index].key}
             item={renderList[index]}
             indent={mode === "rule" || mode === "script"}
+            onCheckAll={handleCheckAll}
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}

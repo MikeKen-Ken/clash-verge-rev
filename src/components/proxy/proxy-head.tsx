@@ -1,5 +1,6 @@
 import {
   AccessTimeRounded,
+  NetworkCheckRounded,
   VisibilityRounded,
   VisibilityOffRounded,
   SortByAlphaRounded,
@@ -10,6 +11,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import delayManager from "@/services/delay";
+import { debugLog } from "@/utils/debug";
 
 import type { ProxySortType } from "./use-filter-sort";
 import type { HeadState } from "./use-head-state";
@@ -19,6 +21,7 @@ interface Props {
   url?: string;
   groupName: string;
   headState: HeadState;
+  onCheckDelay: () => void;
   onHeadState: (val: Partial<HeadState>) => void;
 }
 
@@ -30,8 +33,14 @@ export const ProxyHead = ({
   groupName,
   headState,
   onHeadState,
+  onCheckDelay,
 }: Props) => {
-  const { showType, sortType, testUrl } = headState;
+  const {
+    showType,
+    sortType,
+    textState,
+    testUrl,
+  } = headState;
 
   const { t } = useTranslation();
 
@@ -42,6 +51,23 @@ export const ProxyHead = ({
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ...sx }}>
+      <IconButton
+        size="small"
+        color="inherit"
+        title={t("proxies.page.tooltips.delayCheck")}
+        onClick={() => {
+          debugLog(`[ProxyHead] 点击延迟测试按钮，组: ${groupName}`);
+          // Remind the user that it is custom test url
+          if (testUrl?.trim() && textState !== "filter") {
+            debugLog(`[ProxyHead] 使用自定义测试URL: ${testUrl}`);
+            onHeadState({ textState: "url" });
+          }
+          onCheckDelay();
+        }}
+      >
+        <NetworkCheckRounded />
+      </IconButton>
+
       <IconButton
         size="small"
         color="inherit"

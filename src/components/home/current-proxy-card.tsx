@@ -48,7 +48,6 @@ import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
-  shouldSkipDelayCheck,
 } from "@/services/delay";
 import { hideNotice, showNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
@@ -737,11 +736,7 @@ export const CurrentProxyCard = () => {
         const allProxies = proxies.global.all
           .filter((p: any) => {
             const name = typeof p === "string" ? p : p.name;
-            return (
-              name !== "DIRECT" &&
-              name !== "REJECT" &&
-              !shouldSkipDelayCheck(name)
-            );
+            return name !== "DIRECT" && name !== "REJECT";
           })
           .map((p: any) => (typeof p === "string" ? p : p.name));
 
@@ -758,7 +753,6 @@ export const CurrentProxyCard = () => {
         const group = state.proxyData.groups.find((g) => g.name === groupName);
         if (group) {
           group.all.forEach((name: string) => {
-            if (shouldSkipDelayCheck(name)) return;
             const proxy = state.proxyData.records[name];
             if (proxy?.provider) {
               providers.add(proxy.provider);
