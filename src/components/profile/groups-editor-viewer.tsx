@@ -55,6 +55,7 @@ import {
   readProfileFile,
   saveProfileFile,
 } from "@/services/cmds";
+import { DEFAULT_DELAY_TEST_URL } from "@/services/delay";
 import { showNotice } from "@/services/notice-service";
 import { useThemeMode } from "@/services/states";
 import getSystem from "@/utils/get-system";
@@ -599,7 +600,7 @@ export const GroupsEditorViewer = (props: Props) => {
                       />
                       <TextField
                         autoComplete="new-password"
-                        placeholder="https://cp.cloudflare.com/generate_204"
+                        placeholder={DEFAULT_DELAY_TEST_URL}
                         size="small"
                         sx={{ width: "calc(100% - 150px)" }}
                         {...field}

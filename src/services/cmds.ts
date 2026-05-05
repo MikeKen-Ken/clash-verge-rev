@@ -3,6 +3,9 @@ import dayjs from "dayjs";
 import { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
 
 import { showNotice } from "@/services/notice-service";
+import {
+  DEFAULT_DELAY_TEST_URL,
+} from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
 export async function copyClashEnv() {
@@ -441,7 +444,8 @@ export async function cmdGetProxyDelay(
   url?: string,
 ) {
   // 确保URL不为空
-  const testUrl = url || "https://cp.cloudflare.com/generate_204";
+  // 未传 url 时与 delay 默认测速一致
+  const testUrl = url || DEFAULT_DELAY_TEST_URL;
 
   try {
     // 不再在前端编码代理名称，由后端统一处理编码

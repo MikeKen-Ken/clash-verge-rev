@@ -443,7 +443,7 @@ export const ProxyGroups = (props: Props) => {
     [handleProxyGroupChange, isChainMode, t],
   );
 
-  // 测全部延迟：按组顺序测试；同一「测速 URL + 超时 + 节点名」在本次会话复用首轮结果（与核心侧同名出站共享语义一致）。
+  // 测全部延迟：按组顺序测试；同一会话内同一出站名复用首轮测速（含嵌套组出现在多个父 selector）
   const handleCheckAll = useCallback(async (_groupName: string) => {
     if (isDelayCheckingRef.current) {
       setDelayCheckBusyWarning({

@@ -55,7 +55,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
 
-      // 顺序测速；同名同 URL + 超时在会话内复用（对齐核心侧出站共享语义）
+      // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
       for (const group of groups as IProxyGroupItem[]) {
         if (!group.all || group.all.length === 0) continue;
 

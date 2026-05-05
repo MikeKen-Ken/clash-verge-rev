@@ -46,6 +46,14 @@ export const AppDataProvider = ({
     SWR_MIHOMO,
   );
 
+  /** 用于按出站解析 test-url（对齐原生），与 UI 列表父组无关 */
+  useEffect(() => {
+    delayManager.syncProxyTopo(
+      proxiesData?.records,
+      proxiesData?.groups as IProxyGroupItem[] | undefined,
+    );
+  }, [proxiesData?.records, proxiesData?.groups]);
+
   const { data: clashConfig, mutate: refreshClashConfig } = useSWR(
     "getClashConfig",
     getBaseConfig,

@@ -2,7 +2,16 @@ import { delayProxyByName, ProxyDelay } from "tauri-plugin-mihomo-api";
 
 import { debugLog } from "@/utils/debug";
 
-const hashKey = (name: string, group: string) => `${group ?? ""}::${name}`;
+/** 默认测速 URL（与 Android `tunnel/connectivity.go` 中空 testURL 一致） */
+export const DEFAULT_DELAY_TEST_URL =
+  "https://www.gstatic.com/generate_204";
+
+/** @deprecated 请使用 DEFAULT_DELAY_TEST_URL */
+export const ANDROID_HEALTH_CHECK_FALLBACK_URL = DEFAULT_DELAY_TEST_URL;
+
+/** 组件订阅键：仍按「组 + 出站名」区分单元格，避免同名节点在不同列表的监听器互相覆盖 */
+const listenerSubscriptionKey = (group: string, name: string) =>
+  `${String(group ?? "")}\u0000${name}`;
 
 /** 配置里未指定时的默认超时（与 core GroupBase 一致） */
 export const DEFAULT_GROUP_TIMEOUT_MS = 5000;
@@ -51,13 +60,10 @@ export interface DelayUpdate {
   updatedAt: number;
 }
 
-/** 批量测速时跨组复用：与核心侧「同一出站名共享延迟」对齐，键含 URL 与 timeout 避免不同组配置混用结果 */
-function bulkDelayReuseKey(
-  url: string,
-  name: string,
-  timeout: number,
-): string {
-  return `${timeout}\u0000${url}\u0000${name}`;
+/** 批量测速会话内跨父组复用：与核心「同一出站名共享一条延迟」一致。仅用出站名作键：
+ * 嵌套 selector（如 🔀）出现在多个父组时，若键含父组 URL/timeout 会误杀复用。 */
+function bulkDelayReuseKey(name: string): string {
+  return name;
 }
 
 export interface CheckDelayOptions {
@@ -118,11 +124,23 @@ export function setDelayCheckConcurrency(value: number) {
 }
 
 class DelayManager {
+  /** 延迟按出站名一条（对齐 mihomo 核心单登记表）；组参数仅用于测速 URL 与订阅 UI */
   private cache = new Map<string, DelayUpdate>();
   private urlMap = new Map<string, string>();
 
+  /** 来自 /proxies 快照，用于解析出站本体 test-url（对齐原生 Provider HealthCheckURL 语义） */
+  private topoRecords: Record<string, IProxyItem> | undefined;
+  private topoGroups: IProxyGroupItem[] | undefined;
+
+  /** 出站名 → 订阅该节点的 listenerSubscriptionKey（多父组可多条） */
+  private listenerKeysByName = new Map<string, Set<string>>();
+
   // 每个节点的监听
   private listenerMap = new Map<string, (update: DelayUpdate) => void>();
+
+  /** 合并触发各组延迟排序刷新，避免多父组下仅当前组 reorder */
+  private groupListenerBumpTimerId: number | undefined = undefined;
+  private readonly GROUP_LISTENER_BUMP_MS = 120;
 
   // 每个分组的监听
   private groupListenerMap = new Map<string, () => void>();
@@ -237,6 +255,26 @@ class DelayManager {
     }
   }
 
+  /** 防抖通知所有已注册 groupListener 的组（延迟排序等），与「出站名全局缓存」配套 */
+  private scheduleNotifyAllGroupListeners() {
+    if (this.groupListenerBumpTimerId !== undefined) return;
+    const run = () => {
+      this.groupListenerBumpTimerId = undefined;
+      for (const g of this.groupListenerMap.keys()) {
+        this.pendingGroupUpdates.add(g);
+      }
+      this.scheduleGroupFlush();
+    };
+    if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+      this.groupListenerBumpTimerId = window.setTimeout(
+        run,
+        this.GROUP_LISTENER_BUMP_MS,
+      );
+    } else {
+      Promise.resolve().then(run);
+    }
+  }
+
   setGlobalListener(listener: () => void) {
     this.globalListener = listener;
   }
@@ -245,18 +283,66 @@ class DelayManager {
     this.globalListener = null;
   }
 
+  /**
+   * 同步代理列表快照（须在拉取 proxies 后调用）。用于按出站名解析 test-url，
+   * 避免嵌套 selector 沿用父列表表头的 URL。
+   */
+  syncProxyTopo(
+    records: Record<string, IProxyItem> | undefined,
+    groups: IProxyGroupItem[] | undefined,
+  ) {
+    this.topoRecords = records;
+    this.topoGroups = groups;
+  }
+
   setUrl(group: string, url: string) {
     debugLog(`[DelayManager] 设置测试URL，组: ${group}, URL: ${url}`);
     this.urlMap.set(group, url);
   }
 
   getUrl(group: string) {
-    const url = this.urlMap.get(group);
+    const ui = this.urlMap.get(group)?.trim();
+    if (ui) {
+      debugLog(`[DelayManager] 获取测试URL（UI），组: ${group}, URL: ${ui}`);
+      return ui;
+    }
+    const fromTopo = this.topoGroups
+      ?.find((g) => g.name === group)
+      ?.testUrl?.trim();
+    if (fromTopo) {
+      debugLog(
+        `[DelayManager] 获取测试URL（配置/核心），组: ${group}, URL: ${fromTopo}`,
+      );
+      return fromTopo;
+    }
     debugLog(
-      `[DelayManager] 获取测试URL，组: ${group}, URL: ${url || "未设置"}`,
+      `[DelayManager] 获取默认测试URL（默认测速），组: ${group}, URL: ${DEFAULT_DELAY_TEST_URL}`,
     );
-    // 如果未设置URL，返回默认URL
-    return url || "https://cp.cloudflare.com/generate_204";
+    return DEFAULT_DELAY_TEST_URL;
+  }
+
+  /**
+   * 单节点测速：`records[name]` / 出站本身为 selector 时在 `groups` 中取 test-url；
+   * 再用当前列表上下文组的有效 URL（与安卓组内对每个 proxy.URLTest 的 URL 链一致）。
+   */
+  getTestUrlForOutbound(outboundName: string, contextGroup: string): string {
+    const recUrl = this.topoRecords?.[outboundName]?.testUrl?.trim();
+    if (recUrl) {
+      debugLog(
+        `[DelayManager] 出站 ${outboundName} 使用 records.testUrl: ${recUrl}`,
+      );
+      return recUrl;
+    }
+    const asGroupUrl = this.topoGroups
+      ?.find((g) => g.name === outboundName)
+      ?.testUrl?.trim();
+    if (asGroupUrl) {
+      debugLog(
+        `[DelayManager] 出站 ${outboundName} 使用 policy-group.testUrl: ${asGroupUrl}`,
+      );
+      return asGroupUrl;
+    }
+    return this.getUrl(contextGroup);
   }
 
   setListener(
@@ -264,13 +350,26 @@ class DelayManager {
     group: string,
     listener: (update: DelayUpdate) => void,
   ) {
-    const key = hashKey(name, group);
+    const key = listenerSubscriptionKey(group, name);
     this.listenerMap.set(key, listener);
+    let subscribers = this.listenerKeysByName.get(name);
+    if (!subscribers) {
+      subscribers = new Set<string>();
+      this.listenerKeysByName.set(name, subscribers);
+    }
+    subscribers.add(key);
   }
 
   removeListener(name: string, group: string) {
-    const key = hashKey(name, group);
+    const key = listenerSubscriptionKey(group, name);
     this.listenerMap.delete(key);
+    const subscribers = this.listenerKeysByName.get(name);
+    if (subscribers) {
+      subscribers.delete(key);
+      if (subscribers.size === 0) {
+        this.listenerKeysByName.delete(name);
+      }
+    }
   }
 
   setGroupListener(group: string, listener: () => void) {
@@ -287,9 +386,8 @@ class DelayManager {
     delay: number,
     meta?: { elapsed?: number; /** 为 true 时不触发全量刷新，仅通知该节点的监听器 */ silentGlobal?: boolean },
   ): DelayUpdate {
-    const key = hashKey(name, group);
     debugLog(
-      `[DelayManager] 设置延迟，代理: ${name}, 组: ${group}, 延迟: ${delay}`,
+      `[DelayManager] 设置延迟（按出站名共享），代理: ${name}, 上下文组: ${group}, 延迟: ${delay}`,
     );
     const update: DelayUpdate = {
       delay,
@@ -297,29 +395,36 @@ class DelayManager {
       updatedAt: Date.now(),
     };
 
-    this.cache.set(key, update);
+    this.cache.set(name, update);
 
-    const queue = this.pendingItemUpdates.get(key);
-    if (queue) {
-      queue.push(update);
-    } else {
-      this.pendingItemUpdates.set(key, [update]);
+    const subscribers = this.listenerKeysByName.get(name);
+    if (subscribers) {
+      for (const lk of subscribers) {
+        const queue = this.pendingItemUpdates.get(lk);
+        if (queue) {
+          queue.push(update);
+        } else {
+          this.pendingItemUpdates.set(lk, [update]);
+        }
+      }
+      this.scheduleItemFlush();
     }
-    this.scheduleItemFlush();
+
     if (!meta?.silentGlobal) {
       this.scheduleGlobalFlush();
+      this.scheduleNotifyAllGroupListeners();
     }
 
     return update;
   }
 
-  getDelayUpdate(name: string, group: string) {
-    const key = hashKey(name, group);
-    const entry = this.cache.get(key);
+  /** `group` 仅为兼容；读缓存与安卓/核心一致，仅按出站名 */
+  getDelayUpdate(name: string, _group?: string) {
+    const entry = this.cache.get(name);
     if (!entry) return undefined;
 
     if (Date.now() - entry.updatedAt > CACHE_TTL) {
-      this.cache.delete(key);
+      this.cache.delete(name);
       return undefined;
     }
 
@@ -368,10 +473,10 @@ class DelayManager {
     );
 
     const silent = options?.silentGlobal ?? false;
-    const url = this.getUrl(group);
+    const url = this.getTestUrlForOutbound(name, group);
     const reuseMap = options?.bulkReuseMap;
     const reuseKey =
-      reuseMap ? bulkDelayReuseKey(url, name, timeout) : undefined;
+      reuseMap ? bulkDelayReuseKey(name) : undefined;
 
     if (reuseMap != null && reuseKey !== undefined) {
       const cached = reuseMap.get(reuseKey);
@@ -456,7 +561,6 @@ class DelayManager {
     names.forEach((name) => this.setDelay(name, group, -2));
 
     let index = 0;
-    const listener = this.groupListenerMap.get(group);
 
     const help = async (): Promise<void> => {
       const currName = names[index++];
@@ -479,9 +583,6 @@ class DelayManager {
         debugLog(
           `[DelayManager] 单节点API 代理:${currName} 耗时:${nodeElapsed}ms`,
         );
-        if (listener) {
-          this.queueGroupNotification(group);
-        }
       } catch (error) {
         console.error(
           `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
