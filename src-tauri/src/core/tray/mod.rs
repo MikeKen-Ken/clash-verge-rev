@@ -950,9 +950,8 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
                 feat::toggle_tun_mode(None).await;
             }
             MenuIds::CLOSE_ALL_CONNECTIONS => {
-                if let Err(err) = handle::Handle::mihomo().await.close_all_connections().await {
-                    logging!(error, Type::Tray, "Failed to close all connections from tray: {err}");
-                }
+                logging!(info, Type::Tray, "托盘菜单点击: 关闭所有连接");
+                handle::Handle::notify_close_all_connections();
             }
             MenuIds::COPY_ENV => feat::copy_clash_env().await,
             MenuIds::CONF_DIR => {

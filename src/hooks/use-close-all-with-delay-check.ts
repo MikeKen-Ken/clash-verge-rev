@@ -1,12 +1,14 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
+import { useTranslation } from "react-i18next";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
   type DelayUpdate,
 } from "@/services/delay";
+import { hideNotice, showNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
@@ -17,15 +19,25 @@ import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify"
  */
 export const useCloseAllWithDelayCheck = () => {
   const { proxies: proxiesData } = useAppData();
+  const { t } = useTranslation();
+  const delayCheckingNoticeIdRef = useRef<number | null>(null);
 
   const handleCloseAllWithDelayCheck = useCallback(async () => {
     // 标记关闭连接开始，在此后 10 秒内禁用 fallback 切换通知
     markCloseConnectionsStarted();
-    
+
+    delayCheckingNoticeIdRef.current = showNotice.info(
+      `${t("proxies.page.tooltips.delayCheck")}进行中...`,
+      0,
+    );
+
     try {
       if (!proxiesData?.groups) {
         debugLog("[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)");
         await closeConnectionsExcludingDirect();
+        showNotice.success(
+          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
+        );
         return;
       }
 
@@ -183,11 +195,20 @@ export const useCloseAllWithDelayCheck = () => {
       } catch (error) {
         console.error("[CloseAll] Failed to send notification:", error);
       }
+      showNotice.success(
+        `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
+      );
     } catch (error) {
       console.error("[CloseAll] Error during close all connections:", error);
+    } finally {
+      const noticeId = delayCheckingNoticeIdRef.current;
+      if (noticeId != null) {
+        delayCheckingNoticeIdRef.current = null;
+        hideNotice(noticeId);
+      }
     }
     // 注意：不需要重置关闭连接状态，因为使用基于时间的冷却期（10秒）
-  }, [proxiesData]);
+  }, [proxiesData, t]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;

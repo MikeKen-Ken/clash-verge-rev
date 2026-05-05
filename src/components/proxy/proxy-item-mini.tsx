@@ -193,7 +193,7 @@ export const ProxyItemMini = (props: Props) => {
               marginTop: "4px",
             }}
           >
-            {proxy.now && (
+            {proxy.now && !itemDisplayName && (
               <Typography
                 variant="body2"
                 component="div"

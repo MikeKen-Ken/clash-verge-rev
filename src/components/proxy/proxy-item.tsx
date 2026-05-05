@@ -199,7 +199,7 @@ export const ProxyItem = (props: Props) => {
                   />
                 )}
                 {itemDisplayName ?? proxy.name}
-                {showType && proxy.now && ` - ${proxy.now}`}
+                {showType && proxy.now && !itemDisplayName && ` - ${proxy.now}`}
               </Box>
               {showType && !!proxy.provider && (
                 <TypeBox>{proxy.provider}</TypeBox>

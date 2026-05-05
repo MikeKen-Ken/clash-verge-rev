@@ -38,10 +38,13 @@ interface RenderProps {
   /** 当前使用的节点名（用于高亮） */
   getSelectedForGroup?: (groupName: string) => string | undefined;
   /** 组头显示的「当前节点」文案；当 now 为子分组时会解析为「子分组名 (实际节点)」 */
-  getDisplayNowForGroup?: (group: {
-    name: string;
-    now?: string | null;
-  }) => string;
+  getDisplayNowForGroup?: (
+    group: {
+      name: string;
+      now?: string | null;
+    },
+    useNameAsLabel?: boolean,
+  ) => string;
   /** 仅当返回值等于节点名时显示「手动选择」图标（Selector/URLTest/Fallback 组） */
   getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
@@ -79,11 +82,21 @@ const ProxyRenderInner = (props: RenderProps) => {
     const manualName = getManualSelectionForGroup?.(group.name);
     return proxyCol.map((proxyItem) => {
       const name = proxyItem?.name ?? "unknown";
+      const displayNameRaw = getDisplayNowForGroup?.(
+        {
+          name,
+          now: proxyItem?.now,
+        },
+        true,
+      );
+      const itemDisplayName =
+        displayNameRaw && displayNameRaw !== name ? displayNameRaw : undefined;
       return (
         <ProxyItemMini
           key={`${item.key}-${name}`}
           group={group}
           proxy={proxyItem!}
+          itemDisplayName={itemDisplayName}
           selected={selectedName != null ? selectedName === name : false}
           showManualIcon={manualName != null && manualName === name}
           showType={headState?.showType}
@@ -203,10 +216,20 @@ const ProxyRenderInner = (props: RenderProps) => {
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
     const name = proxy?.name ?? "";
+    const displayNameRaw = getDisplayNowForGroup?.(
+      {
+        name,
+        now: proxy?.now,
+      },
+      true,
+    );
+    const itemDisplayName =
+      displayNameRaw && displayNameRaw !== name ? displayNameRaw : undefined;
     return (
       <ProxyItem
         group={group}
         proxy={proxy!}
+        itemDisplayName={itemDisplayName}
         selected={selectedName != null ? selectedName === name : false}
         showManualIcon={manualName != null && manualName === name}
         showType={headState?.showType}
