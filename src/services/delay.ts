@@ -51,6 +51,25 @@ export interface DelayUpdate {
   updatedAt: number;
 }
 
+/** 批量测速时跨组复用：与核心侧「同一出站名共享延迟」对齐，键含 URL 与 timeout 避免不同组配置混用结果 */
+function bulkDelayReuseKey(
+  url: string,
+  name: string,
+  timeout: number,
+): string {
+  return `${timeout}\u0000${url}\u0000${name}`;
+}
+
+export interface CheckDelayOptions {
+  silentGlobal?: boolean;
+  bulkReuseMap?: Map<string, DelayUpdate>;
+}
+
+export interface CheckListDelayOptions {
+  concurrency?: number;
+  bulkReuseMap?: Map<string, DelayUpdate>;
+}
+
 const CACHE_TTL = 30 * 60 * 1000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
@@ -342,17 +361,32 @@ class DelayManager {
     name: string,
     group: string,
     timeout: number,
-    options?: {
-      /** 为 true 时仅更新该节点延迟，不触发全量 refreshProxy */
-      silentGlobal?: boolean;
-    },
+    options?: CheckDelayOptions,
   ): Promise<DelayUpdate> {
     debugLog(
       `[DelayManager] 开始测试延迟，代理: ${name}, 组: ${group}, 超时: ${timeout}ms`,
     );
 
     const silent = options?.silentGlobal ?? false;
-    // 先将状态设置为测试中（与安卓端一致：每次测速请求核心，不在前端跨组复用缓存）
+    const url = this.getUrl(group);
+    const reuseMap = options?.bulkReuseMap;
+    const reuseKey =
+      reuseMap ? bulkDelayReuseKey(url, name, timeout) : undefined;
+
+    if (reuseMap != null && reuseKey !== undefined) {
+      const cached = reuseMap.get(reuseKey);
+      if (cached !== undefined && cached.delay !== -2) {
+        debugLog(
+          `[DelayManager] 复用同会话测速结果 代理:${name} 组:${group} delay:${cached.delay}`,
+        );
+        return this.setDelay(name, group, cached.delay, {
+          elapsed: cached.elapsed,
+          silentGlobal: silent,
+        });
+      }
+    }
+
+    // 先将状态设置为测试中
     this.setDelay(name, group, -2, { silentGlobal: silent });
 
     let delay = -1;
@@ -361,7 +395,6 @@ class DelayManager {
     const startTime = Date.now();
 
     try {
-      const url = this.getUrl(group);
       debugLog(`[DelayManager] 调用API测试延迟，代理: ${name}, URL: ${url}`);
 
       // 设置超时处理, delay = 0 为超时
@@ -388,16 +421,29 @@ class DelayManager {
       elapsed = Date.now() - startTime;
     }
 
-    return this.setDelay(name, group, delay, { elapsed, silentGlobal: silent });
+    const update = this.setDelay(name, group, delay, {
+      elapsed,
+      silentGlobal: silent,
+    });
+    if (reuseMap != null && reuseKey !== undefined && update.delay !== -2) {
+      reuseMap.set(reuseKey, { ...update });
+    }
+    return update;
   }
 
   async checkListDelay(
     nameList: string[],
     group: string,
     timeout: number,
-    /** 显式并发上限；省略时使用代理页「Health check concurrency」所选值 */
-    concurrency?: number,
+    maybeOptions?: number | CheckListDelayOptions,
   ) {
+    const options: CheckListDelayOptions =
+      typeof maybeOptions === "number"
+        ? { concurrency: maybeOptions }
+        : maybeOptions ?? {};
+    const concurrency = options.concurrency;
+    const bulkReuseMap = options.bulkReuseMap;
+
     const names = nameList.filter(Boolean);
     const requested = concurrency ?? delayCheckConcurrency;
     const actualConcurrency = Math.min(requested, delayCheckConcurrency, names.length);
@@ -426,7 +472,9 @@ class DelayManager {
           );
         }
 
-        await this.checkDelay(currName, group, timeout);
+        await this.checkDelay(currName, group, timeout, {
+          bulkReuseMap,
+        });
         const nodeElapsed = Date.now() - nodeStart;
         debugLog(
           `[DelayManager] 单节点API 代理:${currName} 耗时:${nodeElapsed}ms`,

@@ -3,7 +3,10 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
 import { useAppData } from "@/providers/app-data-context";
-import delayManager, { DEFAULT_GROUP_TIMEOUT_MS } from "@/services/delay";
+import delayManager, {
+  DEFAULT_GROUP_TIMEOUT_MS,
+  type DelayUpdate,
+} from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
@@ -29,6 +32,7 @@ export const useCloseAllWithDelayCheck = () => {
       debugLog(`[CloseAll] Starting delay checks for ${proxiesData.groups.length} groups`);
 
       const groups = proxiesData.groups;
+      const bulkReuseMap = new Map<string, DelayUpdate>();
 
       // 收集所有 provider
       const allProviders = new Set<string>();
@@ -51,7 +55,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
 
-      // 按顺序逐组测速（每组独立请求核心，与安卓端一致）
+      // 顺序测速；同名同 URL + 超时在会话内复用（对齐核心侧出站共享语义）
       for (const group of groups as IProxyGroupItem[]) {
         if (!group.all || group.all.length === 0) continue;
 
@@ -87,7 +91,9 @@ export const useCloseAllWithDelayCheck = () => {
               debugLog(`[CloseAll] delayGroup error for group ${group.name}:`, error);
             });
 
-          await delayManager.checkListDelay(groupProxyNames, group.name, timeout);
+          await delayManager.checkListDelay(groupProxyNames, group.name, timeout, {
+            bulkReuseMap,
+          });
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);

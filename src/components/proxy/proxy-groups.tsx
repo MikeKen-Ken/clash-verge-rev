@@ -21,7 +21,10 @@ import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
-import delayManager, { getGroupDelayTimeout } from "@/services/delay";
+import delayManager, {
+  getGroupDelayTimeout,
+  type DelayUpdate,
+} from "@/services/delay";
 import { hideNotice, showNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
@@ -440,7 +443,7 @@ export const ProxyGroups = (props: Props) => {
     [handleProxyGroupChange, isChainMode, t],
   );
 
-  // 测全部延迟：不管点击哪个组，始终对所有组按顺序测速（每组独立请求核心，与安卓端一致，不跨组复用前端缓存）。
+  // 测全部延迟：按组顺序测试；同一「测速 URL + 超时 + 节点名」在本次会话复用首轮结果（与核心侧同名出站共享语义一致）。
   const handleCheckAll = useCallback(async (_groupName: string) => {
     if (isDelayCheckingRef.current) {
       setDelayCheckBusyWarning({
@@ -471,9 +474,9 @@ export const ProxyGroups = (props: Props) => {
     }
 
     const allProviders = new Set<string>();
+    const bulkReuseMap = new Map<string, DelayUpdate>();
 
     try {
-      // 按顺序逐组测速：每组节点均走 delay API（不在前端跨组复用测速结果）
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
         const timeout = getGroupDelayTimeout(group, false);
@@ -498,7 +501,9 @@ export const ProxyGroups = (props: Props) => {
         // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
         delayGroup(groupName, url, timeout).catch(() => { });
 
-        await delayManager.checkListDelay(names, groupName, timeout);
+        await delayManager.checkListDelay(names, groupName, timeout, {
+          bulkReuseMap,
+        });
       }
       debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
     } catch (error) {
@@ -701,7 +706,6 @@ export const ProxyGroups = (props: Props) => {
                   key={renderList[index].key}
                   item={renderList[index]}
                   indent={mode === "rule" || mode === "script"}
-                  onCheckAll={handleCheckAll}
                   onHeadState={onHeadState}
                   onChangeProxy={handleChangeProxy}
                   getSelectedForGroup={getSelectedForGroup}
@@ -841,7 +845,6 @@ export const ProxyGroups = (props: Props) => {
             key={renderList[index].key}
             item={renderList[index]}
             indent={mode === "rule" || mode === "script"}
-            onCheckAll={handleCheckAll}
             onHeadState={onHeadState}
             onChangeProxy={handleChangeProxy}
             getSelectedForGroup={getSelectedForGroup}
