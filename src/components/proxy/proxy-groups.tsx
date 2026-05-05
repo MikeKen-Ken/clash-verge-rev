@@ -12,7 +12,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import {
+  delayGroup,
+  healthcheckProxyProvider,
+  selectNodeForGroup,
+} from "tauri-plugin-mihomo-api";
 
 import { BaseEmpty } from "@/components/base";
 import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
@@ -52,6 +56,8 @@ interface ProxyChainItem {
   type?: string;
   delay?: number;
 }
+
+const SKIP_DELAY_CHECK_GROUPS = new Set(["⬆️", "↩️"]);
 
 const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 
@@ -479,6 +485,10 @@ export const ProxyGroups = (props: Props) => {
     try {
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
+        if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
+          debugLog(`[ProxyGroups] 跳过分组测速: ${groupName}`);
+          continue;
+        }
         const timeout = getGroupDelayTimeout(group, false);
         const proxies: IProxyItem[] = (group as any).all ?? [];
 
@@ -504,6 +514,46 @@ export const ProxyGroups = (props: Props) => {
         await delayManager.checkListDelay(names, groupName, timeout, {
           bulkReuseMap,
         });
+
+        const successCandidates = names
+          .map((proxyName, index) => {
+            const delayUpdate = delayManager.getDelayUpdate(proxyName, groupName);
+            const delay = delayUpdate?.delay;
+            return { proxyName, index, delay };
+          })
+          .filter(
+            ({ proxyName, delay }) =>
+              proxyName !== "DIRECT" &&
+              proxyName !== "REJECT" &&
+              typeof delay === "number" &&
+              delay > 0 &&
+              delay <= timeout,
+          );
+
+        const sortType = getGroupHeadState(groupName)?.sortType ?? 0;
+        if (sortType === 1) {
+          successCandidates.sort((a, b) => {
+            const da = a.delay as number;
+            const db = b.delay as number;
+            if (da !== db) return da - db;
+            return a.index - b.index;
+          });
+        }
+
+        // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
+        const firstSuccessProxy = successCandidates[0]?.proxyName;
+        if (firstSuccessProxy) {
+          await selectNodeForGroup(groupName, firstSuccessProxy).catch((err) => {
+            console.warn(
+              `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
+              err,
+            );
+          });
+        } else {
+          debugLog(
+            `[ProxyGroups] 分组 ${groupName} 未找到测速成功节点，保留核心当前选择`,
+          );
+        }
       }
       debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
     } catch (error) {
