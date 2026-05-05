@@ -13,6 +13,8 @@ import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
 
+const SKIP_DELAY_CHECK_GROUPS = new Set(["⬆️", "↩️"]);
+
 /**
  * Hook to handle close all connections with delay checks
  * Listens to the hotkey event and triggers delay checks for all groups before closing connections
@@ -49,6 +51,7 @@ export const useCloseAllWithDelayCheck = () => {
       // 收集所有 provider
       const allProviders = new Set<string>();
       groups.forEach((group: IProxyGroupItem) => {
+        if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) return;
         if (group.all) {
           group.all.forEach((proxy: IProxyItem | string) => {
             const proxyName = typeof proxy === "string" ? proxy : proxy.name;
@@ -69,6 +72,10 @@ export const useCloseAllWithDelayCheck = () => {
 
       // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
       for (const group of groups as IProxyGroupItem[]) {
+        if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) {
+          debugLog(`[CloseAll] Skip delay check group: ${group.name}`);
+          continue;
+        }
         if (!group.all || group.all.length === 0) continue;
 
         const groupProxyNames = group.all
@@ -115,6 +122,7 @@ export const useCloseAllWithDelayCheck = () => {
 
       // 自动切换到每个组第一个连接成功的节点（只处理 URLTest 和 Fallback，不处理 Selector）
       for (const group of groups) {
+        if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) continue;
         if (!group.all || group.all.length === 0) continue;
         if (!["URLTest", "Fallback"].includes(group.type)) continue;
 
