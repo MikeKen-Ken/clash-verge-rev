@@ -52,13 +52,9 @@ const STORAGE_KEY_AUTO_REFRESH = "proxies_auto_refresh";
 const STORAGE_KEY_AUTO_REFRESH_INTERVAL = "proxies_auto_refresh_interval";
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 250;
-const DEFAULT_HEALTH_SELECTED_TIMEOUT_MS = 3000;
-const DEFAULT_HEALTH_FAILURE_RESET_MS = 5000;
 
 /** 健康检测相关下拉预设（ms） */
 const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
-/** 失败重置间隔下拉预设（ms） */
-const HEALTH_FAILURE_RESET_PRESETS = [1000, 3000, 5000, 8000, 10000] as const;
 
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 const LAN_ENDPOINT_OFFSET_X = -2;
@@ -494,94 +490,6 @@ const ProxyPage = () => {
                     <em>—</em>
                   </MenuItem>
                   {HEALTH_CHECK_PRESETS.map((n) => (
-                    <MenuItem key={n} value={String(n)}>
-                      {n} ms
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Tooltip>
-            <Tooltip title={t("proxies.page.labels.healthCheckSelectedTimeout")}>
-              <FormControl size="small" sx={{ minWidth: 88 }}>
-                <Select
-                  value={
-                    verge?.health_check_selected_timeout != null &&
-                      (HEALTH_CHECK_PRESETS as readonly number[]).includes(
-                        verge.health_check_selected_timeout,
-                      )
-                      ? String(verge.health_check_selected_timeout)
-                      : ""
-                  }
-                  displayEmpty
-                  onChange={(e) => {
-                    const v = clampHealthValueByPresets(
-                      typeof e.target.value === "string"
-                        ? e.target.value
-                        : String(e.target.value),
-                      HEALTH_CHECK_PRESETS,
-                    );
-                    mutateVerge(
-                      { ...verge, health_check_selected_timeout: v },
-                      false,
-                    );
-                    void patchVerge({ health_check_selected_timeout: v });
-                  }}
-                  sx={{ height: 32 }}
-                  renderValue={(v) =>
-                    v === "" ? "—" : `${v} ms`
-                  }
-                >
-                  <MenuItem value="">
-                    <em>—</em>
-                  </MenuItem>
-                  {HEALTH_CHECK_PRESETS.map((n) => (
-                    <MenuItem key={n} value={String(n)}>
-                      {n} ms
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Tooltip>
-            <Tooltip
-              title={t(
-                "proxies.page.labels.healthCheckFailureResetInterval",
-              )}
-            >
-              <FormControl size="small" sx={{ minWidth: 88 }}>
-                <Select
-                  value={
-                    verge?.health_check_failure_reset_interval != null &&
-                      (HEALTH_FAILURE_RESET_PRESETS as readonly number[]).includes(
-                        verge.health_check_failure_reset_interval,
-                      )
-                      ? String(verge.health_check_failure_reset_interval)
-                      : ""
-                  }
-                  displayEmpty
-                  onChange={(e) => {
-                    const v = clampHealthValueByPresets(
-                      typeof e.target.value === "string"
-                        ? e.target.value
-                        : String(e.target.value),
-                      HEALTH_FAILURE_RESET_PRESETS,
-                    );
-                    mutateVerge(
-                      { ...verge, health_check_failure_reset_interval: v },
-                      false,
-                    );
-                    void patchVerge({
-                      health_check_failure_reset_interval: v,
-                    });
-                  }}
-                  sx={{ height: 32 }}
-                  renderValue={(v) =>
-                    v === "" ? "—" : `${v} ms`
-                  }
-                >
-                  <MenuItem value="">
-                    <em>—</em>
-                  </MenuItem>
-                  {HEALTH_FAILURE_RESET_PRESETS.map((n) => (
                     <MenuItem key={n} value={String(n)}>
                       {n} ms
                     </MenuItem>

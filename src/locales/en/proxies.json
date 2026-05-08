@@ -30,8 +30,6 @@
       "autoRefreshInterval": "Interval (s)",
       "blockAds": "Block Ads",
       "healthCheckTimeout": "Timeout (ms)",
-      "healthCheckSelectedTimeout": "Selected timeout (ms)",
-      "healthCheckFailureResetInterval": "Failure reset (ms)",
       "lanAccessInfoTitle": "LAN access info",
       "lanAccessNoIp": "No available LAN IP detected",
       "lanAccessNoPort": "No available port detected"

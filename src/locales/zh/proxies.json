@@ -30,8 +30,6 @@
       "autoRefreshInterval": "间隔（秒）",
       "blockAds": "屏蔽广告",
       "healthCheckTimeout": "超时(ms)",
-      "healthCheckSelectedTimeout": "选中超时(ms)",
-      "healthCheckFailureResetInterval": "失败重置间隔(ms)",
       "lanAccessInfoTitle": "局域网连接信息",
       "lanAccessNoIp": "未获取到可用局域网 IP",
       "lanAccessNoPort": "未获取到可用端口"
