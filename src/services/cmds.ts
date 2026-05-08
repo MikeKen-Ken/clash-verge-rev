@@ -130,29 +130,45 @@ export async function syncTrayProxySelection() {
   return invoke<void>("sync_tray_proxy_selection");
 }
 
-/** 从 runtime config 的 proxy-groups 提取每组 timeout/selected-timeout（与 Android 一致，不依赖 core 返回） */
-function getGroupTimeoutMapFromConfig(
+type RuntimeGroupDisplayConfig = {
+  timeout?: number;
+  selectedTimeout?: number;
+  maxConnectTimes?: number;
+};
+
+/** 从 runtime config 的 proxy-groups 提取组显示配置（与 Android 一致，不依赖 core 返回） */
+function getGroupDisplayConfigMapFromConfig(
   config: IConfigData | null | undefined,
-): Map<string, { timeout?: number; selectedTimeout?: number }> {
-  const map = new Map<string, { timeout?: number; selectedTimeout?: number }>();
+): Map<string, RuntimeGroupDisplayConfig> {
+  const map = new Map<string, RuntimeGroupDisplayConfig>();
   const groups = config?.["proxy-groups"];
   if (!Array.isArray(groups)) return map;
-  let firstTimeout: { timeout?: number; selectedTimeout?: number } | undefined;
+  let firstConfig: RuntimeGroupDisplayConfig | undefined;
   for (const g of groups) {
     const name = (g as { name?: string }).name;
     if (!name) continue;
-    const raw = g as { timeout?: number; "selected-timeout"?: number };
+    const raw = g as {
+      timeout?: number;
+      "selected-timeout"?: number;
+      "max-connect-times"?: number;
+    };
     const cfg = {
       timeout: raw.timeout,
       selectedTimeout: raw["selected-timeout"],
+      maxConnectTimes: raw["max-connect-times"],
     };
     map.set(name, cfg);
-    if (firstTimeout === undefined && (raw.timeout != null || raw["selected-timeout"] != null)) {
-      firstTimeout = cfg;
+    if (
+      firstConfig === undefined &&
+      (raw.timeout != null ||
+        raw["selected-timeout"] != null ||
+        raw["max-connect-times"] != null)
+    ) {
+      firstConfig = cfg;
     }
   }
-  if (!map.has("GLOBAL") && firstTimeout !== undefined) {
-    map.set("GLOBAL", firstTimeout);
+  if (!map.has("GLOBAL") && firstConfig !== undefined) {
+    map.set("GLOBAL", firstConfig);
   }
   return map;
 }
@@ -172,14 +188,18 @@ export async function calcuProxies(): Promise<{
 
   const proxyRecord = proxyResponse.proxies;
   const providerRecord = providerResponse;
-  const groupTimeoutMap = getGroupTimeoutMapFromConfig(runtimeConfig ?? undefined);
+  const groupDisplayConfigMap = getGroupDisplayConfigMapFromConfig(
+    runtimeConfig ?? undefined,
+  );
   const mergeGroupConfig = (name: string, obj: Record<string, any>) => {
-    const cfg = groupTimeoutMap.get(name);
+    const cfg = groupDisplayConfigMap.get(name);
     if (!cfg) return obj;
     return {
       ...obj,
       timeout: cfg.timeout,
       selectedTimeout: cfg.selectedTimeout,
+      maxConnectTimes: obj.maxConnectTimes ?? cfg.maxConnectTimes,
+      connectTimes: obj.connectTimes ?? 0,
     };
   };
 
