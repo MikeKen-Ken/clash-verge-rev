@@ -384,6 +384,7 @@ interface IProxyGroupConfig {
   timeout?: number;
   "selected-timeout"?: number;
   "max-failed-times"?: number;
+  "max-connect-times"?: number;
   "disable-udp"?: boolean;
   "interface-name": string;
   "routing-mark"?: number;

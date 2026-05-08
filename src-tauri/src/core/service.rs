@@ -349,6 +349,13 @@ pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
 pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
     logging!(info, Type::Service, "正在获取服务模式下的 Clash 日志");
 
+    let logs = poll_clash_logs_by_service().await?;
+
+    logging!(info, Type::Service, "成功获取服务模式下的 Clash 日志");
+    Ok(logs)
+}
+
+pub(super) async fn poll_clash_logs_by_service() -> Result<Vec<CompactString>> {
     let response = clash_verge_service_ipc::get_clash_logs()
         .await
         .context("无法连接到Clash Verge Service")?;
@@ -359,7 +366,6 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
         bail!(err_msg);
     }
 
-    logging!(info, Type::Service, "成功获取服务模式下的 Clash 日志");
     Ok(response.data.unwrap_or_default())
 }
 

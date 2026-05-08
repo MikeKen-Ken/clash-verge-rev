@@ -576,7 +576,8 @@ fn apply_health_check_defaults(mut config: Mapping, verge: &IVerge) -> Mapping {
         .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);
     let selected_timeout = verge
         .health_check_selected_timeout
-        .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);
+        .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS)
+        .or(Some(5_000));
     let failure_reset = verge
         .health_check_failure_reset_interval
         .filter(|&v| v > 0 && v <= HEALTH_CHECK_MAX_MS);

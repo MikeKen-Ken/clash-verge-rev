@@ -21,6 +21,10 @@ pub enum NotificationEvent<'a> {
         from: &'a str,
         to: &'a str,
     },
+    MaxConnectTimesDelayTest {
+        group: &'a str,
+        proxy: &'a str,
+    },
     #[cfg(target_os = "macos")]
     AppHidden,
 }
@@ -85,6 +89,12 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
             notify(
                 "节点自动切换".into(),
                 format!("分组 {} 触发了 fallback", group).into(),
+            );
+        }
+        NotificationEvent::MaxConnectTimesDelayTest { group, proxy } => {
+            notify(
+                "连接次数测速".into(),
+                format!("分组 {} 达到连接次数阈值，正在测速当前节点 {}", group, proxy).into(),
             );
         }
         #[cfg(target_os = "macos")]

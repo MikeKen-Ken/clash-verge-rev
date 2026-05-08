@@ -4,14 +4,25 @@ use crate::{
     config::{sidecar_binary_name, Config, IClashTemp},
     core::{handle, logger::Logger, manager::CLASH_LOGGER, service},
     logging,
-    utils::dirs,
+    utils::{
+        dirs,
+        notification::{NotificationEvent, notify_event},
+    },
 };
 use anyhow::Result;
 use clash_verge_logging::Type;
 use compact_str::CompactString;
 use log::Level;
 use scopeguard::defer;
+use std::{
+    collections::HashSet,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 use tauri_plugin_shell::ShellExt as _;
+use tokio::time::sleep;
+
+static SERVICE_MAX_CONNECT_TIMES_LOG_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
 impl CoreManager {
     pub async fn get_clash_logs(&self) -> Result<Vec<CompactString>> {
@@ -66,6 +77,13 @@ impl CoreManager {
                     tauri_plugin_shell::process::CommandEvent::Stdout(line)
                     | tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
                         let message = CompactString::from(&*String::from_utf8_lossy(&line));
+                        if let Some((group, proxy)) = parse_max_connect_times_test_log(message.as_str()) {
+                            notify_event(NotificationEvent::MaxConnectTimesDelayTest {
+                                group: group.as_str(),
+                                proxy: proxy.as_str(),
+                            })
+                            .await;
+                        }
                         Logger::global().writer_sidecar_log(Level::Error, &message);
                         CLASH_LOGGER.append_log(message).await;
                     }
@@ -112,6 +130,7 @@ impl CoreManager {
         let config_file = Config::generate_file(crate::config::ConfigType::Run).await?;
         service::run_core_by_service(&config_file).await?;
         self.set_running_mode(RunningMode::Service);
+        self.spawn_service_max_connect_times_log_monitor();
         Ok(())
     }
 
@@ -123,4 +142,80 @@ impl CoreManager {
         service::stop_core_by_service().await?;
         Ok(())
     }
+
+    fn spawn_service_max_connect_times_log_monitor(&self) {
+        if SERVICE_MAX_CONNECT_TIMES_LOG_MONITOR_RUNNING.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        AsyncHandler::spawn(|| async move {
+            let mut seen = HashSet::new();
+            let mut initialized = false;
+
+            loop {
+                if handle::Handle::global().is_exiting()
+                    || !matches!(*CoreManager::global().get_running_mode(), RunningMode::Service)
+                {
+                    break;
+                }
+
+                match service::poll_clash_logs_by_service().await {
+                    Ok(logs) => {
+                        for message in logs {
+                            if parse_max_connect_times_test_log(message.as_str()).is_none() {
+                                continue;
+                            }
+
+                            let inserted = seen.insert(message.to_string());
+                            if !initialized || !inserted {
+                                continue;
+                            }
+
+                            if let Some((group, proxy)) =
+                                parse_max_connect_times_test_log(message.as_str())
+                            {
+                                notify_event(NotificationEvent::MaxConnectTimesDelayTest {
+                                    group: group.as_str(),
+                                    proxy: proxy.as_str(),
+                                })
+                                .await;
+                            }
+                        }
+                        initialized = true;
+                    }
+                    Err(err) => {
+                        logging!(debug, Type::Service, "服务模式测速通知日志轮询失败: {err}");
+                    }
+                }
+
+                sleep(Duration::from_secs(3)).await;
+            }
+
+            SERVICE_MAX_CONNECT_TIMES_LOG_MONITOR_RUNNING.store(false, Ordering::Release);
+        });
+    }
+}
+
+const MAX_CONNECT_TIMES_TEST_LOG_PREFIX: &str = "[APP] max-connect-times test triggered\t";
+
+fn parse_max_connect_times_test_log(message: &str) -> Option<(String, String)> {
+    let payload = message
+        .find(MAX_CONNECT_TIMES_TEST_LOG_PREFIX)
+        .map(|index| &message[index + MAX_CONNECT_TIMES_TEST_LOG_PREFIX.len()..])?;
+    let mut parts = payload.splitn(2, '\t');
+    let group = trim_log_field(parts.next()?);
+    let proxy = trim_log_field(parts.next()?);
+
+    if group.is_empty() || proxy.is_empty() {
+        return None;
+    }
+
+    Some((group, proxy))
+}
+
+fn trim_log_field(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches(|c| c == '"' || c == '\r' || c == '\n')
+        .to_owned()
 }
