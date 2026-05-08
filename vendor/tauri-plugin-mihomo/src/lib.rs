@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 pub use mihomo::Mihomo;
 use tauri::{
     Manager, Runtime,
@@ -9,12 +7,15 @@ use tauri::{
 
 mod commands;
 mod error;
+mod ipc;
 mod mihomo;
 pub mod models;
-mod wrap_stream;
+mod utils;
 
 pub use error::{Error, Result};
 
+pub(crate) use crate::ipc::IpcPoolConfig;
+pub use crate::ipc::{IpcConnectionPool, IpcPoolConfigBuilder, RejectPolicy};
 use crate::models::Protocol;
 
 /// Extensions to [`tauri::App`], [`tauri::AppHandle`] and [`tauri::Window`] to access the mihomo APIs.
@@ -28,17 +29,14 @@ impl<R: Runtime, T: Manager<R>> crate::MihomoExt<R> for T {
     }
 }
 
-const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const DOWNLOAD_FILE_TIMEOUT: Duration = Duration::from_secs(60);
-
 #[derive(Debug)]
 pub struct Builder {
     protocol: Protocol,
     external_host: Option<String>,
     external_port: Option<u16>,
     secret: Option<String>,
-    request_timeout: Option<Duration>,
     socket_path: Option<String>,
+    pool_config: Option<IpcPoolConfig>,
 }
 
 impl Default for Builder {
@@ -48,8 +46,8 @@ impl Default for Builder {
             external_host: Some(String::from("127.0.0.1")),
             external_port: Some(9090),
             secret: None,
-            request_timeout: Some(DEFAULT_REQUEST_TIMEOUT),
             socket_path: None,
+            pool_config: None,
         }
     }
 }
@@ -84,11 +82,8 @@ impl Builder {
         self
     }
 
-    /// 设置请求超时时间
-    ///
-    /// 部分需要下载文件的更新/升级 API 方法固定超时时间为 60 秒。 例如更新 geo、更新 ui、升级内核方法
-    pub fn request_timeout(mut self, request_timeout: Duration) -> Self {
-        self.request_timeout = Some(request_timeout);
+    pub fn pool_config(mut self, pool_config: IpcPoolConfig) -> Self {
+        self.pool_config = Some(pool_config);
         self
     }
 
@@ -98,7 +93,7 @@ impl Builder {
         let external_port = self.external_port;
         let secret = self.secret;
         let socket_path = self.socket_path;
-        let request_timeout = self.request_timeout.unwrap_or(DEFAULT_REQUEST_TIMEOUT);
+        let pool_config = self.pool_config.unwrap_or_default();
 
         PluginBuilder::new("mihomo")
             .invoke_handler(tauri::generate_handler![
@@ -151,17 +146,22 @@ impl Builder {
                 // commands::ws_send,
             ])
             .setup(move |app, _api| {
-                let mihomo = Mihomo {
+                // 初始化连接池
+                IpcConnectionPool::init(pool_config).map_err(|e| {
+                    tauri::Error::PluginInitialization(
+                        "Failed to initialize IPC connection pool: {}".to_string(),
+                        e.to_string(),
+                    )
+                })?;
+
+                app.manage(RwLock::new(Mihomo {
                     protocol,
                     external_host,
                     external_port,
                     secret,
                     socket_path,
-                    request_timeout,
                     connection_manager: Default::default(),
-                };
-                mihomo.start_ws_connections_watcher();
-                app.manage(RwLock::new(mihomo));
+                }));
 
                 Ok(())
             })

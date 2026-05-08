@@ -1,6 +1,6 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use tauri_plugin_mihomo::{Mihomo, models::Protocol};
+use tauri_plugin_mihomo::{IpcConnectionPool, IpcPoolConfigBuilder, Mihomo, models::Protocol};
 
 #[allow(dead_code)]
 pub const TEST_URL: &str = "http://www.gstatic.com/generate_204";
@@ -10,6 +10,7 @@ pub const TIMEOUT: u32 = 3000;
 pub fn mihomo() -> Mihomo {
     #[allow(clippy::unwrap_used)]
     dotenvy::dotenv().unwrap();
+    let _ = IpcConnectionPool::init(IpcPoolConfigBuilder::new().build());
     let mihomo_socket = std::env::var("MIHOMO_SOCKET").unwrap_or(String::from("0"));
     if mihomo_socket == "1" {
         println!("connect to mihomo by local socket");
@@ -27,7 +28,6 @@ pub fn mihomo() -> Mihomo {
             external_port: None,
             secret: None,
             socket_path: Some(socket_path),
-            request_timeout: Duration::from_millis(100),
             connection_manager: Arc::new(Default::default()),
         }
     } else {
@@ -39,7 +39,6 @@ pub fn mihomo() -> Mihomo {
             external_port: Some(9090),
             secret: Some("yPMJk9i7UaR1hv3-2BkPy".into()),
             socket_path: None,
-            request_timeout: Duration::from_secs(1),
             connection_manager: Arc::new(Default::default()),
         }
     }

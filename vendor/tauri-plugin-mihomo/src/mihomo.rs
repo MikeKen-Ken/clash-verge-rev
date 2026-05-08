@@ -10,20 +10,21 @@ use reqwest::{Method, RequestBuilder};
 use serde_json::json;
 use tokio_tungstenite::{
     client_async, connect_async,
-    tungstenite::{
-        Message, client::IntoClientRequest, handshake::client::generate_key, protocol::CloseFrame as ProtocolCloseFrame,
-    },
+    tungstenite::{Message, client::IntoClientRequest, protocol::CloseFrame as ProtocolCloseFrame},
 };
 
 use crate::{
-    DOWNLOAD_FILE_TIMEOUT, Error, Result,
+    Error, IpcConnectionPool, Result,
+    ipc::LocalSocket,
     models::{
-        BaseConfig, CloseFrame, ConnectionManager, Connections, CoreUpdaterChannel, ErrorResponse, Groups, LogLevel,
-        MihomoVersion, Protocol, Proxies, Proxy, ProxyDelay, ProxyProvider, ProxyProviders, RuleProviders, Rules,
-        WebSocketConnectionId, WebSocketMessage, WebSocketWriter,
+        BaseConfig, CloseFrame, ConnectionId, ConnectionManager, Connections, CoreUpdaterChannel, ErrorResponse,
+        Groups, LogLevel, MihomoVersion, Protocol, Proxies, Proxy, ProxyDelay, ProxyProvider, ProxyProviders,
+        RuleProviders, Rules, WebSocketMessage, WebSocketWriter,
     },
-    ret_failed_resp,
+    ret_failed_resp, utils,
 };
+
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Mihomo {
     pub protocol: Protocol,
@@ -31,7 +32,6 @@ pub struct Mihomo {
     pub external_port: Option<u16>,
     pub secret: Option<String>,
     pub socket_path: Option<String>,
-    pub request_timeout: Duration,
     pub connection_manager: Arc<ConnectionManager>,
 }
 
@@ -54,17 +54,12 @@ impl Mihomo {
         self.secret = secret;
     }
 
-    pub fn start_ws_connections_watcher(&self) {
-        let manager = Arc::clone(&self.connection_manager);
-        tauri::async_runtime::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(1000));
-            loop {
-                interval.tick().await;
-                let ids_map = manager.0.read().await;
-                let ids: Vec<&u32> = ids_map.keys().collect();
-                log::trace!("manager websocket connection ids: {ids:?}",);
-            }
-        });
+    #[inline]
+    pub fn update_socket_path<S: Into<String>>(&mut self, socket_path: S) -> Result<()> {
+        self.socket_path = Some(socket_path.into());
+        let pool = IpcConnectionPool::global()?;
+        tauri::async_runtime::block_on(pool.clear_pool());
+        Ok(())
     }
 
     #[inline]
@@ -105,29 +100,8 @@ impl Mihomo {
     fn build_request(&self, method: Method, suffix_url: &str) -> Result<RequestBuilder> {
         let url = self.get_req_url(suffix_url)?;
         let headers = self.get_req_headers()?;
-        let client = {
-            let mut builder = reqwest::ClientBuilder::new().timeout(self.request_timeout);
-            if matches!(self.protocol, Protocol::LocalSocket) {
-                let Some(socket_path) = self.socket_path.as_deref() else {
-                    log::error!("missing socket path parameter");
-                    return Err(Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "missing socket path".to_string(),
-                    )));
-                };
-                #[cfg(windows)]
-                {
-                    builder = builder.windows_named_pipe(socket_path);
-                }
-                #[cfg(unix)]
-                {
-                    builder = builder.unix_socket(socket_path);
-                }
-            }
-            builder.build()?
-        };
-
-        match method {
+        let client = reqwest::ClientBuilder::new().build()?;
+        let req = match method {
             Method::POST => Ok(client.post(url).headers(headers)),
             Method::GET => Ok(client.get(url).headers(headers)),
             Method::PUT => Ok(client.put(url).headers(headers)),
@@ -137,6 +111,26 @@ impl Mihomo {
                 let method_str = method.as_str().to_string();
                 log::error!("method not supported: {method_str}");
                 Err(Error::MethodNotSupported(method_str))
+            }
+        };
+        // 在此设置 timeout，以供构建 local socket 连接时，获取到 timeout 属性
+        Ok(req?.timeout(DEFAULT_REQUEST_TIMEOUT))
+    }
+
+    async fn send_by_protocol(&self, client: RequestBuilder) -> Result<reqwest::Response> {
+        match self.protocol {
+            Protocol::Http => client.send().await.map_err(Error::Reqwest),
+            Protocol::LocalSocket => {
+                if let Some(socket_path) = self.socket_path.as_ref() {
+                    log::debug!("send to local socket: {socket_path}");
+                    client.send_by_local_socket(socket_path).await
+                } else {
+                    log::error!("missing socket path parameter");
+                    Err(Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "missing socket path".to_string(),
+                    )))
+                }
             }
         }
     }
@@ -163,7 +157,7 @@ impl Mihomo {
     }
 
     /// 连接 WebSocket
-    async fn connect<F>(&self, url: String, on_message: F) -> Result<WebSocketConnectionId>
+    async fn connect<F>(&self, url: String, on_message: F) -> Result<ConnectionId>
     where
         F: Fn(serde_json::Value) + Send + 'static,
     {
@@ -211,7 +205,9 @@ impl Mihomo {
                 tokio::spawn(async move {
                     let manager_ = Arc::clone(&manager);
                     loop {
-                        if !manager_.0.read().await.keys().any(|key| key == &id) {
+                        let ids: Vec<u32> = manager_.0.read().await.keys().cloned().collect();
+                        log::trace!("waiting for websocket message, connection_id: {id}, manager_ids: {ids:?}",);
+                        if !ids.contains(&id) {
                             log::debug!("connection [{id}] is removed from manager");
                             break;
                         }
@@ -231,12 +227,12 @@ impl Mihomo {
             Protocol::LocalSocket => {
                 if let Some(socket_path) = self.socket_path.as_ref() {
                     log::debug!("starting connect to websocket by using local socket: {socket_path}");
-                    let stream = crate::wrap_stream::connect_to_socket(socket_path).await?;
+                    let stream = crate::ipc::connect_to_socket(socket_path).await?;
 
                     let request = Request::builder()
                         .uri(url)
                         .header(HOST, "clash-verge")
-                        .header(SEC_WEBSOCKET_KEY, generate_key())
+                        .header(SEC_WEBSOCKET_KEY, utils::generate_websocket_key())
                         .header(CONNECTION, "Upgrade")
                         .header(UPGRADE, "websocket")
                         .header(SEC_WEBSOCKET_VERSION, "13")
@@ -253,7 +249,9 @@ impl Mihomo {
                     tokio::spawn(async move {
                         let manager_ = Arc::clone(&manager);
                         loop {
-                            if !manager_.0.read().await.keys().any(|key| key == &id) {
+                            let ids: Vec<u32> = manager_.0.read().await.keys().cloned().collect();
+                            log::trace!("waiting for websocket message, connection_id: {id}, manager_ids: {ids:?}",);
+                            if !ids.contains(&id) {
                                 log::debug!("connection [{id}] is removed from manager");
                                 break;
                             }
@@ -280,7 +278,7 @@ impl Mihomo {
     }
 
     /// 向指定 WebSocket 连接发送消息 (暂无使用该方法的地方)
-    async fn send(&self, id: WebSocketConnectionId, message: WebSocketMessage) -> Result<()> {
+    async fn send(&self, id: ConnectionId, message: WebSocketMessage) -> Result<()> {
         let manager = Arc::clone(&self.connection_manager);
         let mut manager = manager.0.write().await;
         if let Some(writer) = manager.get_mut(&id) {
@@ -298,12 +296,12 @@ impl Mihomo {
             Ok(())
         } else {
             log::error!("connection not found: {id}");
-            Err(Error::WebSocketConnectionNotFound(id))
+            Err(Error::ConnectionNotFound(id))
         }
     }
 
     /// 取消 WebSocket 连接
-    pub async fn disconnect(&self, id: WebSocketConnectionId, force_timeout: Option<u64>) -> Result<()> {
+    pub async fn disconnect(&self, id: ConnectionId, force_timeout: Option<u64>) -> Result<()> {
         log::debug!("disconnecting connection: {id}");
         let mut manager = self.connection_manager.0.write().await;
         if let Some(writer) = manager.get_mut(&id) {
@@ -324,7 +322,7 @@ impl Mihomo {
             Ok(())
         } else {
             log::error!("connection not found: {id}");
-            Err(Error::WebSocketConnectionNotFound(id))
+            Err(Error::ConnectionNotFound(id))
         }
     }
 
@@ -342,7 +340,7 @@ impl Mihomo {
     // |                     Mihomo API                     |
     // ------------------------------------------------------
     /// WebSocket: Mihomo 流量数据
-    pub async fn ws_traffic<F>(&self, on_message: F) -> Result<WebSocketConnectionId>
+    pub async fn ws_traffic<F>(&self, on_message: F) -> Result<ConnectionId>
     where
         F: Fn(serde_json::Value) + Send + 'static,
     {
@@ -352,7 +350,7 @@ impl Mihomo {
     }
 
     /// WebSocket: Mihomo 内存使用数据
-    pub async fn ws_memory<F>(&self, on_message: F) -> Result<WebSocketConnectionId>
+    pub async fn ws_memory<F>(&self, on_message: F) -> Result<ConnectionId>
     where
         F: Fn(serde_json::Value) + Send + 'static,
     {
@@ -362,7 +360,7 @@ impl Mihomo {
     }
 
     /// WebSocket: Mihomo 连接信息数据
-    pub async fn ws_connections<F>(&self, on_message: F) -> Result<WebSocketConnectionId>
+    pub async fn ws_connections<F>(&self, on_message: F) -> Result<ConnectionId>
     where
         F: Fn(serde_json::Value) + Send + 'static,
     {
@@ -372,7 +370,7 @@ impl Mihomo {
     }
 
     /// WebSocket: Mihomo 日志数据
-    pub async fn ws_logs<F>(&self, level: LogLevel, on_message: F) -> Result<WebSocketConnectionId>
+    pub async fn ws_logs<F>(&self, level: LogLevel, on_message: F) -> Result<ConnectionId>
     where
         F: Fn(serde_json::Value) + Send + 'static,
     {
@@ -390,7 +388,8 @@ impl Mihomo {
     // clash api
     /// 获取 Mihomo 版本信息
     pub async fn get_version(&self) -> Result<MihomoVersion> {
-        let response = self.build_request(Method::GET, "/version")?.send().await?;
+        let client = self.build_request(Method::GET, "/version")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get mihomo version failed, {}", e),
@@ -403,7 +402,8 @@ impl Mihomo {
 
     /// 清理 FakeIP 缓存
     pub async fn flush_fakeip(&self) -> Result<()> {
-        let response = self.build_request(Method::POST, "/cache/fakeip/flush")?.send().await?;
+        let client = self.build_request(Method::POST, "/cache/fakeip/flush")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("flush fakeip cache failed, {}", e),
@@ -416,7 +416,8 @@ impl Mihomo {
 
     /// 清理 DNS 缓存
     pub async fn flush_dns(&self) -> Result<()> {
-        let response = self.build_request(Method::POST, "/cache/dns/flush")?.send().await?;
+        let client = self.build_request(Method::POST, "/cache/dns/flush")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -429,7 +430,8 @@ impl Mihomo {
 
     /// 获取全部连接信息
     pub async fn get_connections(&self) -> Result<Connections> {
-        let response = self.build_request(Method::GET, "/connections")?.send().await?;
+        let client = self.build_request(Method::GET, "/connections")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get all connections failed, {}", e),
@@ -442,7 +444,8 @@ impl Mihomo {
 
     /// 关闭全部连接
     pub async fn close_all_connections(&self) -> Result<()> {
-        let response = self.build_request(Method::DELETE, "/connections")?.send().await?;
+        let client = self.build_request(Method::DELETE, "/connections")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("close all connections failed, {}", e),
@@ -455,10 +458,8 @@ impl Mihomo {
 
     /// 关闭指定 ID 的连接
     pub async fn close_connection(&self, connection_id: &str) -> Result<()> {
-        let response = self
-            .build_request(Method::DELETE, &format!("/connections/{connection_id}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::DELETE, &format!("/connections/{connection_id}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -471,7 +472,8 @@ impl Mihomo {
 
     /// 获取所有的代理组
     pub async fn get_groups(&self) -> Result<Groups> {
-        let response = self.build_request(Method::GET, "/group")?.send().await?;
+        let client = self.build_request(Method::GET, "/group")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -485,10 +487,8 @@ impl Mihomo {
     /// 获取指定名称的代理组
     pub async fn get_group_by_name(&self, group_name: &str) -> Result<Proxy> {
         let group_name_encode = urlencoding::encode(group_name);
-        let response = self
-            .build_request(Method::GET, &format!("/group/{group_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::GET, &format!("/group/{group_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get group[{}] failed, {}", group_name, e),
@@ -504,12 +504,9 @@ impl Mihomo {
         let group_name_encode = urlencoding::encode(group_name);
         let test_url = urlencoding::encode(test_url);
         let suffix_url = format!("/group/{group_name_encode}/delay?url={test_url}&timeout={timeout}");
-        let req_timeout = Duration::from_millis(timeout as u64) + self.request_timeout;
-        let response = self
-            .build_request(Method::GET, &suffix_url)?
-            .timeout(req_timeout)
-            .send()
-            .await?;
+        let req_timeout = Duration::from_millis(timeout as u64) + DEFAULT_REQUEST_TIMEOUT;
+        let client = self.build_request(Method::GET, &suffix_url)?.timeout(req_timeout);
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("delay group[{}] failed, {}", group_name, e),
@@ -522,7 +519,8 @@ impl Mihomo {
 
     /// 获取代理提供者信息
     pub async fn get_proxy_providers(&self) -> Result<ProxyProviders> {
-        let response = self.build_request(Method::GET, "/providers/proxies")?.send().await?;
+        let client = self.build_request(Method::GET, "/providers/proxies")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get all proxy providers failed, {}", e),
@@ -536,10 +534,8 @@ impl Mihomo {
     /// 获取指定代理提供者信息
     pub async fn get_proxy_provider_by_name(&self, provider_name: &str) -> Result<ProxyProvider> {
         let provider_name_encode = urlencoding::encode(provider_name);
-        let response = self
-            .build_request(Method::GET, &format!("/providers/proxies/{provider_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::GET, &format!("/providers/proxies/{provider_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get proxy provider[{}] failed, {}", provider_name, e),
@@ -553,10 +549,8 @@ impl Mihomo {
     /// 更新指定代理提供者信息
     pub async fn update_proxy_provider(&self, provider_name: &str) -> Result<()> {
         let provider_name_encode = urlencoding::encode(provider_name);
-        let response = self
-            .build_request(Method::PUT, &format!("/providers/proxies/{provider_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::PUT, &format!("/providers/proxies/{provider_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("update proxy provider[{}] failed, {}", provider_name, e),
@@ -570,13 +564,9 @@ impl Mihomo {
     /// 对指定代理提供者进行健康检查
     pub async fn healthcheck_proxy_provider(&self, provider_name: &str) -> Result<()> {
         let provider_name_encode = urlencoding::encode(provider_name);
-        let response = self
-            .build_request(
-                Method::GET,
-                &format!("/providers/proxies/{provider_name_encode}/healthcheck"),
-            )?
-            .send()
-            .await?;
+        let suffix_url = format!("/providers/proxies/{provider_name_encode}/healthcheck");
+        let client = self.build_request(Method::GET, &suffix_url)?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("healthcheck proxy provider[{}] failed, {}", provider_name, e),
@@ -597,16 +587,13 @@ impl Mihomo {
     ) -> Result<ProxyDelay> {
         let provider_name_encode = urlencoding::encode(provider_name);
         let proxy_name_encode = urlencoding::encode(proxy_name);
-        let req_timeout = Duration::from_millis(timeout as u64) + self.request_timeout;
-        let response = self
-            .build_request(
-                Method::GET,
-                &format!("/providers/proxies/{provider_name_encode}/{proxy_name_encode}/healthcheck"),
-            )?
+        let suffix_url = format!("/providers/proxies/{provider_name_encode}/{proxy_name_encode}/healthcheck");
+        let req_timeout = Duration::from_millis(timeout as u64) + DEFAULT_REQUEST_TIMEOUT;
+        let client = self
+            .build_request(Method::GET, &suffix_url)?
             .query(&[("url", test_url), ("timeout", &timeout.to_string())])
-            .timeout(req_timeout)
-            .send()
-            .await?;
+            .timeout(req_timeout);
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             // maybe proxy delay is timeout response, try parse it.
             match response.json::<ErrorResponse>().await {
@@ -624,7 +611,8 @@ impl Mihomo {
 
     /// 获取所有代理信息
     pub async fn get_proxies(&self) -> Result<Proxies> {
-        let response = self.build_request(Method::GET, "/proxies")?.send().await?;
+        let client = self.build_request(Method::GET, "/proxies")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -638,10 +626,8 @@ impl Mihomo {
     /// 获取指定代理信息
     pub async fn get_proxy_by_name(&self, proxy_name: &str) -> Result<Proxy> {
         let proxy_name_encode = urlencoding::encode(proxy_name);
-        let response = self
-            .build_request(Method::GET, &format!("/proxies/{proxy_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::GET, &format!("/proxies/{proxy_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get proxy[{}] failed, {}", proxy_name, e),
@@ -657,11 +643,11 @@ impl Mihomo {
     /// 一般为指定代理组下使用指定的代理节点 【代理组/节点】
     pub async fn select_node_for_group(&self, group_name: &str, node: &str) -> Result<()> {
         let group_name_encode = urlencoding::encode(group_name);
-        let response = self
+        let body = json!({ "name": node });
+        let client = self
             .build_request(Method::PUT, &format!("/proxies/{group_name_encode}"))?
-            .json(&json!({ "name": node }))
-            .send()
-            .await?;
+            .json(&body);
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("select node[{}] for group[{}] failed, {}", node, group_name, e),
@@ -677,10 +663,8 @@ impl Mihomo {
     /// 一般用于自动选择的代理组（例如：URLTest 类型的代理组）下的节点
     pub async fn unfixed_proxy(&self, group_name: &str) -> Result<()> {
         let group_name_encode = urlencoding::encode(group_name);
-        let response = self
-            .build_request(Method::DELETE, &format!("/proxies/{group_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::DELETE, &format!("/proxies/{group_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("unfixed group[{}] failed, {}", group_name, e),
@@ -696,13 +680,13 @@ impl Mihomo {
     /// 一般用于代理节点的延迟测试，也可传代理组名称（只会测试代理组下选中的代理节点）
     pub async fn delay_proxy_by_name(&self, proxy_name: &str, test_url: &str, timeout: u32) -> Result<ProxyDelay> {
         let proxy_name_encode = urlencoding::encode(proxy_name);
-        let req_timeout = Duration::from_millis(timeout as u64) + self.request_timeout;
-        let response = self
-            .build_request(Method::GET, &format!("/proxies/{proxy_name_encode}/delay"))?
+        let suffix_url = format!("/proxies/{proxy_name_encode}/delay");
+        let req_timeout = Duration::from_millis(timeout as u64) + DEFAULT_REQUEST_TIMEOUT;
+        let client = self
+            .build_request(Method::GET, &suffix_url)?
             .query(&[("timeout", &timeout.to_string()), ("url", &test_url.to_string())])
-            .timeout(req_timeout)
-            .send()
-            .await?;
+            .timeout(req_timeout);
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             match response.json::<ErrorResponse>().await {
                 Ok(err_res) => {
@@ -723,7 +707,8 @@ impl Mihomo {
 
     /// 获取所有规则信息
     pub async fn get_rules(&self) -> Result<Rules> {
-        let response = self.build_request(Method::GET, "/rules")?.send().await?;
+        let client = self.build_request(Method::GET, "/rules")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -736,7 +721,8 @@ impl Mihomo {
 
     /// 获取所有规则提供者信息
     pub async fn get_rule_providers(&self) -> Result<RuleProviders> {
-        let response = self.build_request(Method::GET, "/providers/rules")?.send().await?;
+        let client = self.build_request(Method::GET, "/providers/rules")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("get all rule providers failed, {}", e),
@@ -750,10 +736,8 @@ impl Mihomo {
     /// 更新规则提供者信息
     pub async fn update_rule_provider(&self, provider_name: &str) -> Result<()> {
         let provider_name_encode = urlencoding::encode(provider_name);
-        let response = self
-            .build_request(Method::PUT, &format!("/providers/rules/{provider_name_encode}"))?
-            .send()
-            .await?;
+        let client = self.build_request(Method::PUT, &format!("/providers/rules/{provider_name_encode}"))?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("update rule provider[{}] failed, {}", provider_name, e),
@@ -766,7 +750,8 @@ impl Mihomo {
 
     /// 获取基础配置
     pub async fn get_base_config(&self) -> Result<BaseConfig> {
-        let response = self.build_request(Method::GET, "/configs")?.send().await?;
+        let client = self.build_request(Method::GET, "/configs")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -778,15 +763,20 @@ impl Mihomo {
     }
 
     /// 重新加载配置
-    ///
-    /// 如果配置文件中包含了很多 provider，则需等待 provider 下载完成 (如果网络不好则导致此方法耗时)
     pub async fn reload_config(&self, force: bool, config_path: &str) -> Result<()> {
-        let response = self
+        let body = json!({ "path": config_path });
+        let client = self
             .build_request(Method::PUT, "/configs")?
+            .timeout(Duration::from_secs(60))
             .query(&[("force", force)])
-            .json(&json!({ "path": config_path }))
-            .send()
-            .await?;
+            .json(&body);
+        let response_result = self.send_by_protocol(client).await;
+        if matches!(self.protocol, Protocol::LocalSocket)
+            && let Ok(pool) = IpcConnectionPool::global()
+        {
+            pool.clear_pool().await;
+        }
+        let response = response_result?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("reload base config failed, {}", e),
@@ -799,7 +789,8 @@ impl Mihomo {
 
     /// 更新基础配置
     pub async fn patch_base_config<D: serde::Serialize + Clone + Sync>(&self, data: &D) -> Result<()> {
-        let response = self.build_request(Method::PATCH, "/configs")?.json(data).send().await?;
+        let client = { self.build_request(Method::PATCH, "/configs")?.json(&data) };
+        let response = { self.send_by_protocol(client).await? };
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("patch base config failed, {}", e),
@@ -812,11 +803,10 @@ impl Mihomo {
 
     /// 更新 Geo, 同 [`upgrade_geo`](crate::mihomo::Mihomo::upgrade_geo)
     pub async fn update_geo(&self) -> Result<()> {
-        let response = self
+        let client = self
             .build_request(Method::POST, "/configs/geo")?
-            .timeout(DOWNLOAD_FILE_TIMEOUT)
-            .send()
-            .await?;
+            .timeout(Duration::from_secs(60));
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("update geo database failed, {}", e),
@@ -829,7 +819,8 @@ impl Mihomo {
 
     /// 重启核心
     pub async fn restart(&self) -> Result<()> {
-        let response = self.build_request(Method::POST, "/restart")?.send().await?;
+        let client = self.build_request(Method::POST, "/restart")?;
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -842,12 +833,11 @@ impl Mihomo {
 
     /// 升级核心
     pub async fn upgrade_core(&self, channel: CoreUpdaterChannel, force: bool) -> Result<()> {
-        let response = self
+        let client = self
             .build_request(Method::POST, "/upgrade")?
-            .timeout(DOWNLOAD_FILE_TIMEOUT)
-            .query(&[("channel", &channel.to_string()), ("force", &force.to_string())])
-            .send()
-            .await?;
+            .timeout(Duration::from_secs(60))
+            .query(&[("channel", &channel.to_string()), ("force", &force.to_string())]);
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("upgrade core failed, {}", e),
@@ -867,11 +857,10 @@ impl Mihomo {
 
     /// 更新 UI
     pub async fn upgrade_ui(&self) -> Result<()> {
-        let response = self
+        let client = self
             .build_request(Method::POST, "/upgrade/ui")?
-            .timeout(DOWNLOAD_FILE_TIMEOUT)
-            .send()
-            .await?;
+            .timeout(Duration::from_secs(60));
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response
                 .json::<ErrorResponse>()
@@ -884,11 +873,10 @@ impl Mihomo {
 
     /// 更新 Geo
     pub async fn upgrade_geo(&self) -> Result<()> {
-        let response = self
+        let client = self
             .build_request(Method::POST, "/upgrade/geo")?
-            .timeout(DOWNLOAD_FILE_TIMEOUT)
-            .send()
-            .await?;
+            .timeout(Duration::from_secs(60));
+        let response = self.send_by_protocol(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("upgrade geo database failed, {}", e),

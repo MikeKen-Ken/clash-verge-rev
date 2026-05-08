@@ -29,16 +29,20 @@ const KERNEL_LOG_LEVELS = [
   "silent",
 ] as const;
 
+const toUiLogLevel = (level?: string) => (level === "warn" ? "warning" : level);
+
+const toKernelLogLevel = (level: string) =>
+  level === "warning" ? "warn" : level;
+
 const LogPage = () => {
   const { t } = useTranslation();
   const { clash } = useClash();
   const [clashLog, setClashLog] = useClashLog();
   const enableLog = clashLog.enable;
   const logState = clashLog.logFilter;
-  const kernelLogLevel =
-    clash?.["log-level"] === "warn"
-      ? "warning"
-      : (clash?.["log-level"] ?? clashLog.logLevel ?? "info");
+  const kernelLogLevel = toUiLogLevel(clashLog.logLevel) ??
+    toUiLogLevel(clash?.["log-level"]) ??
+    "info";
   const logOrder = clashLog.logOrder ?? "asc";
   const isDescending = logOrder === "desc";
 
@@ -81,7 +85,7 @@ const LogPage = () => {
 
   const handleKernelLogLevelChange = async (newLevel: string) => {
     setClashLog((pre: any) => ({ ...pre, logLevel: newLevel }));
-    await patchRuntimeConfig({ "log-level": newLevel });
+    await patchRuntimeConfig({ "log-level": toKernelLogLevel(newLevel) });
   };
 
   const handleToggleLog = async () => {

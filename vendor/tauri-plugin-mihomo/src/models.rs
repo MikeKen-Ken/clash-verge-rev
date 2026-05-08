@@ -6,7 +6,7 @@ use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
 use ts_rs::TS;
 
-use crate::wrap_stream::WrapStream;
+use crate::ipc::WrapStream;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -533,7 +533,6 @@ pub enum ProxyType {
     Tuic,
     Ssh,
     Mieru,
-    Masque,
     AnyTLS,
     Relay,
     Sudoku,
@@ -900,7 +899,7 @@ pub enum WebSocketMessage {
     Close(Option<CloseFrame>),
 }
 
-pub type WebSocketConnectionId = u32;
+pub type ConnectionId = u32;
 pub enum WebSocketWriter {
     TcpStreamWriter(SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>),
     SocketStreamWriter(SplitSink<WebSocketStream<WrapStream>, Message>),
@@ -921,4 +920,4 @@ impl WebSocketWriter {
 }
 
 #[derive(Default)]
-pub struct ConnectionManager(pub RwLock<HashMap<WebSocketConnectionId, WebSocketWriter>>);
+pub struct ConnectionManager(pub RwLock<HashMap<ConnectionId, WebSocketWriter>>);
