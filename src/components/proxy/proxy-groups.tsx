@@ -61,6 +61,17 @@ const SKIP_DELAY_CHECK_GROUPS = new Set(["⬆️", "↩️"]);
 
 const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 
+const formatGroupNameWithConnectTimes = (group: {
+  name: string;
+  connectTimes?: number;
+  maxConnectTimes?: number;
+}) => {
+  if (typeof group.maxConnectTimes === "number" && group.maxConnectTimes > 0) {
+    return `${group.name} (${group.connectTimes ?? 0}/${group.maxConnectTimes})`;
+  }
+  return group.name;
+};
+
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
   const { mode, isChainMode = false, chainConfigData, onRegisterCheckAll } = props;
@@ -698,7 +709,7 @@ export const ProxyGroups = (props: Props) => {
                       >
                         <Chip
                           size="small"
-                          label={`${currentGroup.name} (${currentGroup.type})`}
+                          label={`${formatGroupNameWithConnectTimes(currentGroup)} (${currentGroup.type})`}
                           variant="outlined"
                           sx={{
                             fontSize: "12px",
@@ -847,7 +858,7 @@ export const ProxyGroups = (props: Props) => {
                 }}
               >
                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {group.name}
+                  {formatGroupNameWithConnectTimes(group)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {group.type} · {group.all.length} 节点

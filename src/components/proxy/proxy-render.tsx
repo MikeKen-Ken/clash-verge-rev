@@ -72,6 +72,10 @@ const ProxyRenderInner = (props: RenderProps) => {
     cacheKey: group.name.replaceAll(" ", ""),
     enabled: enable_group_icon,
   });
+  const connectTimesLabel =
+    typeof group.maxConnectTimes === "number" && group.maxConnectTimes > 0
+      ? `${group.connectTimes ?? 0}/${group.maxConnectTimes}`
+      : null;
 
   const proxyColItemsMemo = useMemo(() => {
     if (type !== 4 || !proxyCol) {
@@ -154,7 +158,27 @@ const ProxyRenderInner = (props: RenderProps) => {
             />
           )}
         <ListItemText
-          primary={<StyledPrimary>{group.name}</StyledPrimary>}
+          primary={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+              <StyledPrimary>{group.name}</StyledPrimary>
+              {connectTimesLabel && (
+                <Tooltip title="max-connect-times" arrow>
+                  <Chip
+                    size="small"
+                    label={connectTimesLabel}
+                    sx={{
+                      height: 20,
+                      fontSize: 11,
+                      flexShrink: 0,
+                      backgroundColor: (theme) =>
+                        alpha(theme.palette.info.main, 0.1),
+                      color: (theme) => theme.palette.info.main,
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
+          }
           secondary={
             <Box
               sx={{

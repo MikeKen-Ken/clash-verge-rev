@@ -114,6 +114,8 @@ interface IProxyItem {
   now?: string;
   hidden?: boolean;
   icon?: string;
+  connectTimes?: number;
+  maxConnectTimes?: number;
   provider?: string; // 记录是否来自provider
   fixed?: string; // 记录固定(优先)的节点
 }

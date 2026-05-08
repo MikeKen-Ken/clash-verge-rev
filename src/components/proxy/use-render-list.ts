@@ -52,6 +52,8 @@ type ProxyGroup = {
   testUrl?: string;
   provider?: string;
   timeout?: number;
+  connectTimes?: number;
+  maxConnectTimes?: number;
 };
 
 export interface IRenderItem {
