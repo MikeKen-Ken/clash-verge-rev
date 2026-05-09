@@ -473,6 +473,9 @@ const ProfilePage = () => {
         noRefs: true,
       });
       await saveProfileFile(targetProfile.uid, nextText);
+      if (profiles.current === targetProfile.uid) {
+        await enhanceProfiles();
+      }
       await mutateProfiles();
       showNotice.success(`合并完成：已处理 ${sourceProfiles.length} 个远程配置`, 3000);
     } catch (err: any) {

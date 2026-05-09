@@ -233,7 +233,9 @@ export const AppDataProvider = ({
 
   useEffect(() => {
     let lastProfileId: string | null = null;
-    let lastUpdateTime = 0;
+    let lastProfileUpdateTime = 0;
+    let lastClashRefreshTime = 0;
+    let lastProxyRefreshTime = 0;
     const refreshThrottle = 800;
 
     let isUnmounted = false;
@@ -286,16 +288,22 @@ export const AppDataProvider = ({
 
       if (
         lastProfileId === newProfileId &&
-        now - lastUpdateTime < refreshThrottle
+        now - lastProfileUpdateTime < refreshThrottle
       ) {
         return;
       }
 
       lastProfileId = newProfileId;
-      lastUpdateTime = now;
+      lastProfileUpdateTime = now;
       hasTriggeredStartupFallback.current = false;
 
       scheduleTimeout(() => {
+        refreshProxy().catch((error) =>
+          console.warn("[DataProvider] Proxy refresh failed:", error),
+        );
+        refreshProxyProviders().catch((error) =>
+          console.warn("[DataProvider] Proxy providers refresh failed:", error),
+        );
         refreshRules().catch((error) =>
           console.warn("[DataProvider] Rules refresh failed:", error),
         );
@@ -307,9 +315,9 @@ export const AppDataProvider = ({
 
     const handleRefreshClash = () => {
       const now = Date.now();
-      if (now - lastUpdateTime <= refreshThrottle) return;
+      if (now - lastClashRefreshTime <= refreshThrottle) return;
 
-      lastUpdateTime = now;
+      lastClashRefreshTime = now;
       // 配置重载后需要重新触发 url-test/fallback 组的测速，以更新当前节点
       hasTriggeredStartupFallback.current = false;
       scheduleTimeout(async () => {
@@ -326,9 +334,9 @@ export const AppDataProvider = ({
 
     const handleRefreshProxy = () => {
       const now = Date.now();
-      if (now - lastUpdateTime <= refreshThrottle) return;
+      if (now - lastProxyRefreshTime <= refreshThrottle) return;
 
-      lastUpdateTime = now;
+      lastProxyRefreshTime = now;
       // 该事件由托盘切换节点成功时发出，标记为手动选择以抑制 fallback 切换通知
       markManualProxySelectionStarted();
       scheduleTimeout(() => {
@@ -416,7 +424,13 @@ export const AppDataProvider = ({
         );
       }
     };
-  }, [refreshProxy, refreshClashConfig, refreshRules, refreshRuleProviders]);
+  }, [
+    refreshProxy,
+    refreshClashConfig,
+    refreshRules,
+    refreshProxyProviders,
+    refreshRuleProviders,
+  ]);
 
   const { data: sysproxy, mutate: refreshSysproxy } = useSWR(
     "getSystemProxy",

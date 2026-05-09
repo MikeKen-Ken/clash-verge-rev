@@ -225,6 +225,16 @@ export async function calcuProxies(): Promise<{
       history: [],
     };
   };
+  const uniqueGroupAll = (all?: string[]) => {
+    if (!Array.isArray(all)) return [];
+
+    const seen = new Set<string>();
+    return all.filter((name) => {
+      if (seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+  };
 
   const { GLOBAL: global, DIRECT: direct, REJECT: reject } = proxyRecord;
 
@@ -235,7 +245,7 @@ export async function calcuProxies(): Promise<{
       acc.push(
         mergeGroupConfig(each.name, {
           ...each,
-          all: each.all!.map((item) => generateItem(item)),
+          all: uniqueGroupAll(each.all).map((item) => generateItem(item)),
         }) as IProxyGroupItem,
       );
     }
@@ -252,7 +262,7 @@ export async function calcuProxies(): Promise<{
         acc.push(
           mergeGroupConfig(g.name, {
             ...g,
-            all: g.all!.map((item) => generateItem(item)),
+            all: uniqueGroupAll(g.all).map((item) => generateItem(item)),
           }) as IProxyGroupItem,
         );
       }
@@ -275,7 +285,7 @@ export async function calcuProxies(): Promise<{
 
   const _global = mergeGroupConfig("GLOBAL", {
     ...global,
-    all: global?.all?.map((item) => generateItem(item)) || [],
+    all: uniqueGroupAll(global?.all).map((item) => generateItem(item)),
   }) as IProxyGroupItem;
 
   const records: Record<string, IProxyItem> = {};
@@ -283,7 +293,10 @@ export async function calcuProxies(): Promise<{
     const r = proxyRecord[name];
     if (r) {
       records[name] = r.all
-        ? (mergeGroupConfig(name, r) as IProxyItem)
+        ? (mergeGroupConfig(name, {
+            ...r,
+            all: uniqueGroupAll(r.all),
+          }) as IProxyItem)
         : (r as IProxyItem);
     }
   }
