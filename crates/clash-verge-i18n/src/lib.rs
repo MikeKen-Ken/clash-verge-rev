@@ -3,36 +3,40 @@ use rust_i18n::i18n;
 const DEFAULT_LANGUAGE: &str = "zh";
 i18n!("locales", fallback = "zh");
 
-#[inline]
-fn locale_alias(locale: &str) -> Option<&'static str> {
-    match locale {
-        "ja" | "ja-jp" | "jp" => Some("jp"),
-        "zh" | "zh-cn" | "zh-hans" | "zh-sg" | "zh-my" | "zh-chs" => Some("zh"),
-        "zh-tw" | "zh-hk" | "zh-hant" | "zh-mo" | "zh-cht" => Some("zhtw"),
-        _ => None,
+/// 语言解析逻辑在非测试构建中暂未接入（`sync_locale` / `set_locale` 固定 zh），保留给单元测试与后续扩展。
+#[cfg(test)]
+mod language_resolve {
+    #[inline]
+    fn locale_alias(locale: &str) -> Option<&'static str> {
+        match locale {
+            "ja" | "ja-jp" | "jp" => Some("jp"),
+            "zh" | "zh-cn" | "zh-hans" | "zh-sg" | "zh-my" | "zh-chs" => Some("zh"),
+            "zh-tw" | "zh-hk" | "zh-hant" | "zh-mo" | "zh-cht" => Some("zhtw"),
+            _ => None,
+        }
     }
-}
 
-#[inline]
-fn resolve_supported_language(language: &str) -> Option<&'static str> {
-    if language.is_empty() {
-        return None;
-    }
-    let normalized = language.to_lowercase().replace('_', "-");
-    let segments: Vec<&str> = normalized.split('-').collect();
-    let supported = rust_i18n::available_locales!();
-    for i in (1..=segments.len()).rev() {
-        let prefix = segments[..i].join("-");
-        if let Some(alias) = locale_alias(&prefix)
-            && let Some(&found) = supported.iter().find(|&&l| l.eq_ignore_ascii_case(alias))
-        {
-            return Some(found);
+    #[inline]
+    pub(super) fn resolve_supported_language(language: &str) -> Option<&'static str> {
+        if language.is_empty() {
+            return None;
         }
-        if let Some(&found) = supported.iter().find(|&&l| l.eq_ignore_ascii_case(&prefix)) {
-            return Some(found);
+        let normalized = language.to_lowercase().replace('_', "-");
+        let segments: Vec<&str> = normalized.split('-').collect();
+        let supported = rust_i18n::available_locales!();
+        for i in (1..=segments.len()).rev() {
+            let prefix = segments[..i].join("-");
+            if let Some(alias) = locale_alias(&prefix)
+                && let Some(&found) = supported.iter().find(|&&l| l.eq_ignore_ascii_case(alias))
+            {
+                return Some(found);
+            }
+            if let Some(&found) = supported.iter().find(|&&l| l.eq_ignore_ascii_case(&prefix)) {
+                return Some(found);
+            }
         }
+        None
     }
-    None
 }
 
 /// 本分支固定为简体中文：不随系统区域或配置文件切换（托盘/原生通知等始终 zh）
@@ -74,7 +78,7 @@ macro_rules! t {
 
 #[cfg(test)]
 mod test {
-    use super::resolve_supported_language;
+    use super::language_resolve::resolve_supported_language;
 
     #[test]
     fn test_resolve_supported_language() {

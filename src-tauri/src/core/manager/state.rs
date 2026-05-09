@@ -95,7 +95,7 @@ impl CoreManager {
         self.set_running_child_sidecar(child);
         self.set_running_mode(RunningMode::Sidecar);
 
-        AsyncHandler::spawn(|| async move {
+        AsyncHandler::spawn(move || async move {
             while let Some(event) = rx.recv().await {
                 match event {
                     tauri_plugin_shell::process::CommandEvent::Stdout(line)
