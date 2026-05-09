@@ -279,9 +279,8 @@ export const useCustomTheme = () => {
         /* 背景图处理 */
         body {
           background-color: var(--background-color);
-          ${
-            hasUserBackground
-              ? `
+          ${hasUserBackground
+          ? `
             background-image: var(--user-background-image);
             background-size: cover;
             background-position: center;
@@ -289,8 +288,8 @@ export const useCustomTheme = () => {
             background-blend-mode: var(--background-blend-mode);
             opacity: var(--background-opacity);
           `
-              : ""
-          }
+          : ""
+        }
         }
 
         /* 修复可能的白色边框 */
@@ -313,8 +312,15 @@ export const useCustomTheme = () => {
       styleElement.innerHTML = effectiveInjectedCss + globalStyles;
     }
 
-    const { palette } = muiTheme;
-    setTimeout(() => {
+    return muiTheme;
+  }, [mode, theme_setting, userBackgroundImage, hasUserBackground]);
+
+  // 渐变色 DOM 注入：原本写在 useMemo 内的 setTimeout 没有清理，
+  // 主题频繁切换/重算时会堆积回调，且可能在卸载后仍写 DOM。
+  // 拆到独立 useEffect 并在 cleanup 中 clearTimeout。
+  useEffect(() => {
+    const { palette } = theme;
+    const timerId = setTimeout(() => {
       const dom = document.querySelector("#Gradient2");
       if (dom) {
         dom.innerHTML = `
@@ -325,8 +331,8 @@ export const useCustomTheme = () => {
       }
     }, 0);
 
-    return muiTheme;
-  }, [mode, theme_setting, userBackgroundImage, hasUserBackground]);
+    return () => clearTimeout(timerId);
+  }, [theme]);
 
   return { theme };
 };

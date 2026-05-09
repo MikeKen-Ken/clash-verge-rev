@@ -192,14 +192,28 @@ impl Timer {
                         // Remove old task first
                         let value = self.delay_timer.write().remove_task(tid);
                         if let Err(e) = value {
-                            logging!(
-                                warn,
-                                Type::Timer,
-                                "Failed to remove old task {} for uid {}: {}",
-                                tid,
-                                uid,
-                                e
-                            );
+                            if Self::is_missing_delay_timer_task_error(&e) {
+                                logging!(
+                                    info,
+                                    Type::Timer,
+                                    "旧任务已不存在，继续按新间隔重新注册: task_id={}, uid={}",
+                                    tid,
+                                    uid
+                                );
+                            } else {
+                                // 旧任务移除失败时不要再以同样的 task_id 重新注册，
+                                // 否则 DelayTimer 内部状态可能重复，导致任务泄露或多次触发；
+                                // 跳过本次更新，保留 timer_map 旧记录，下次 refresh 重试。
+                                logging!(
+                                    warn,
+                                    Type::Timer,
+                                    "旧任务移除失败，跳过重新注册以避免重复任务: task_id={}, uid={}, error={}",
+                                    tid,
+                                    uid,
+                                    e
+                                );
+                                continue;
+                            }
                         }
 
                         // Then add the new one
@@ -229,6 +243,14 @@ impl Timer {
         }
 
         Ok(())
+    }
+
+    fn is_missing_delay_timer_task_error(error: &impl std::fmt::Display) -> bool {
+        let message = error.to_string().to_ascii_lowercase();
+        message.contains("not found")
+            || message.contains("not exist")
+            || message.contains("no such")
+            || message.contains("不存在")
     }
 
     /// Generate map of profile UIDs to update intervals

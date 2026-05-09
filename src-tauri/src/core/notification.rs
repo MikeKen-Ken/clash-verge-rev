@@ -2,8 +2,16 @@ use super::handle::Handle;
 use crate::constants::timing;
 use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
-use std::{sync::mpsc, thread};
+use std::{
+    sync::mpsc::{self, TrySendError},
+    thread,
+};
 use tauri::{Emitter as _, WebviewWindow};
+
+/// 前端事件队列上限。
+/// 使用有界队列避免生产者快于 worker 时无界堆积导致内存增长；
+/// 实际场景下若到达上限说明前端长时间未消费，丢弃后续幂等事件是可接受的。
+const FRONTEND_EVENT_CHANNEL_CAPACITY: usize = 256;
 
 // TODO 重构或优化，避免 Clone 过多
 #[derive(Debug, Clone)]
@@ -22,7 +30,7 @@ pub enum FrontendEvent {
 
 #[derive(Debug)]
 pub struct NotificationSystem {
-    sender: Option<mpsc::Sender<FrontendEvent>>,
+    sender: Option<mpsc::SyncSender<FrontendEvent>>,
     #[allow(clippy::type_complexity)]
     worker_handle: Option<thread::JoinHandle<()>>,
 }
@@ -50,7 +58,7 @@ impl NotificationSystem {
             return;
         }
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::sync_channel(FRONTEND_EVENT_CHANNEL_CAPACITY);
         self.sender = Some(tx);
 
         //? Do we have to create a new thread for this?
@@ -126,15 +134,43 @@ impl NotificationSystem {
         }
     }
 
+    fn can_drop_when_full(event: &FrontendEvent) -> bool {
+        matches!(
+            event,
+            FrontendEvent::RefreshClash
+                | FrontendEvent::RefreshClashConfigOnly
+                | FrontendEvent::RefreshVerge
+        )
+    }
+
     pub fn send_event(&self, event: FrontendEvent) -> bool {
         if !self.is_running() {
             return false;
         }
 
-        if let Some(sender) = &self.sender {
-            sender.send(event).is_ok()
-        } else {
-            false
+        let Some(sender) = &self.sender else {
+            return false;
+        };
+
+        // 使用非阻塞 try_send，避免在通道满时阻塞调用线程（含异步任务）。
+        // 满时仅丢弃可合并的刷新事件；状态闭环和用户通知事件必须保留。
+        match sender.try_send(event) {
+            Ok(()) => true,
+            Err(TrySendError::Full(dropped)) => {
+                if !Self::can_drop_when_full(&dropped) {
+                    return sender.send(dropped).is_ok();
+                }
+
+                logging!(
+                    warn,
+                    Type::System,
+                    "前端事件队列已满（容量 {}），丢弃可合并事件: {:?}",
+                    FRONTEND_EVENT_CHANNEL_CAPACITY,
+                    dropped
+                );
+                false
+            }
+            Err(TrySendError::Disconnected(_)) => false,
         }
     }
 

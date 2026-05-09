@@ -1,6 +1,46 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
 
+// 缓存上限：依赖连接活跃度，按经验值给出，避免长时间运行后无界增长。
+// 图标缓存内容（base64）较大，上限相对小一些；路径映射条目轻量，可放宽。
+const MAX_ICON_CACHE_ENTRIES = 512;
+const MAX_PROCESS_PATH_CACHE_ENTRIES = 1024;
+
+/**
+ * 以 LRU 语义写入 Map：
+ * - 已存在则删除后重新插入（移到末尾）；
+ * - 超出上限时删除最旧条目（Map 迭代器按插入顺序）。
+ */
+const lruSet = <V>(
+  map: Map<string, V>,
+  key: string,
+  value: V,
+  max: number,
+) => {
+  if (map.has(key)) {
+    map.delete(key);
+  }
+  map.set(key, value);
+  while (map.size > max) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) {
+      break;
+    }
+    map.delete(oldestKey);
+  }
+};
+
+/** 以 LRU 语义读取（命中后将该项重新插入到末尾） */
+const lruGet = <V>(map: Map<string, V>, key: string): V | undefined => {
+  if (!map.has(key)) {
+    return undefined;
+  }
+  const value = map.get(key) as V;
+  map.delete(key);
+  map.set(key, value);
+  return value;
+};
+
 // 全局图标缓存，避免重复请求 (key: processPath)
 const iconCache = new Map<string, string | null>();
 // 进程名图标缓存 (key: processName)
@@ -16,8 +56,13 @@ const processNameToPathCache = new Map<string, string>();
  */
 export const registerProcessPath = (processName: string, processPath: string) => {
   if (processName && processPath) {
-    // 使用进程名（不区分大小写）作为 key
-    processNameToPathCache.set(processName.toLowerCase(), processPath);
+    // 使用进程名（不区分大小写）作为 key，并以 LRU 限制总条目数
+    lruSet(
+      processNameToPathCache,
+      processName.toLowerCase(),
+      processPath,
+      MAX_PROCESS_PATH_CACHE_ENTRIES,
+    );
   }
 };
 
@@ -26,7 +71,7 @@ export const registerProcessPath = (processName: string, processPath: string) =>
  */
 export const getProcessPathByName = (processName: string): string | undefined => {
   if (!processName) return undefined;
-  return processNameToPathCache.get(processName.toLowerCase());
+  return lruGet(processNameToPathCache, processName.toLowerCase());
 };
 
 /**
@@ -52,13 +97,13 @@ export const useProcessIcon = () => {
     // 创建新请求
     const request = invoke<string | null>("get_process_icon", { processPath })
       .then((icon) => {
-        iconCache.set(processPath, icon);
+        lruSet(iconCache, processPath, icon, MAX_ICON_CACHE_ENTRIES);
         pendingRequests.delete(processPath);
         return icon;
       })
       .catch((err) => {
         console.warn(`Failed to get icon for ${processPath}:`, err);
-        iconCache.set(processPath, null);
+        lruSet(iconCache, processPath, null, MAX_ICON_CACHE_ENTRIES);
         pendingRequests.delete(processPath);
         return null;
       });
@@ -89,14 +134,14 @@ export const useProcessIconSync = (processPath: string | undefined) => {
     if (!pendingRequests.has(processPath)) {
       const request = invoke<string | null>("get_process_icon", { processPath })
         .then((result) => {
-          iconCache.set(processPath, result);
+          lruSet(iconCache, processPath, result, MAX_ICON_CACHE_ENTRIES);
           pendingRequests.delete(processPath);
           setIcon(result);
           return result;
         })
         .catch((err) => {
           console.warn(`Failed to get icon for ${processPath}:`, err);
-          iconCache.set(processPath, null);
+          lruSet(iconCache, processPath, null, MAX_ICON_CACHE_ENTRIES);
           pendingRequests.delete(processPath);
           return null;
         });
@@ -128,7 +173,7 @@ export const useProcessIconByNameSync = (processName: string | undefined) => {
   // 如果没有缓存，异步获取
   if (processName && !fetchedRef.current) {
     const key = processName.toLowerCase();
-    
+
     if (iconByNameCache.has(key)) {
       if (icon !== iconByNameCache.get(key)) {
         setIcon(iconByNameCache.get(key) ?? null);
@@ -141,20 +186,20 @@ export const useProcessIconByNameSync = (processName: string | undefined) => {
       if (!pendingRequests.has(requestKey)) {
         // 先尝试使用已知的路径
         const knownPath = processNameToPathCache.get(key);
-        
+
         const request = (knownPath
           ? invoke<string | null>("get_process_icon", { processPath: knownPath })
           : invoke<string | null>("get_process_icon_by_name", { processName })
         )
           .then((result) => {
-            iconByNameCache.set(key, result);
+            lruSet(iconByNameCache, key, result, MAX_ICON_CACHE_ENTRIES);
             pendingRequests.delete(requestKey);
             setIcon(result);
             return result;
           })
           .catch((err) => {
             console.warn(`Failed to get icon for process ${processName}:`, err);
-            iconByNameCache.set(key, null);
+            lruSet(iconByNameCache, key, null, MAX_ICON_CACHE_ENTRIES);
             pendingRequests.delete(requestKey);
             return null;
           });

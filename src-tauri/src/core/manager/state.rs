@@ -42,9 +42,7 @@ impl CoreManager {
         let binary = sidecar_binary_name(clash_core.as_str());
         let config_dir = dirs::app_home_dir()?;
 
-        #[cfg(unix)]
-        let previous_mask = unsafe { tauri_plugin_clash_verge_sysinfo::libc::umask(0o007) };
-        let (mut rx, child) = app_handle
+        let command = app_handle
             .shell()
             .sidecar(binary)?
             .args([
@@ -58,11 +56,36 @@ impl CoreManager {
                     "-ext-ctl-unix"
                 },
                 &IClashTemp::guard_external_controller_ipc(),
-            ])
-            .spawn()?;
+            ]);
+
+        // 防御性清理：避免重复调用导致旧子进程与 stdout reader 任务叠加。
+        // 放在所有可提前失败的准备步骤之后，减少启动失败时误杀当前可用核心的窗口。
+        if let Some(old_child) = self.take_child_sidecar() {
+            let pid = old_child.pid();
+            let result = old_child.kill();
+            logging!(
+                info,
+                Type::Core,
+                "Killed leftover sidecar before restart (PID: {:?}, Result: {:?})",
+                pid,
+                result
+            );
+        }
+
+        #[cfg(unix)]
+        let previous_mask = unsafe { tauri_plugin_clash_verge_sysinfo::libc::umask(0o007) };
+        let spawn_result = command.spawn();
         #[cfg(unix)]
         unsafe {
             tauri_plugin_clash_verge_sysinfo::libc::umask(previous_mask)
+        };
+
+        let (mut rx, child) = match spawn_result {
+            Ok(value) => value,
+            Err(err) => {
+                self.set_running_mode(RunningMode::NotRunning);
+                return Err(err.into());
+            }
         };
 
         let pid = child.pid();
@@ -149,7 +172,9 @@ impl CoreManager {
         }
 
         AsyncHandler::spawn(|| async move {
-            let mut seen = HashSet::new();
+            // 服务端返回的是当前日志快照。只保存上一轮匹配快照，避免跨轮 seen 无界增长，
+            // 同时不会因为 FIFO 淘汰把仍在快照里的旧日志反复当成新日志。
+            let mut previous_matches: HashSet<String> = HashSet::new();
             let mut initialized = false;
 
             loop {
@@ -161,26 +186,29 @@ impl CoreManager {
 
                 match service::poll_clash_logs_by_service().await {
                     Ok(logs) => {
+                        let mut current_matches: HashSet<String> = HashSet::new();
                         for message in logs {
                             if parse_max_connect_times_test_log(message.as_str()).is_none() {
                                 continue;
                             }
 
-                            let inserted = seen.insert(message.to_string());
-                            if !initialized || !inserted {
-                                continue;
+                            let key = message.to_string();
+                            if initialized && !previous_matches.contains(&key) {
+                                if let Some((group, proxy)) =
+                                    parse_max_connect_times_test_log(message.as_str())
+                                {
+                                    notify_event(NotificationEvent::MaxConnectTimesDelayTest {
+                                        group: group.as_str(),
+                                        proxy: proxy.as_str(),
+                                    })
+                                    .await;
+                                }
                             }
 
-                            if let Some((group, proxy)) =
-                                parse_max_connect_times_test_log(message.as_str())
-                            {
-                                notify_event(NotificationEvent::MaxConnectTimesDelayTest {
-                                    group: group.as_str(),
-                                    proxy: proxy.as_str(),
-                                })
-                                .await;
-                            }
+                            current_matches.insert(key);
                         }
+
+                        previous_matches = current_matches;
                         initialized = true;
                     }
                     Err(err) => {
