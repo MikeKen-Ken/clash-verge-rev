@@ -57,6 +57,40 @@ interface Props {
   searchState?: SearchState;
 }
 
+const formatMaxConnectTimesLog = (raw: string): string | null => {
+  if (!raw.startsWith("[APP] max-connect-times ")) return null;
+
+  const parts = raw.split("\t").map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const head = parts[0];
+  if (head === "[APP] max-connect-times test triggered") {
+    const group = parts[1] ?? "-";
+    const proxy = parts[2] ?? "-";
+    return `max-connect-times | test triggered | group: ${group} | proxy: ${proxy}`;
+  }
+
+  if (head === "[APP] max-connect-times test result") {
+    const group = parts[1] ?? "-";
+    const proxy = parts[2] ?? "-";
+    const status = (parts[3] ?? "unknown").toLowerCase();
+    const detail = parts[4] ?? "";
+    if (status === "success") {
+      return `max-connect-times | result: success | group: ${group} | proxy: ${proxy} | delay: ${detail} ms`;
+    }
+    return `max-connect-times | result: fail | group: ${group} | proxy: ${proxy} | reason: ${detail || "unknown"}`;
+  }
+
+  if (head === "[APP] max-connect-times health-check triggered") {
+    const group = parts[1] ?? "-";
+    const proxy = parts[2] ?? "-";
+    const detail = parts[3] ?? "";
+    return `max-connect-times | health-check triggered | group: ${group} | proxy: ${proxy}${detail ? ` | ${detail}` : ""}`;
+  }
+
+  return null;
+};
+
 const LogItem = ({ value, searchState }: Props) => {
   const theme = useTheme();
   const primaryColor = theme.palette.primary.main;
@@ -305,6 +339,10 @@ const LogItem = ({ value, searchState }: Props) => {
   // 从 payload 提取协议 [TCP]/[UDP]，并生成第二行：去掉协议、去掉进程名括号、match RuleSet(x) 改为 --> x
   const payloadLine = (() => {
     const raw = value.payload || "";
+    const maxConnectTimesFormatted = formatMaxConnectTimesLog(raw);
+    if (maxConnectTimesFormatted) {
+      return { protocol: null, secondLine: maxConnectTimesFormatted };
+    }
     const protocolMatch = raw.match(/^\[(TCP|UDP)\]\s*/i);
     const protocol = protocolMatch
       ? `[${protocolMatch[1].toUpperCase()}]`
