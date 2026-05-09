@@ -342,6 +342,13 @@ function extractProcessName(payload: string): string | undefined {
   return undefined;
 }
 
+function normalizeLogPayload(payload: string): string {
+  return payload
+    .replace(/\\t/g, "\t")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r");
+}
+
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
   const newRegex = /(.+?)\s+(.+?)\s+(.+)/;
@@ -352,16 +359,18 @@ export async function getClashLogs() {
     if (result) {
       const [_, _time, type, payload] = result;
       const time = dayjs(_time).format("MM-DD HH:mm:ss");
-      const processName = extractProcessName(payload);
-      acc.push({ time, type, payload, processName });
+      const normalizedPayload = normalizeLogPayload(payload);
+      const processName = extractProcessName(normalizedPayload);
+      acc.push({ time, type, payload: normalizedPayload, processName });
       return acc;
     }
 
     const result2 = log.match(newRegex);
     if (result2) {
       const [_, time, type, payload] = result2;
-      const processName = extractProcessName(payload);
-      acc.push({ time, type, payload, processName });
+      const normalizedPayload = normalizeLogPayload(payload);
+      const processName = extractProcessName(normalizedPayload);
+      acc.push({ time, type, payload: normalizedPayload, processName });
     }
     return acc;
   }, []);
