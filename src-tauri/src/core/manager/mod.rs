@@ -6,7 +6,14 @@ use anyhow::Result;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use clash_verge_logger::AsyncLogger;
 use once_cell::sync::Lazy;
-use std::{fmt, sync::Arc, time::Instant};
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
 use tauri_plugin_shell::process::CommandChild;
 use tokio::sync::Mutex;
 
@@ -36,6 +43,7 @@ pub struct CoreManager {
     state: ArcSwap<State>,
     last_update: ArcSwapOption<Instant>,
     update_lock: Mutex<()>,
+    sidecar_generation: AtomicU64,
 }
 
 #[derive(Debug)]
@@ -59,6 +67,7 @@ impl Default for CoreManager {
             state: ArcSwap::new(Arc::new(State::default())),
             last_update: ArcSwapOption::new(None),
             update_lock: Mutex::new(()),
+            sidecar_generation: AtomicU64::new(0),
         }
     }
 }
@@ -92,6 +101,19 @@ impl CoreManager {
     pub fn set_running_child_sidecar(&self, child: CommandChild) {
         let state = self.state.load();
         state.child_sidecar.store(Some(Arc::new(child)));
+    }
+
+    pub fn clear_running_child_sidecar(&self) {
+        let state = self.state.load();
+        state.child_sidecar.store(None);
+    }
+
+    pub fn next_sidecar_generation(&self) -> u64 {
+        self.sidecar_generation.fetch_add(1, Ordering::AcqRel) + 1
+    }
+
+    pub fn sidecar_generation(&self) -> u64 {
+        self.sidecar_generation.load(Ordering::Acquire)
     }
 
     pub fn set_last_update(&self, time: Instant) {

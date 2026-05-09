@@ -12,6 +12,11 @@ use tauri_plugin_clash_verge_sysinfo;
 
 impl CoreManager {
     pub async fn start_core(&self) -> Result<()> {
+        let _guard = self.update_lock.lock().await;
+        self.start_core_locked().await
+    }
+
+    async fn start_core_locked(&self) -> Result<()> {
         self.prepare_startup().await?;
         defer! {
             self.after_core_process();
@@ -36,6 +41,11 @@ impl CoreManager {
     }
 
     pub async fn stop_core(&self) -> Result<()> {
+        let _guard = self.update_lock.lock().await;
+        self.stop_core_locked().await
+    }
+
+    async fn stop_core_locked(&self) -> Result<()> {
         CLASH_LOGGER.clear_logs().await;
         defer! {
             self.after_core_process();
@@ -52,9 +62,14 @@ impl CoreManager {
     }
 
     pub async fn restart_core(&self) -> Result<()> {
+        let _guard = self.update_lock.lock().await;
+        self.restart_core_locked().await
+    }
+
+    async fn restart_core_locked(&self) -> Result<()> {
         logging!(info, Type::Core, "Restarting core");
-        self.stop_core().await?;
-        self.start_core().await
+        self.stop_core_locked().await?;
+        self.start_core_locked().await
     }
 
     pub async fn change_core(&self, clash_core: &String) -> Result<(), String> {

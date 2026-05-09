@@ -91,6 +91,7 @@ impl CoreManager {
         let pid = child.pid();
         logging!(trace, Type::Core, "Sidecar started with PID: {}", pid);
 
+        let sidecar_generation = self.next_sidecar_generation();
         self.set_running_child_sidecar(child);
         self.set_running_mode(RunningMode::Sidecar);
 
@@ -120,6 +121,32 @@ impl CoreManager {
                         };
                         Logger::global().writer_sidecar_log(Level::Info, &message);
                         CLASH_LOGGER.clear_logs().await;
+
+                        let manager = CoreManager::global();
+                        let _guard = manager.update_lock.lock().await;
+
+                        if manager.sidecar_generation() != sidecar_generation {
+                            logging!(
+                                debug,
+                                Type::Core,
+                                "忽略过期的 sidecar 终止事件：terminated_pid={}, generation={}",
+                                pid,
+                                sidecar_generation
+                            );
+                            break;
+                        }
+
+                        manager.clear_running_child_sidecar();
+
+                        if matches!(*manager.get_running_mode(), RunningMode::Sidecar) {
+                            manager.set_running_mode(RunningMode::NotRunning);
+                            logging!(
+                                warn,
+                                Type::Core,
+                                "sidecar 异常终止，已切换运行模式为 NotRunning（PID: {}）",
+                                pid
+                            );
+                        }
                         break;
                     }
                     _ => {}
