@@ -366,7 +366,7 @@ function normalizeLogPayload(payload: string): string {
 
 export async function getRuleProviderPreview(providerName: string) {
   return invoke<IRuleProviderPreview>("get_rule_provider_preview", {
-    provider_name: providerName,
+    providerName,
   });
 }
 
