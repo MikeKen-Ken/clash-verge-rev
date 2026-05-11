@@ -24,30 +24,6 @@ import { showNotice } from "@/services/notice-service";
 
 export type RulesetPreviewMode = "single" | "all";
 
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  if (items.length === 0) return [];
-  const cap = Math.max(1, Math.floor(concurrency));
-  const results: R[] = new Array(items.length);
-  let cursor = 0;
-
-  async function worker() {
-    for (; ;) {
-      const i = cursor++;
-      if (i >= items.length) break;
-      results[i] = await fn(items[i], i);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(cap, items.length) }, () => worker()),
-  );
-  return results;
-}
-
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -90,11 +66,11 @@ export function RulesetPreviewDialog(props: Props) {
           titleHint: `${data.behavior} · ${t("rules.page.provider.preview.ruleSetPolicy")}: ${data.policy || "—"}`,
         });
       } else {
-        const results = await mapWithConcurrency(
-          allNamesOrdered,
-          4,
-          (name) => getRuleProviderPreview(name),
-        );
+        // 串行请求：对 Windows named pipe / Unix socket IPC 并发多连接易导致 send 失败，按顺序预览全部时改为逐个拉取。
+        const results: Awaited<ReturnType<typeof getRuleProviderPreview>>[] = [];
+        for (const name of allNamesOrdered) {
+          results.push(await getRuleProviderPreview(name));
+        }
         const acc = results.flatMap((data) =>
           data.rules.map((r) => ({
             rulesetName: data.name,
