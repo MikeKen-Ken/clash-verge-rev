@@ -9,7 +9,6 @@ use clash_verge_logging::{Type, logging_error};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
-use tauri_plugin_mihomo::MihomoExt as _;
 
 /// 获取运行时配置
 #[tauri::command]
@@ -130,7 +129,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
             }
             Err(e) => {
                 Config::runtime().await.discard();
-                Err(e.to_string())
+                Err(e.to_string().into())
             }
         }
     } else {
