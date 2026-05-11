@@ -198,7 +198,7 @@ pub async fn apply_dns_config(apply: bool) -> CmdResult {
         logging!(info, Type::Config, "Config regenerated successfully");
     }
 
-    handle::Handle::refresh_clash();
+    handle::Handle::refresh_clash_config_only();
     Ok(())
 }
 

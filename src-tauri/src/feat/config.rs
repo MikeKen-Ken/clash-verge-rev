@@ -187,16 +187,21 @@ async fn process_terminated_flags(update_flags: UpdateFlags, patch: &IVerge) -> 
     }
     if update_flags.contains(UpdateFlags::CLASH_CONFIG) {
         CoreManager::global().update_config().await?;
-        handle::Handle::refresh_clash();
-        // Align with Android TunService: reset cumulative traffic when TUN is turned on (core often reloads config without process restart).
-        if patch.enable_tun_mode == Some(true) {
-            if let Err(err) = crate::utils::mihomo_ipc::post_traffic_reset().await {
-                logging!(
-                    warn,
-                    Type::Core,
-                    "Reset traffic statistics after enabling TUN failed: {err}"
-                );
+        // 仅 Tun 切换需要前端全量刷新代理快照并重跑 fallback/url-test；健康检测毫秒数等再走轻量刷新
+        if patch.enable_tun_mode.is_some() {
+            handle::Handle::refresh_clash();
+            // Align with Android TunService: reset cumulative traffic when TUN is turned on (core often reloads config without process restart).
+            if patch.enable_tun_mode == Some(true) {
+                if let Err(err) = crate::utils::mihomo_ipc::post_traffic_reset().await {
+                    logging!(
+                        warn,
+                        Type::Core,
+                        "Reset traffic statistics after enabling TUN failed: {err}"
+                    );
+                }
             }
+        } else {
+            handle::Handle::refresh_clash_config_only();
         }
     }
     if update_flags.contains(UpdateFlags::VERGE_CONFIG) {

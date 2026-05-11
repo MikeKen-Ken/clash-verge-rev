@@ -116,6 +116,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
         runtime.edit_draft(|d| d.patch_config(&payload));
     }
     CoreManager::global().apply_generate_config().await.stringify_err()?;
-    handle::Handle::refresh_clash();
+    // 此类补丁不写 proxy-groups，全量刷新会重置前端 fallback/url-test 测速；仅同步配置快照即可
+    handle::Handle::refresh_clash_config_only();
     Ok(())
 }
