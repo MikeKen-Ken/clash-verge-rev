@@ -710,7 +710,7 @@ export const CurrentProxyCard = () => {
           (s: { name?: string }) => s.name !== groupName,
         );
         if (next.length !== (currentProfile.selected ?? []).length) {
-          patchCurrent({ selected: next }).catch(() => {});
+          patchCurrent({ selected: next }).catch(() => { });
         }
       }
 
@@ -791,9 +791,11 @@ export const CurrentProxyCard = () => {
           // 全局模式仅用 checkListDelay，不跑 delayGroup。电脑端与安卓端使用相同核心（本仓库 mihomo）。
           // 规则模式：GET /group/Proxy/delay 的组内节点数通常几十，核内 group.URLTest() 并行即可快速返回。
           // 全局模式：GLOBAL 的 GetProxies 返回所有一级组/全部叶子，一次 GET /group/GLOBAL/delay 会触发对「全部节点」
-          // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；因此全局仅串行调用单节点 delay API（并发由代理页 Health check concurrency 限制）。
+          // 的并行 URLTest，并发量远大于单组，易拖慢整次请求；因此全局仅串行调用单节点 delay API（大批量时使用与「测速数量步长」解耦的并行上限）。
           if (isGlobalMode) {
-            await delayManager.checkListDelay(proxyNames, groupName, timeout);
+            await delayManager.checkListDelay(proxyNames, groupName, timeout, {
+              fullBulkMaxConcurrency: true,
+            });
           } else {
             await Promise.race([
               delayManager.checkListDelay(proxyNames, groupName, timeout),
@@ -870,13 +872,13 @@ export const CurrentProxyCard = () => {
 
           const [ar, av] = recordA
             ? categorizeDelay(
-                delayManager.getDelayFix(recordA, state.selection.group),
-              )
+              delayManager.getDelayFix(recordA, state.selection.group),
+            )
             : [6, Number.MAX_SAFE_INTEGER];
           const [br, bv] = recordB
             ? categorizeDelay(
-                delayManager.getDelayFix(recordB, state.selection.group),
-              )
+              delayManager.getDelayFix(recordB, state.selection.group),
+            )
             : [6, Number.MAX_SAFE_INTEGER];
 
           if (ar !== br) return ar - br;
@@ -1137,42 +1139,42 @@ export const CurrentProxyCard = () => {
               {isDirectMode
                 ? null
                 : proxyOptions.map((proxy) => {
-                    const delayValue =
-                      state.proxyData.records[proxy.name] &&
+                  const delayValue =
+                    state.proxyData.records[proxy.name] &&
                       state.selection.group
-                        ? delayManager.getDelayFix(
-                            state.proxyData.records[proxy.name],
-                            state.selection.group,
-                          )
-                        : -1;
-                    return (
-                      <MenuItem
-                        key={proxy.name}
-                        value={proxy.name}
+                      ? delayManager.getDelayFix(
+                        state.proxyData.records[proxy.name],
+                        state.selection.group,
+                      )
+                      : -1;
+                  return (
+                    <MenuItem
+                      key={proxy.name}
+                      value={proxy.name}
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        width: "100%",
+                        pr: 1,
+                      }}
+                    >
+                      <Typography noWrap sx={{ flex: 1, mr: 1 }}>
+                        {proxy.name}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={delayManager.formatDelay(delayValue)}
+                        color={convertDelayColor(delayValue)}
                         sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          width: "100%",
-                          pr: 1,
+                          minWidth: "60px",
+                          height: "22px",
+                          flexShrink: 0,
                         }}
-                      >
-                        <Typography noWrap sx={{ flex: 1, mr: 1 }}>
-                          {proxy.name}
-                        </Typography>
-                        <Chip
-                          size="small"
-                          label={delayManager.formatDelay(delayValue)}
-                          color={convertDelayColor(delayValue)}
-                          sx={{
-                            minWidth: "60px",
-                            height: "22px",
-                            flexShrink: 0,
-                          }}
-                        />
-                      </MenuItem>
-                    );
-                  })}
+                      />
+                    </MenuItem>
+                  );
+                })}
             </Select>
           </FormControl>
         </Box>

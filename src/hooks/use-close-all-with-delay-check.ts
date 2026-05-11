@@ -112,6 +112,7 @@ export const useCloseAllWithDelayCheck = () => {
 
           await delayManager.checkListDelay(groupProxyNames, group.name, timeout, {
             bulkReuseMap,
+            fullBulkMaxConcurrency: true,
           });
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
@@ -131,22 +132,22 @@ export const useCloseAllWithDelayCheck = () => {
         // 按照组中节点的原始顺序（group.all）查找第一个连接成功的节点
         // 这样可以确保选择的是排序最靠前的成功节点
         let firstSuccessProxy: string | null = null;
-        
+
         for (const proxy of group.all) {
           const proxyName = typeof proxy === "string" ? proxy : proxy.name;
           if (!proxyName) continue;
-          
+
           // 跳过 DIRECT、REJECT 和 provider 节点
           if (proxyName === "DIRECT" || proxyName === "REJECT") continue;
           const proxyRecord = proxiesData.records?.[proxyName];
           if (proxyRecord?.provider) continue;
-          
+
           // 检查该节点是否连接成功
           const delayUpdate = delayManager.getDelayUpdate(proxyName, group.name);
           if (delayUpdate) {
             const delay = delayUpdate.delay;
             const delayText = delayManager.formatDelay(delay, timeout);
-            
+
             // 判断是否连接成功：不是T、E、-、testing，且delay > 0
             if (
               delayText !== "T" &&
@@ -195,7 +196,7 @@ export const useCloseAllWithDelayCheck = () => {
 
       // Close all connections except those using DIRECT
       await closeConnectionsExcludingDirect();
-      
+
       // 发送完成通知
       try {
         await invoke("notify_close_all_completed");

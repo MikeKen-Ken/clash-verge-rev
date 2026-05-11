@@ -497,7 +497,7 @@ const ProxyPage = () => {
                 </Select>
               </FormControl>
             </Tooltip>
-            <Tooltip title="Health check concurrency">
+            <Tooltip title="测速数量步长">
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
                   value={healthCheckConcurrency}

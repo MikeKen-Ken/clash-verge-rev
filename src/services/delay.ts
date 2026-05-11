@@ -74,11 +74,22 @@ export interface CheckDelayOptions {
 export interface CheckListDelayOptions {
   concurrency?: number;
   bulkReuseMap?: Map<string, DelayUpdate>;
+  /**
+   * 为 true 时：并行数取 {@link DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY} 与节点数，
+   * 不受代理页「测速数量步长」限制（用于测全部、全局大批量、关连接多组测速等）。
+   */
+  fullBulkMaxConcurrency?: boolean;
 }
 
 const CACHE_TTL = 30 * 60 * 1000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
+
+/** 全量/大批量测速时与代理页「测速数量步长」解耦的并行上限（与预设档位最大值一致） */
+export const DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY = Math.max(
+  ...DELAY_CHECK_CONCURRENCY_PRESETS,
+);
+
 const DEFAULT_DELAY_CHECK_CONCURRENCY = 30;
 
 const LEGACY_DELAY_CHECK_CONCURRENCY = new Set([10, 20, 40]);
@@ -548,12 +559,18 @@ class DelayManager {
         : maybeOptions ?? {};
     const concurrency = options.concurrency;
     const bulkReuseMap = options.bulkReuseMap;
+    const fullBulkMaxConcurrency = options.fullBulkMaxConcurrency === true;
 
     const names = nameList.filter(Boolean);
-    const requested = concurrency ?? delayCheckConcurrency;
-    const actualConcurrency = Math.min(requested, delayCheckConcurrency, names.length);
+    const actualConcurrency = fullBulkMaxConcurrency
+      ? Math.min(DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY, names.length)
+      : Math.min(
+        concurrency ?? delayCheckConcurrency,
+        delayCheckConcurrency,
+        names.length,
+      );
     debugLog(
-      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${actualConcurrency} timeout:${timeout}ms`,
+      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${actualConcurrency} fullBulk:${fullBulkMaxConcurrency} timeout:${timeout}ms`,
     );
     const startTime = Date.now();
 

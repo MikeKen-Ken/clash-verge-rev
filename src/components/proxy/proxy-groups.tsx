@@ -524,6 +524,7 @@ export const ProxyGroups = (props: Props) => {
 
         await delayManager.checkListDelay(names, groupName, timeout, {
           bulkReuseMap,
+          fullBulkMaxConcurrency: true,
         });
 
         const successCandidates = names
