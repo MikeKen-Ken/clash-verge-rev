@@ -184,6 +184,7 @@ mod app_init {
             cmd::get_dns_config_content,
             cmd::validate_dns_config,
             cmd::get_clash_logs,
+            cmd::get_rule_provider_preview,
             cmd::get_verge_config,
             cmd::patch_verge_config,
             cmd::test_delay,

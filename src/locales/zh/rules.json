@@ -3,6 +3,21 @@
     "provider": {
       "trigger": "规则集合",
       "dialogTitle": "规则集合",
+      "preview": {
+        "previewAll": "按顺序预览全部",
+        "titleSingle": "规则集预览：{{name}}",
+        "titleAll": "全部规则集预览（按列表顺序拼接）",
+        "searchPlaceholder": "搜索规则集名、类型、内容、策略…",
+        "ruleCount": "共 {{count}} 条展开规则",
+        "empty": "没有匹配的规则",
+        "ruleSetPolicy": "主配置 RULE-SET 策略",
+        "columns": {
+          "ruleset": "规则集",
+          "type": "类型",
+          "payload": "匹配内容",
+          "policy": "策略"
+        }
+      },
       "actions": {
         "updateAll": "更新全部",
         "update": "更新",
@@ -18,7 +33,9 @@
         "updateFailed": "{{name}} 更新失败: {{message}}",
         "genericError": "更新失败: {{message}}",
         "none": "没有可更新的规则集合",
-        "allUpdated": "所有规则集合均已更新"
+        "allUpdated": "所有规则集合均已更新",
+        "someUpdateFailed": "{{count}} 个规则集合更新失败：{{names}}",
+        "previewLoadFailed": "规则集预览加载失败：{{message}}"
       }
     }
   },

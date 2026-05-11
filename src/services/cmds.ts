@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import dayjs from "dayjs";
 import { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
 
+import type { IRuleProviderPreview } from "@/services/rule-provider-preview";
+
 import { showNotice } from "@/services/notice-service";
 import {
   DEFAULT_DELAY_TEST_URL,
@@ -294,9 +296,9 @@ export async function calcuProxies(): Promise<{
     if (r) {
       records[name] = r.all
         ? (mergeGroupConfig(name, {
-            ...r,
-            all: uniqueGroupAll(r.all),
-          }) as IProxyItem)
+          ...r,
+          all: uniqueGroupAll(r.all),
+        }) as IProxyItem)
         : (r as IProxyItem);
     }
   }
@@ -360,6 +362,12 @@ function normalizeLogPayload(payload: string): string {
     .replace(/\\t/g, "\t")
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r");
+}
+
+export async function getRuleProviderPreview(providerName: string) {
+  return invoke<IRuleProviderPreview>("get_rule_provider_preview", {
+    provider_name: providerName,
+  });
 }
 
 export async function getClashLogs() {

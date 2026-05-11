@@ -3,6 +3,21 @@
     "provider": {
       "trigger": "Rule Provider",
       "dialogTitle": "Rule Providers",
+      "preview": {
+        "previewAll": "Preview all in order",
+        "titleSingle": "Rule set preview: {{name}}",
+        "titleAll": "All rule sets (concatenated in list order)",
+        "searchPlaceholder": "Filter by set name, type, payload, policy…",
+        "ruleCount": "{{count}} expanded rules",
+        "empty": "No matching rules",
+        "ruleSetPolicy": "RULE-SET policy in main rules",
+        "columns": {
+          "ruleset": "Rule set",
+          "type": "Type",
+          "payload": "Payload",
+          "policy": "Policy"
+        }
+      },
       "actions": {
         "updateAll": "Update All",
         "update": "Update",
@@ -18,7 +33,9 @@
         "updateFailed": "Failed to update {{name}}: {{message}}",
         "genericError": "Update failed: {{message}}",
         "none": "No providers available to update",
-        "allUpdated": "All providers updated successfully"
+        "allUpdated": "All providers updated successfully",
+        "someUpdateFailed": "{{count}} provider(s) failed to update: {{names}}",
+        "previewLoadFailed": "Failed to load rule set preview: {{message}}"
       }
     }
   },

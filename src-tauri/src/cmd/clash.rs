@@ -249,3 +249,13 @@ pub async fn get_clash_logs() -> CmdResult<Vec<CompactString>> {
     let logs = CoreManager::global().get_clash_logs().await.unwrap_or_default();
     Ok(logs)
 }
+
+/// 获取规则集在核心内展开后的全部规则行（需核心支持 GET `/providers/rules/{name}`）。
+#[tauri::command]
+pub async fn get_rule_provider_preview(
+    provider_name: String,
+) -> CmdResult<crate::utils::mihomo_ipc::RuleProviderPreviewDto> {
+    crate::utils::mihomo_ipc::get_rule_provider_preview(&provider_name)
+        .await
+        .stringify_err()
+}
