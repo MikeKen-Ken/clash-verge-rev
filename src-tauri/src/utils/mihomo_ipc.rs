@@ -4,7 +4,6 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, HOST};
 use reqwest::Method;
 
@@ -57,6 +56,36 @@ async fn build_ipc_client(timeout: Duration) -> Result<(reqwest::Client, HeaderM
     Ok((client, headers))
 }
 
+/// RFC 3986：`unreserved` 在路径分段中应保持字面量，便于与 Mihomo chi 路由及常见规则集命名一致；
+/// `NON_ALPHANUMERIC` 会把 `-`/`_`/`.`/`~` 等无需编码的 ASCII 编成 `%XX`，易误判为 URL 错误且无必要。
+fn encode_rule_provider_path_segment(name: &str) -> String {
+    let reserve = name
+        .as_bytes()
+        .iter()
+        .copied()
+        .filter(|&b| {
+            !(b.is_ascii_alphanumeric()
+                || matches!(b, b'-' | b'_' | b'.' | b'~'))
+        })
+        .count();
+    let mut out = String::with_capacity(name.len() + reserve * 2);
+    for &byte in name.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            push_pct_upper_hex(&mut out, byte);
+        }
+    }
+    out
+}
+
+fn push_pct_upper_hex(out: &mut String, byte: u8) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    out.push('%');
+    out.push(HEX[(byte >> 4) as usize] as char);
+    out.push(HEX[(byte & 0xf) as usize] as char);
+}
+
 /// POST `/traffic/reset` — clears global upload/download counters (same as Android `Clash.reset()` on Tun start).
 pub async fn post_traffic_reset() -> Result<()> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
@@ -78,7 +107,7 @@ pub async fn post_traffic_reset() -> Result<()> {
 /// GET `/providers/rules/{name}` — 展开规则集内全部规则行（需与当前运行核心版本一致）。
 pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProviderPreviewDto> {
     let (client, headers) = build_ipc_client(RULE_PREVIEW_TIMEOUT).await?;
-    let enc = utf8_percent_encode(provider_name, NON_ALPHANUMERIC).to_string();
+    let enc = encode_rule_provider_path_segment(provider_name);
     let url = format!("http://localhost/providers/rules/{enc}");
     let response = client
         .get(&url)
