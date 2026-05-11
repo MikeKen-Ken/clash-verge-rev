@@ -727,6 +727,13 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         config = apply_direct_global_overrides(config, &mode);
     }
 
+    // 保留用户通过代理页切换的「屏蔽广告」状态；否则每次 generate 会覆盖运行时 Mapping，开关会被打回默认
+    if let Some(prev_cfg) = Config::runtime().await.latest_arc().config.as_ref()
+        && let Some(v) = prev_cfg.get(PROXY_ADS_BLOCK_KEY)
+    {
+        config.insert(PROXY_ADS_BLOCK_KEY.into(), v.clone());
+    }
+
     config = apply_proxy_ads_block(config);
 
     let mut exists_keys_set = HashSet::new();
@@ -778,7 +785,7 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
 const PROXY_ADS_BLOCK_KEY: &str = "proxy-ads-block";
 const PROXY_ADS_RULE: &str = "RULE-SET,ads,REJECT";
 
-fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
+pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
     let enable_proxy_ads_block = config
         .get(PROXY_ADS_BLOCK_KEY)
         .and_then(Value::as_bool)
@@ -791,6 +798,23 @@ fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
                     .map(|s| s.trim() != PROXY_ADS_RULE)
                     .unwrap_or(true)
             });
+        }
+    } else {
+        let has_ads_rule = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .is_some_and(|rules| {
+                rules.iter().any(|rule| {
+                    rule.as_str()
+                        .map(|s| s.trim() == PROXY_ADS_RULE)
+                        .unwrap_or(false)
+                })
+            });
+        // 关闭过再从运行时恢复时，规则里可能已无该行；仅在已有 rules 列表时插入，避免误覆盖非列表结构
+        if !has_ads_rule {
+            if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
+                rules.insert(0, Value::from(PROXY_ADS_RULE));
+            }
         }
     }
 

@@ -3,10 +3,11 @@ use crate::{
     cmd::StringifyErr as _,
     config::{runtime::IRuntime, Config, ConfigType},
     core::{CoreManager, handle},
+    enhance,
 };
 use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging_error};
-use serde_yaml_ng::Mapping;
+use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
 
@@ -112,6 +113,7 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
 #[tauri::command]
 pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
     let hot_only = IRuntime::is_hot_reload_only_patch(&payload);
+    let ads_only = IRuntime::is_proxy_ads_block_only_patch(&payload);
     {
         let runtime = Config::runtime().await;
         runtime.edit_draft(|d| d.patch_config(&payload));
@@ -121,6 +123,47 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
         // 热路径：PATCH 核心运行配置，避免 `reload_config` 触发全部 proxy-group 重跑健康检测
         let json = serde_json::to_value(serde_yaml_ng::Value::Mapping(payload)).stringify_err()?;
         match handle::Handle::mihomo().await.patch_base_config(&json).await {
+            Ok(()) => {
+                Config::runtime().await.apply();
+                Config::generate_file(ConfigType::Run).await.stringify_err()?;
+                handle::Handle::refresh_clash_config_only();
+                Ok(())
+            }
+            Err(e) => {
+                Config::runtime().await.discard();
+                Err(e.to_string().into())
+            }
+        }
+    } else if ads_only {
+        // 仅同步 rules + 运行时中的 `proxy-ads-block`，PATCH 核心，避免全量 reload 与健康检测重跑
+        let computed = {
+            let runtime = Config::runtime().await;
+            let cfg_src = runtime.latest_arc();
+            let Some(cfg) = cfg_src.config.as_ref() else {
+                return Err("运行时配置未就绪".into());
+            };
+            enhance::apply_proxy_ads_block(cfg.clone())
+        };
+
+        {
+            let runtime = Config::runtime().await;
+            runtime.edit_draft(|d| {
+                if let Some(config) = d.config.as_mut() {
+                    if let Some(rules) = computed.get("rules") {
+                        config.insert("rules".into(), rules.clone());
+                    }
+                }
+            });
+        }
+
+        let rules_val = computed
+            .get("rules")
+            .cloned()
+            .unwrap_or(Value::Sequence(vec![]));
+        let rules_json = serde_json::to_value(&rules_val).stringify_err()?;
+        let patch_json = serde_json::json!({ "rules": rules_json });
+
+        match handle::Handle::mihomo().await.patch_base_config(&patch_json).await {
             Ok(()) => {
                 Config::runtime().await.apply();
                 Config::generate_file(ConfigType::Run).await.stringify_err()?;

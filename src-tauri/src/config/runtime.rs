@@ -4,11 +4,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::enhance::field::use_keys;
 
-const PATCH_CONFIG_INNER: [&str; 5] = ["allow-lan", "ipv6", "log-level", "unified-delay", "tunnels"];
+const PATCH_CONFIG_INNER: [&str; 6] = [
+    "allow-lan",
+    "bind-address",
+    "ipv6",
+    "log-level",
+    "unified-delay",
+    "tunnels",
+];
 
 /// 与 [`PATCH_CONFIG_INNER`] 及 [`IRuntime::patch_config`] 中的 `tun` 分支一致；此类字段可走 Mihomo PATCH `/configs`，避免全量 reload。
 const HOT_RELOAD_PATCH_KEYS: &[&str] = &[
     "allow-lan",
+    "bind-address",
     "ipv6",
     "log-level",
     "unified-delay",
@@ -32,7 +40,7 @@ impl IRuntime {
         Self::default()
     }
 
-    // 这里只更改 allow-lan | ipv6 | log-level | tun | tunnels
+    // 这里只更改 allow-lan | bind-address | ipv6 | log-level | tun | tunnels | proxy-ads-block
     #[inline]
     pub fn patch_config(&mut self, patch: &Mapping) {
         let config = if let Some(config) = self.config.as_mut() {
@@ -45,6 +53,11 @@ impl IRuntime {
             if let Some(value) = patch.get(key) {
                 config.insert((*key).into(), value.clone());
             }
+        }
+
+        // 代理页「屏蔽广告」开关：仅客户端使用，须写入运行时 Mapping，否则 PATCH 无效且刷新后前端会回退为默认开启
+        if let Some(value) = patch.get("proxy-ads-block") {
+            config.insert("proxy-ads-block".into(), value.clone());
         }
 
         let patch_tun = patch.get("tun");
@@ -78,6 +91,13 @@ impl IRuntime {
                 .map(|s| HOT_RELOAD_PATCH_KEYS.iter().any(|h| *h == s))
                 .unwrap_or(false)
         })
+    }
+
+    /// 是否仅为代理页「屏蔽广告」开关（可走 PATCH `rules`，避免 `reload_config` 触发健康检测）。
+    #[inline]
+    pub fn is_proxy_ads_block_only_patch(patch: &Mapping) -> bool {
+        !patch.is_empty()
+            && patch.keys().all(|k| k.as_str() == Some("proxy-ads-block"))
     }
 
     /// 更新链式代理配置
