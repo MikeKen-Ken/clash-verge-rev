@@ -1,7 +1,7 @@
 use super::CmdResult;
 use crate::{
     cmd::StringifyErr as _,
-    config::Config,
+    config::{runtime::IRuntime, Config, ConfigType},
     core::{CoreManager, handle},
 };
 use anyhow::{Context as _, anyhow};
@@ -9,6 +9,7 @@ use clash_verge_logging::{Type, logging_error};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
+use tauri_plugin_mihomo::MihomoExt as _;
 
 /// 获取运行时配置
 #[tauri::command]
@@ -111,12 +112,31 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
 /// 仅更新运行时配置并应用到核心，不写入 clash_config。
 #[tauri::command]
 pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
+    let hot_only = IRuntime::is_hot_reload_only_patch(&payload);
     {
         let runtime = Config::runtime().await;
         runtime.edit_draft(|d| d.patch_config(&payload));
     }
-    CoreManager::global().apply_generate_config().await.stringify_err()?;
-    // 此类补丁不写 proxy-groups，全量刷新会重置前端 fallback/url-test 测速；仅同步配置快照即可
-    handle::Handle::refresh_clash_config_only();
-    Ok(())
+
+    if hot_only {
+        // 热路径：PATCH 核心运行配置，避免 `reload_config` 触发全部 proxy-group 重跑健康检测
+        let json = serde_json::to_value(serde_yaml_ng::Value::Mapping(payload)).stringify_err()?;
+        match handle::Handle::mihomo().await.patch_base_config(&json).await {
+            Ok(()) => {
+                Config::runtime().await.apply();
+                Config::generate_file(ConfigType::Run).await.stringify_err()?;
+                handle::Handle::refresh_clash_config_only();
+                Ok(())
+            }
+            Err(e) => {
+                Config::runtime().await.discard();
+                Err(e.to_string())
+            }
+        }
+    } else {
+        CoreManager::global().apply_generate_config().await.stringify_err()?;
+        // 此类补丁不写 proxy-groups，全量刷新会重置前端 fallback/url-test 测速；仅同步配置快照即可
+        handle::Handle::refresh_clash_config_only();
+        Ok(())
+    }
 }

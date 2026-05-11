@@ -6,6 +6,16 @@ use crate::enhance::field::use_keys;
 
 const PATCH_CONFIG_INNER: [&str; 5] = ["allow-lan", "ipv6", "log-level", "unified-delay", "tunnels"];
 
+/// 与 [`PATCH_CONFIG_INNER`] 及 [`IRuntime::patch_config`] 中的 `tun` 分支一致；此类字段可走 Mihomo PATCH `/configs`，避免全量 reload。
+const HOT_RELOAD_PATCH_KEYS: &[&str] = &[
+    "allow-lan",
+    "ipv6",
+    "log-level",
+    "unified-delay",
+    "tunnels",
+    "tun",
+];
+
 #[derive(Default, Clone)]
 pub struct IRuntime {
     pub config: Option<Mapping>,
@@ -55,6 +65,19 @@ impl IRuntime {
 
             config.insert("tun".into(), Value::from(tun));
         }
+    }
+
+    /// 是否仅包含可通过 Mihomo 控制 API 热更新的顶层键（无需 `reload_config` 全量重载）。
+    #[inline]
+    pub fn is_hot_reload_only_patch(patch: &Mapping) -> bool {
+        if patch.is_empty() {
+            return false;
+        }
+        patch.keys().all(|k| {
+            k.as_str()
+                .map(|s| HOT_RELOAD_PATCH_KEYS.iter().any(|h| *h == s))
+                .unwrap_or(false)
+        })
     }
 
     /// 更新链式代理配置
