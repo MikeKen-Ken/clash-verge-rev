@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { selectNodeForGroup } from "tauri-plugin-mihomo-api";
+import { selectNodeForGroup } from "@/services/proxy-select-node";
 
 import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";

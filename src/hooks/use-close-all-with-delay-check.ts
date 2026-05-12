@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { delayGroup, healthcheckProxyProvider, selectNodeForGroup } from "tauri-plugin-mihomo-api";
+import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+
+import { selectNodeForGroup } from "@/services/proxy-select-node";
 import { useTranslation } from "react-i18next";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, {

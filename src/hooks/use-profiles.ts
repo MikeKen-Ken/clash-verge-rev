@@ -1,12 +1,10 @@
 import useSWR, { mutate } from "swr";
-import { selectNodeForGroup } from "tauri-plugin-mihomo-api";
-
 import {
+  calcuProxies,
   getProfiles,
   patchProfile,
   patchProfilesConfig,
 } from "@/services/cmds";
-import { calcuProxies } from "@/services/cmds";
 import { debugLog } from "@/utils/debug";
 
 export const useProfiles = () => {

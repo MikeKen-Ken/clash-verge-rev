@@ -12,11 +12,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import {
-  delayGroup,
-  healthcheckProxyProvider,
-  selectNodeForGroup,
-} from "tauri-plugin-mihomo-api";
+import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+
+import { selectNodeForGroup } from "@/services/proxy-select-node";
 
 import { BaseEmpty } from "@/components/base";
 import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";

@@ -127,13 +127,23 @@ impl CoreManager {
                 (Some(n), Some(w)) if !n.is_empty() && !w.is_empty() => (n.as_str(), w.as_str()),
                 _ => continue,
             };
+            let t_sel = Instant::now();
             match timeout(
                 timing::CORE_SELECT_NODE_TIMEOUT,
                 handle.select_node_for_group(name, now),
             )
             .await
             {
-                Ok(Ok(())) => {}
+                Ok(Ok(())) => {
+                    logging!(
+                        info,
+                        Type::Core,
+                        "[核心切换] 配置加载后应用选中 {} -> {} 耗时 {:?}",
+                        name,
+                        now,
+                        t_sel.elapsed()
+                    );
+                }
                 Ok(Err(e)) => {
                     logging!(
                         warn,

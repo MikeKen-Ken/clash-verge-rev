@@ -642,6 +642,13 @@ impl Mihomo {
     ///
     /// 一般为指定代理组下使用指定的代理节点 【代理组/节点】
     pub async fn select_node_for_group(&self, group_name: &str, node: &str) -> Result<()> {
+        let __sel_t0 = std::time::Instant::now();
+        log::info!(
+            "[核心切换] 开始 PUT /proxies/{} -> {} 通道={:?}",
+            group_name,
+            node,
+            self.protocol
+        );
         let group_name_encode = urlencoding::encode(group_name);
         let body = json!({ "name": node });
         let client = self
@@ -655,6 +662,13 @@ impl Mihomo {
             );
             ret_failed_resp!("{}", err_msg);
         }
+        log::info!(
+            "[核心切换] 完成 PUT /proxies/{} -> {} HTTP={} 耗时={:?}",
+            group_name,
+            node,
+            response.status().as_u16(),
+            __sel_t0.elapsed()
+        );
         Ok(())
     }
 

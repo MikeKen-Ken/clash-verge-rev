@@ -33,10 +33,9 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  closeAllConnections,
-  selectNodeForGroup,
-} from "tauri-plugin-mihomo-api";
+import { closeAllConnections } from "tauri-plugin-mihomo-api";
+
+import { selectNodeForGroup } from "@/services/proxy-select-node";
 
 import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-notify";
 import { useAppData } from "@/providers/app-data-context";
@@ -527,7 +526,7 @@ export const ProxyChain = ({
             title={
               proxyChain.length < 2
                 ? t("proxies.page.chain.minimumNodes") ||
-                  "链式代理至少需要2个节点"
+                "链式代理至少需要2个节点"
                 : undefined
             }
           >
@@ -546,9 +545,9 @@ export const ProxyChain = ({
       >
         {proxyChain.length === 1
           ? t("proxies.page.chain.minimumNodesHint") ||
-            "链式代理至少需要2个节点，请再添加一个节点。"
+          "链式代理至少需要2个节点，请再添加一个节点。"
           : t("proxies.page.chain.instruction") ||
-            "按顺序点击节点添加到代理链中"}
+          "按顺序点击节点添加到代理链中"}
       </Alert>
 
       <Box sx={{ flex: 1, overflow: "auto" }}>

@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{Result, bail};
 use clash_verge_logging::{Type, logging, logging_error};
 use smartstring::alias::String;
+use std::time::Instant;
 use tauri::Emitter as _;
 
 /// Toggle proxy profile
@@ -17,12 +18,28 @@ pub async fn toggle_proxy_profile(profile_index: String) {
 }
 
 pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
+    let t0 = Instant::now();
+    logging!(
+        info,
+        Type::Tray,
+        "[核心切换] 托盘/后端开始 select_node_for_group {} -> {}",
+        group_name,
+        proxy_name
+    );
     match handle::Handle::mihomo()
         .await
         .select_node_for_group(group_name, proxy_name)
         .await
     {
         Ok(_) => {
+            logging!(
+                info,
+                Type::Tray,
+                "[核心切换] 托盘首次成功 {} -> {} 耗时 {:?}",
+                group_name,
+                proxy_name,
+                t0.elapsed()
+            );
             logging!(info, Type::Tray, "切换代理成功: {} -> {}", group_name, proxy_name);
             let _ = handle::Handle::app_handle().emit("verge://refresh-proxy-config", ());
             let _ = tray::Tray::global().update_menu().await;
@@ -46,6 +63,14 @@ pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
         .await
     {
         Ok(_) => {
+            logging!(
+                info,
+                Type::Tray,
+                "[核心切换] 托盘重试成功 {} -> {} 自首次起总耗时 {:?}",
+                group_name,
+                proxy_name,
+                t0.elapsed()
+            );
             logging!(info, Type::Tray, "代理切换回退成功: {} -> {}", group_name, proxy_name);
             let _ = tray::Tray::global().update_menu().await;
         }
