@@ -453,7 +453,9 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
-      handleProxyGroupChange(group, proxy);
+      void handleProxyGroupChange(group, proxy).catch((err) => {
+        console.error("[ProxyGroups] 切换节点失败", err);
+      });
     },
     [handleProxyGroupChange, isChainMode, t],
   );
