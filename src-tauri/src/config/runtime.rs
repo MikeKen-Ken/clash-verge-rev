@@ -80,6 +80,46 @@ impl IRuntime {
         }
     }
 
+    /// 全量 `Config::generate()` 合并订阅后，从上一版运行时 YAML 恢复用户经 `patch_runtime_config` 改过的字段。
+    ///
+    /// 否则仅 PATCH 核心 + 内存草稿时正确，一旦触发 `generate()` 会按订阅默认值重写顶层键，磁盘上的运行配置会与核心不一致（例如 `allow-lan` 仍为 false）。
+    #[inline]
+    pub fn merge_persistent_runtime_patch_from_prev(prev: Option<&Mapping>, config: &mut Mapping) {
+        let Some(prev_cfg) = prev else {
+            return;
+        };
+        for key in PATCH_CONFIG_INNER.iter() {
+            if let Some(v) = prev_cfg.get(*key) {
+                config.insert((*key).into(), v.clone());
+            }
+        }
+        if let Some(v) = prev_cfg.get("proxy-ads-block") {
+            config.insert("proxy-ads-block".into(), v.clone());
+        }
+
+        // tun：与 `patch_config` 的 tun 分支一致；`enable` 以当前 config 为准（已由 `use_tun` 根据 verge 写入）
+        if let Some(prev_tun) = prev_cfg.get("tun").and_then(|v| v.as_mapping()) {
+            let mut tun = config
+                .get("tun")
+                .and_then(|v| v.as_mapping())
+                .cloned()
+                .unwrap_or_default();
+            let enable_val = tun.get(Value::from("enable")).cloned();
+            for key in use_keys(prev_tun) {
+                if key.eq_ignore_ascii_case("enable") {
+                    continue;
+                }
+                if let Some(value) = prev_tun.get(key.as_str()) {
+                    tun.insert(Value::from(key.as_str()), value.clone());
+                }
+            }
+            if let Some(e) = enable_val {
+                tun.insert(Value::from("enable"), e);
+            }
+            config.insert("tun".into(), Value::from(tun));
+        }
+    }
+
     /// 是否仅包含可通过 Mihomo 控制 API 热更新的顶层键（无需 `reload_config` 全量重载）。
     #[inline]
     pub fn is_hot_reload_only_patch(patch: &Mapping) -> bool {

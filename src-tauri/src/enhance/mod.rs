@@ -13,9 +13,11 @@ use self::{
     seq::{SeqMap, use_seq},
     tun::use_tun,
 };
-use crate::utils::dirs;
-use crate::{config::Config, utils::tmpl};
-use crate::{config::IVerge, constants};
+use crate::{
+    config::{runtime::IRuntime, Config, IVerge},
+    constants,
+    utils::{dirs, tmpl},
+};
 use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
@@ -727,12 +729,11 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         config = apply_direct_global_overrides(config, &mode);
     }
 
-    // 保留用户通过代理页切换的「屏蔽广告」状态；否则每次 generate 会覆盖运行时 Mapping，开关会被打回默认
-    if let Some(prev_cfg) = Config::runtime().await.latest_arc().config.as_ref()
-        && let Some(v) = prev_cfg.get(PROXY_ADS_BLOCK_KEY)
-    {
-        config.insert(PROXY_ADS_BLOCK_KEY.into(), v.clone());
-    }
+    // 保留用户经 patch_runtime_config 热改的顶层项（含「屏蔽广告」）；否则 generate 会按订阅默认值覆盖，磁盘运行配置与核心 PATCH 不一致
+    IRuntime::merge_persistent_runtime_patch_from_prev(
+        Config::runtime().await.latest_arc().config.as_ref(),
+        &mut config,
+    );
 
     config = apply_proxy_ads_block(config);
 

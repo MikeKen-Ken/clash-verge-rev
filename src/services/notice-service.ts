@@ -341,6 +341,44 @@ export function hideNotice(id: number) {
   notifySubscribers();
 }
 
+/**
+ * 就地更新已展示通知的文案（同 id），用于长耗时流程中刷新当前步骤说明。
+ * 未找到 id 时返回 false；extras 中首个 number 仍为停留时长（ms），0 表示常驻直至 hideNotice。
+ */
+export function updateNotice(
+  id: number,
+  message: NoticeContent,
+  ...extras: NoticeExtra[]
+): boolean {
+  const idx = notices.findIndex((candidate) => candidate.id === id);
+  if (idx < 0) return false;
+
+  const existing = notices[idx];
+  if (existing.timerId) {
+    clearTimeout(existing.timerId);
+  }
+
+  const { params, raw, duration } = parseNoticeExtras(extras);
+  const effectiveDuration = resolveDuration(existing.type, duration);
+  const timerId =
+    effectiveDuration > 0
+      ? setTimeout(() => hideNotice(id), effectiveDuration)
+      : undefined;
+
+  const normalizedMessage = normalizeNoticeMessage(message, params, raw);
+  const updated = buildNotice(
+    id,
+    existing.type,
+    effectiveDuration,
+    normalizedMessage,
+    timerId,
+  );
+
+  notices = [...notices.slice(0, idx), updated, ...notices.slice(idx + 1)];
+  notifySubscribers();
+  return true;
+}
+
 export function subscribeNotices(subscriber: NoticeSubscriber) {
   subscribers.add(subscriber);
   return () => {

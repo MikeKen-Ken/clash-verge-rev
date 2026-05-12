@@ -49,7 +49,7 @@ import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
-import { hideNotice, showNotice } from "@/services/notice-service";
+import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -701,6 +701,15 @@ export const CurrentProxyCard = () => {
         `${t("home.components.currentProxy.actions.refreshDelay")}...`,
         0,
       );
+      const pingManualDelayNotice = (detailZh: string) => {
+        const nid = manualDelayNoticeIdRef.current;
+        if (nid == null) return;
+        updateNotice(
+          nid,
+          `${t("home.components.currentProxy.actions.refreshDelay")}进行中\n${detailZh}`,
+          0,
+        );
+      };
       // 标记手动测速，在此后 10 秒内不发送 fallback 切换通知
       markManualDelayCheckStarted();
 
@@ -713,6 +722,7 @@ export const CurrentProxyCard = () => {
           patchCurrent({ selected: next }).catch(() => { });
         }
       }
+      pingManualDelayNotice(`已处理该组手动选择；当前组「${groupName}」`);
 
       const group =
         state.proxyData.records?.[groupName] ??
@@ -767,16 +777,25 @@ export const CurrentProxyCard = () => {
         `[CurrentProxyCard] 找到代理数量: ${proxyNames.length}, 提供者数量: ${providers.size}`,
       );
 
+      const modeLabel = isGlobalMode ? "全局" : "规则";
+      pingManualDelayNotice(
+        `${modeLabel}模式：「${groupName}」叶子节点 ${proxyNames.length} 个，订阅提供者 ${providers.size} 个`,
+      );
+
       // 测试提供者的节点
       if (providers.size > 0) {
         const tProv = Date.now();
         debugLog(`[CurrentProxyCard] 开始测试提供者节点`);
+        pingManualDelayNotice(
+          `正在对 ${providers.size} 个订阅提供者执行健康检查…`,
+        );
         await Promise.allSettled(
           [...providers].map((p) => healthcheckProxyProvider(p)),
         );
         debugLog(
           `[CurrentProxyCard] 提供者测速耗时: ${Date.now() - tProv}ms`,
         );
+        pingManualDelayNotice("订阅提供者健康检查已完成");
       }
 
       // 测试非提供者的节点
@@ -784,6 +803,9 @@ export const CurrentProxyCard = () => {
         const url = delayManager.getUrl(groupName);
         debugLog(
           `[CurrentProxyCard] 测试URL: ${url}, 超时: ${timeout}ms, 节点数: ${proxyNames.length}`,
+        );
+        pingManualDelayNotice(
+          `正在测速 ${proxyNames.length} 个节点（超时 ${timeout}ms）…`,
         );
 
         try {
@@ -813,10 +835,20 @@ export const CurrentProxyCard = () => {
             `[CurrentProxyCard] 延迟测试出错，组: ${groupName}`,
             error,
           );
+          const nid = manualDelayNoticeIdRef.current;
+          if (nid != null) {
+            updateNotice(
+              nid,
+              `${t("home.components.currentProxy.actions.refreshDelay")}出错\n${error instanceof Error ? error.message : String(error)}`,
+              0,
+            );
+          }
         }
       }
 
+      pingManualDelayNotice("测速阶段结束，正在刷新代理列表…");
       refreshProxy();
+      pingManualDelayNotice("正在关闭非 DIRECT 的活跃连接…");
       await closeConnectionsExcludingDirect();
       if (sortType === 1) {
         setDelaySortRefresh((prev) => prev + 1);
@@ -829,6 +861,14 @@ export const CurrentProxyCard = () => {
         `[CurrentProxyCard] 手动测速流程异常，组: ${groupName}`,
         error,
       );
+      const nid = manualDelayNoticeIdRef.current;
+      if (nid != null) {
+        updateNotice(
+          nid,
+          `${t("home.components.currentProxy.actions.refreshDelay")}出错\n${error instanceof Error ? error.message : String(error)}`,
+          0,
+        );
+      }
     } finally {
       const noticeId = manualDelayNoticeIdRef.current;
       if (noticeId != null) {

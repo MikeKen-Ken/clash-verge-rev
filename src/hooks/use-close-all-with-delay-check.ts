@@ -8,7 +8,7 @@ import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
   type DelayUpdate,
 } from "@/services/delay";
-import { hideNotice, showNotice } from "@/services/notice-service";
+import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
@@ -32,9 +32,19 @@ export const useCloseAllWithDelayCheck = () => {
       `${t("proxies.page.tooltips.delayCheck")}进行中...`,
       0,
     );
+    const pingDelayCheckNotice = (detailZh: string) => {
+      const nid = delayCheckingNoticeIdRef.current;
+      if (nid == null) return;
+      updateNotice(
+        nid,
+        `${t("proxies.page.tooltips.delayCheck")}进行中\n${detailZh}`,
+        0,
+      );
+    };
 
     try {
       if (!proxiesData?.groups) {
+        pingDelayCheckNotice("无代理组数据，直接关闭非 DIRECT 连接…");
         debugLog("[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)");
         await closeConnectionsExcludingDirect();
         showNotice.success(
@@ -65,11 +75,39 @@ export const useCloseAllWithDelayCheck = () => {
       // Check provider delays
       if (allProviders.size > 0) {
         debugLog(`[CloseAll] Checking delays for ${allProviders.size} providers`);
+        pingDelayCheckNotice(
+          `正在对 ${allProviders.size} 个订阅提供者执行健康检查（与组内叶子测速并行准备）…`,
+        );
         await Promise.allSettled(
           [...allProviders].map((provider) => healthcheckProxyProvider(provider)),
         );
+        pingDelayCheckNotice("订阅提供者健康检查已完成，开始按组测速…");
       }
 
+      let plannedGroupCount = 0;
+      for (const g of groups as IProxyGroupItem[]) {
+        if (SKIP_DELAY_CHECK_GROUPS.has(g.name)) continue;
+        if (!g.all || g.all.length === 0) continue;
+        const groupProxyNames = g.all
+          .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
+          .filter((proxyName: string | undefined): proxyName is string => {
+            if (!proxyName) return false;
+            const proxy = proxiesData.records?.[proxyName];
+            return (
+              !proxy?.provider &&
+              proxyName !== "DIRECT" &&
+              proxyName !== "REJECT"
+            );
+          });
+        if (groupProxyNames.length > 0) plannedGroupCount += 1;
+      }
+      pingDelayCheckNotice(
+        plannedGroupCount > 0
+          ? `准备：共 ${plannedGroupCount} 个代理组将顺序测速`
+          : "当前无可测速的叶子节点分组",
+      );
+
+      let groupPhase = 0;
       // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
       for (const group of groups as IProxyGroupItem[]) {
         if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) {
@@ -92,10 +130,20 @@ export const useCloseAllWithDelayCheck = () => {
 
         if (groupProxyNames.length === 0) continue;
 
+        groupPhase += 1;
+        const phaseLabel =
+          plannedGroupCount > 0
+            ? `第 ${groupPhase}/${plannedGroupCount} 组`
+            : `组「${group.name}」`;
+
         const url = delayManager.getUrl(group.name);
         const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
         debugLog(
           `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
+        );
+
+        pingDelayCheckNotice(
+          `${phaseLabel}：正在测速「${group.name}」（${groupProxyNames.length} 个节点，超时 ${timeout}ms）`,
         );
 
         try {
@@ -121,7 +169,21 @@ export const useCloseAllWithDelayCheck = () => {
       }
       debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
 
+      const switchable = groups.filter(
+        (g: IProxyGroupItem) =>
+          !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+          g.all &&
+          g.all.length > 0 &&
+          ["URLTest", "Fallback"].includes(g.type),
+      );
+      if (switchable.length > 0) {
+        pingDelayCheckNotice(
+          `组内测速已完成，正在对 ${switchable.length} 个 url-test / fallback 组评估自动切换…`,
+        );
+      }
+
       // 自动切换到每个组第一个连接成功的节点（只处理 URLTest 和 Fallback，不处理 Selector）
+      let switchPhase = 0;
       for (const group of groups) {
         if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) continue;
         if (!group.all || group.all.length === 0) continue;
@@ -173,6 +235,10 @@ export const useCloseAllWithDelayCheck = () => {
           const currentProxy = group.now;
           if (currentProxy !== firstSuccessProxy) {
             try {
+              switchPhase += 1;
+              pingDelayCheckNotice(
+                `url-test/fallback 切换 ${switchPhase}：「${group.name}」${currentProxy ?? "（无）"} → ${firstSuccessProxy}`,
+              );
               debugLog(
                 `[CloseAll] Auto-switching group ${group.name}: ${currentProxy || "none"} -> ${firstSuccessProxy}`,
               );
@@ -194,9 +260,11 @@ export const useCloseAllWithDelayCheck = () => {
         }
       }
 
+      pingDelayCheckNotice("正在关闭非 DIRECT 的活跃连接…");
       // Close all connections except those using DIRECT
       await closeConnectionsExcludingDirect();
 
+      pingDelayCheckNotice("连接清理完成，正在发送完成事件…");
       // 发送完成通知
       try {
         await invoke("notify_close_all_completed");
@@ -209,6 +277,14 @@ export const useCloseAllWithDelayCheck = () => {
       );
     } catch (error) {
       console.error("[CloseAll] Error during close all connections:", error);
+      const nid = delayCheckingNoticeIdRef.current;
+      if (nid != null) {
+        updateNotice(
+          nid,
+          `${t("proxies.page.tooltips.delayCheck")}出错\n${error instanceof Error ? error.message : String(error)}`,
+          0,
+        );
+      }
     } finally {
       const noticeId = delayCheckingNoticeIdRef.current;
       if (noticeId != null) {

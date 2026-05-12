@@ -29,7 +29,7 @@ import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
 } from "@/services/delay";
-import { hideNotice, showNotice } from "@/services/notice-service";
+import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -475,6 +475,15 @@ export const ProxyGroups = (props: Props) => {
       `${t("proxies.page.tooltips.delayCheck")}进行中...`,
       0,
     );
+    const pingDelayCheckNotice = (detailZh: string) => {
+      const nid = delayCheckingNoticeIdRef.current;
+      if (nid == null) return;
+      updateNotice(
+        nid,
+        `${t("proxies.page.tooltips.delayCheck")}进行中\n${detailZh}`,
+        0,
+      );
+    };
     markManualDelayCheckStarted();
 
     // 测速前清空所有组的手动选择
@@ -494,6 +503,23 @@ export const ProxyGroups = (props: Props) => {
     const bulkReuseMap = new Map<string, DelayUpdate>();
 
     try {
+      let plannedGroupCount = 0;
+      for (const g of availableGroups as IProxyGroupItem[]) {
+        if (SKIP_DELAY_CHECK_GROUPS.has(g.name)) continue;
+        const plist: IProxyItem[] = (g as any).all ?? [];
+        const n = plist
+          .filter((p) => !p.provider)
+          .map((p) => p.name)
+          .filter(Boolean).length;
+        if (n > 0) plannedGroupCount += 1;
+      }
+      pingDelayCheckNotice(
+        plannedGroupCount > 0
+          ? `准备：共 ${plannedGroupCount} 个代理组将依次测速`
+          : "准备：当前无可测速的叶子节点分组",
+      );
+
+      let groupPhase = 0;
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
         if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
@@ -514,9 +540,19 @@ export const ProxyGroups = (props: Props) => {
 
         if (names.length === 0) continue;
 
+        groupPhase += 1;
+        const phaseLabel =
+          plannedGroupCount > 0
+            ? `第 ${groupPhase}/${plannedGroupCount} 组`
+            : `组「${groupName}」`;
+
         const url = delayManager.getUrl(groupName);
         debugLog(
           `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, timeout: ${timeout}ms`,
+        );
+
+        pingDelayCheckNotice(
+          `${phaseLabel}：正在测速「${groupName}」（${names.length} 个节点，超时 ${timeout}ms）`,
         );
 
         // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
@@ -555,6 +591,9 @@ export const ProxyGroups = (props: Props) => {
         // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
         const firstSuccessProxy = successCandidates[0]?.proxyName;
         if (firstSuccessProxy) {
+          pingDelayCheckNotice(
+            `${phaseLabel}：测速已完成，正在请求核心切换「${groupName}」→ ${firstSuccessProxy}`,
+          );
           await selectNodeForGroup(groupName, firstSuccessProxy).catch((err) => {
             console.warn(
               `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
@@ -562,14 +601,26 @@ export const ProxyGroups = (props: Props) => {
             );
           });
         } else {
+          pingDelayCheckNotice(
+            `${phaseLabel}：「${groupName}」无测速成功节点，跳过切换`,
+          );
           debugLog(
             `[ProxyGroups] 分组 ${groupName} 未找到测速成功节点，保留核心当前选择`,
           );
         }
       }
       debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
+      pingDelayCheckNotice("测速与切换已完成，正在刷新代理数据并收尾…");
     } catch (error) {
       console.error(`[ProxyGroups] 测试所有分组延迟出错`, error);
+      const nid = delayCheckingNoticeIdRef.current;
+      if (nid != null) {
+        updateNotice(
+          nid,
+          `${t("proxies.page.tooltips.delayCheck")}出错\n${error instanceof Error ? error.message : String(error)}`,
+          0,
+        );
+      }
     } finally {
       try {
         // 处理 provider 健康检查（fire and forget）
