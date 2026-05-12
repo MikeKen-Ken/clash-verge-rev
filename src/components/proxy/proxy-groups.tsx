@@ -545,29 +545,60 @@ export const ProxyGroups = (props: Props) => {
             : `组「${groupName}」`;
 
         const url = delayManager.getUrl(groupName);
+        const testableNames = names.filter(
+          (n): n is string => Boolean(n) && n !== "DIRECT" && n !== "REJECT",
+        );
+        const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
+          testableNames,
+          bulkReuseMap,
+        );
         debugLog(
-          `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, timeout: ${timeout}ms`,
+          `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, 可测叶子: ${testableNames.length}, 未命中同会话缓存: ${missingBulkReuse.length}, timeout: ${timeout}ms`,
         );
 
         pingDelayCheckNotice(
           `${phaseLabel}：正在测速「${groupName}」（组级 URLTest，${names.length} 个叶子，超时 ${timeout}ms）`,
         );
 
-        // 与 Android 一致：优先内核组级 URLTest（GET /group/{name}/delay），一次请求内并行测成员；
-        // 失败时再回退为逐节点 delay API（旧行为）。
-        delayManager.markGroupDelayTesting(groupName, names);
-        try {
-          const dm = await delayGroup(groupName, url, timeout);
-          delayManager.applyGroupUrlTestDelays(groupName, names, dm, {
+        // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
+        // 全部命中缓存 → 只写 UI；全未命中 → delayGroup；部分命中 → 走 checkListDelay（内部按出站名复用，避免 delayGroup 整组重测）。
+        if (testableNames.length > 0 && missingBulkReuse.length === 0) {
+          delayManager.applyBulkReuseHitsForGroup(
+            groupName,
+            testableNames,
             bulkReuseMap,
-          });
-        } catch (err) {
-          console.warn(
-            `[ProxyGroups] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
-            err,
           );
+          debugLog(
+            `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过组级/单节点测速`,
+          );
+        } else if (
+          testableNames.length > 0 &&
+          missingBulkReuse.length === testableNames.length
+        ) {
+          // 与 Android 一致：优先内核组级 URLTest（GET /group/{name}/delay），一次请求内并行测成员；
+          // 失败时再回退为逐节点 delay API（旧行为）。
+          delayManager.markGroupDelayTesting(groupName, names);
+          try {
+            const dm = await delayGroup(groupName, url, timeout);
+            delayManager.applyGroupUrlTestDelays(groupName, names, dm, {
+              bulkReuseMap,
+            });
+          } catch (err) {
+            console.warn(
+              `[ProxyGroups] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
+              err,
+            );
+            pingDelayCheckNotice(
+              `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+            );
+            await delayManager.checkListDelay(names, groupName, timeout, {
+              bulkReuseMap,
+              fullBulkMaxConcurrency: true,
+            });
+          }
+        } else if (testableNames.length > 0) {
           pingDelayCheckNotice(
-            `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+            `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点逐节点测速（${missingBulkReuse.length}/${testableNames.length}）…`,
           );
           await delayManager.checkListDelay(names, groupName, timeout, {
             bulkReuseMap,

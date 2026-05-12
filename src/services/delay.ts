@@ -663,6 +663,48 @@ class DelayManager {
     this.flushAfterBulkSilentWrites();
   }
 
+  /**
+   * 无有效 bulk 缓存的出站名（不含 DIRECT/REJECT）。
+   * 用于「全部测速」等会话：后续组可跳过已在同会话 `bulkReuseMap` 中的叶子。
+   */
+  listNamesMissingBulkReuse(
+    memberNames: string[],
+    reuseMap: Map<string, DelayUpdate>,
+  ): string[] {
+    const out: string[] = [];
+    for (const name of memberNames) {
+      if (!name || name === "DIRECT" || name === "REJECT") continue;
+      const c = reuseMap.get(name);
+      if (c === undefined || c.delay === -2) {
+        out.push(name);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 将同会话 bulk 缓存中已有的延迟写入当前组上下文（不发起测速）。
+   */
+  applyBulkReuseHitsForGroup(
+    groupName: string,
+    memberNames: string[],
+    reuseMap: Map<string, DelayUpdate>,
+  ) {
+    for (const name of memberNames) {
+      if (!name || name === "DIRECT" || name === "REJECT") continue;
+      const c = reuseMap.get(name);
+      if (c === undefined || c.delay === -2) continue;
+      this.setDelay(name, groupName, c.delay, {
+        elapsed: c.elapsed,
+        silentGlobal: true,
+      });
+      debugLog(
+        `[DelayManager] 复用同会话测速结果 代理:${name} 组:${groupName} delay:${c.delay}`,
+      );
+    }
+    this.flushAfterBulkSilentWrites();
+  }
+
   formatDelay(delay: number, timeout = DEFAULT_GROUP_TIMEOUT_MS) {
     if (delay === -1) return "-";
     if (delay === -2) return "testing";

@@ -140,8 +140,15 @@ export const useCloseAllWithDelayCheck = () => {
 
         const url = delayManager.getUrl(group.name);
         const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
+        const testableProxyNames = groupProxyNames.filter(
+          (n) => n && n !== "DIRECT" && n !== "REJECT",
+        );
+        const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
+          testableProxyNames,
+          bulkReuseMap,
+        );
         debugLog(
-          `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies`,
+          `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies, 未命中同会话缓存: ${missingBulkReuse.length}/${testableProxyNames.length}`,
         );
 
         pingDelayCheckNotice(
@@ -149,22 +156,49 @@ export const useCloseAllWithDelayCheck = () => {
         );
 
         try {
-          delayManager.markGroupDelayTesting(group.name, groupProxyNames);
-          try {
-            const dm = await delayGroup(group.name, url, timeout);
-            delayManager.applyGroupUrlTestDelays(group.name, groupProxyNames, dm, {
+          if (testableProxyNames.length > 0 && missingBulkReuse.length === 0) {
+            delayManager.applyBulkReuseHitsForGroup(
+              group.name,
+              testableProxyNames,
               bulkReuseMap,
-            });
+            );
             debugLog(
-              `[CloseAll] delayGroup 完成 ${group.name}，返回 ${Object.keys(dm || {}).length} 条延迟`,
+              `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过组级/单节点测速`,
             );
-          } catch (error: unknown) {
-            console.warn(
-              `[CloseAll] 组级 delayGroup 失败，回退逐节点测速: ${group.name}`,
-              error,
-            );
+          } else if (
+            testableProxyNames.length > 0 &&
+            missingBulkReuse.length === testableProxyNames.length
+          ) {
+            delayManager.markGroupDelayTesting(group.name, groupProxyNames);
+            try {
+              const dm = await delayGroup(group.name, url, timeout);
+              delayManager.applyGroupUrlTestDelays(group.name, groupProxyNames, dm, {
+                bulkReuseMap,
+              });
+              debugLog(
+                `[CloseAll] delayGroup 完成 ${group.name}，返回 ${Object.keys(dm || {}).length} 条延迟`,
+              );
+            } catch (error: unknown) {
+              console.warn(
+                `[CloseAll] 组级 delayGroup 失败，回退逐节点测速: ${group.name}`,
+                error,
+              );
+              pingDelayCheckNotice(
+                `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+              );
+              await delayManager.checkListDelay(
+                groupProxyNames,
+                group.name,
+                timeout,
+                {
+                  bulkReuseMap,
+                  fullBulkMaxConcurrency: true,
+                },
+              );
+            }
+          } else if (testableProxyNames.length > 0) {
             pingDelayCheckNotice(
-              `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+              `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点逐节点测速（${missingBulkReuse.length}/${testableProxyNames.length}）…`,
             );
             await delayManager.checkListDelay(
               groupProxyNames,
