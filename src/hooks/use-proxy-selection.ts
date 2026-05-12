@@ -51,8 +51,19 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       const delayMs2 = 900;
       const delayMs3 = 1800;
 
+      const tParallel0 = performance.now();
+      /** 各子 Promise 完成时相对 tParallel0 的毫秒数，用于区分「卡在核心 invoke」还是 profile/托盘 */
+      const parallelDoneAt: {
+        selectNode?: number;
+        patchCurrent?: number;
+        syncTray?: number;
+      } = {};
+
       Promise.all([
         selectNodeForGroup(groupName, proxyName).then((result) => {
+          parallelDoneAt.selectNode = Math.round(
+            performance.now() - tParallel0,
+          );
           setTimeout(() => onSuccess?.(), 50);
           return result;
         }).catch((err) => {
@@ -67,15 +78,40 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           });
           throw err;
         }),
-        doPatchCurrent().catch((err) => {
-          console.error("[ProxySelection] doPatchCurrent 失败", err);
-          throw err;
-        }),
-        syncTrayProxySelection().catch((err) => {
-          console.warn("[ProxySelection] syncTray 失败（非关键）", err);
-        }),
+        doPatchCurrent()
+          .then(() => {
+            parallelDoneAt.patchCurrent = Math.round(
+              performance.now() - tParallel0,
+            );
+          })
+          .catch((err) => {
+            console.error("[ProxySelection] doPatchCurrent 失败", err);
+            throw err;
+          }),
+        syncTrayProxySelection()
+          .then(() => {
+            parallelDoneAt.syncTray = Math.round(
+              performance.now() - tParallel0,
+            );
+          })
+          .catch((err) => {
+            parallelDoneAt.syncTray = Math.round(
+              performance.now() - tParallel0,
+            );
+            console.warn("[ProxySelection] syncTray 失败（非关键）", err);
+          }),
       ])
         .then(() => {
+          const totalParallelMs = Math.round(
+            performance.now() - tParallel0,
+          );
+          console.log("[核心切换-前端] 并行阶段完成（含 profile 写入与托盘同步）", {
+            组: groupName,
+            节点: proxyName,
+            各子项完成距起点_ms: { ...parallelDoneAt },
+            Promise_all总耗时_ms: totalParallelMs,
+          });
+
           debugLog(
             `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
           );
