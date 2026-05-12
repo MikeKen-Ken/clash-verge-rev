@@ -285,11 +285,15 @@ export const ProxyChain = ({
         if (targetGroup) {
           markManualProxySelectionStarted();
           try {
-            await selectNodeForGroup(targetGroup, "DIRECT");
+            await selectNodeForGroup(targetGroup, "DIRECT", {
+              reason: "proxy-chain",
+            });
           } catch {
             if (proxyChain.length >= 1) {
               try {
-                await selectNodeForGroup(targetGroup, proxyChain[0].name);
+                await selectNodeForGroup(targetGroup, proxyChain[0].name, {
+                  reason: "proxy-chain",
+                });
               } catch {
                 // ignore
               }
@@ -339,7 +343,9 @@ export const ProxyChain = ({
       const targetGroup = mode === "global" ? "GLOBAL" : selectedGroup;
 
       markManualProxySelectionStarted();
-      await selectNodeForGroup(targetGroup || "GLOBAL", lastNode.name);
+      await selectNodeForGroup(targetGroup || "GLOBAL", lastNode.name, {
+        reason: "proxy-chain",
+      });
       localStorage.setItem("proxy-chain-group", targetGroup || "GLOBAL");
       localStorage.setItem("proxy-chain-exit-node", lastNode.name);
 

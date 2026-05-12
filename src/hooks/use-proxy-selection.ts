@@ -60,7 +60,9 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       } = {};
 
       Promise.all([
-        selectNodeForGroup(groupName, proxyName).then((result) => {
+        selectNodeForGroup(groupName, proxyName, {
+          reason: "proxy-ui-manual",
+        }).then((result) => {
           parallelDoneAt.selectNode = Math.round(
             performance.now() - tParallel0,
           );
