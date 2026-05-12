@@ -59,7 +59,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         syncTray?: number;
       } = {};
 
-      return Promise.all([
+      Promise.all([
         selectNodeForGroup(groupName, proxyName).then((result) => {
           parallelDoneAt.selectNode = Math.round(
             performance.now() - tParallel0,
@@ -153,7 +153,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
             目标节点: proxyName,
           });
           setTimeout(() => onSuccess?.(), delayMs);
-          throw err;
         });
     },
     [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly],
@@ -163,14 +162,14 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     (groupName: string, skipConfigSave: boolean = false) =>
       (event: { target: { value: string } }) => {
         const newProxy = event.target.value;
-        return changeProxy(groupName, newProxy, skipConfigSave);
+        changeProxy(groupName, newProxy, skipConfigSave);
       },
     [changeProxy],
   );
 
   const handleProxyGroupChange = useCallback(
     (group: { name: string; now?: string }, proxy: { name: string }) => {
-      return changeProxy(group.name, proxy.name);
+      changeProxy(group.name, proxy.name);
     },
     [changeProxy],
   );

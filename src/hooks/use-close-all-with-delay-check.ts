@@ -145,25 +145,37 @@ export const useCloseAllWithDelayCheck = () => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${group.name}」（${groupProxyNames.length} 个节点，超时 ${timeout}ms）`,
+          `${phaseLabel}：正在测速「${group.name}」（组级 URLTest，${groupProxyNames.length} 个叶子，超时 ${timeout}ms）`,
         );
 
         try {
-          // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
-          delayGroup(group.name, url, timeout)
-            .then((result: Record<string, unknown>) => {
-              debugLog(
-                `[CloseAll] delayGroup returned ${Object.keys(result || {}).length} results for group ${group.name}`,
-              );
-            })
-            .catch((error: unknown) => {
-              debugLog(`[CloseAll] delayGroup error for group ${group.name}:`, error);
+          delayManager.markGroupDelayTesting(group.name, groupProxyNames);
+          try {
+            const dm = await delayGroup(group.name, url, timeout);
+            delayManager.applyGroupUrlTestDelays(group.name, groupProxyNames, dm, {
+              bulkReuseMap,
             });
-
-          await delayManager.checkListDelay(groupProxyNames, group.name, timeout, {
-            bulkReuseMap,
-            fullBulkMaxConcurrency: true,
-          });
+            debugLog(
+              `[CloseAll] delayGroup 完成 ${group.name}，返回 ${Object.keys(dm || {}).length} 条延迟`,
+            );
+          } catch (error: unknown) {
+            console.warn(
+              `[CloseAll] 组级 delayGroup 失败，回退逐节点测速: ${group.name}`,
+              error,
+            );
+            pingDelayCheckNotice(
+              `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+            );
+            await delayManager.checkListDelay(
+              groupProxyNames,
+              group.name,
+              timeout,
+              {
+                bulkReuseMap,
+                fullBulkMaxConcurrency: true,
+              },
+            );
+          }
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
@@ -244,7 +256,9 @@ export const useCloseAllWithDelayCheck = () => {
               debugLog(
                 `[CloseAll] Auto-switching group ${group.name}: ${currentProxy || "none"} -> ${firstSuccessProxy}`,
               );
-              await selectNodeForGroup(group.name, firstSuccessProxy);
+              await selectNodeForGroup(group.name, firstSuccessProxy, {
+                reason: "connections-close-all-auto",
+              });
               debugLog(`[CloseAll] Successfully switched group ${group.name} to ${firstSuccessProxy}`);
             } catch (error) {
               console.error(

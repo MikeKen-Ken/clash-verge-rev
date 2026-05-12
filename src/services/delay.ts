@@ -623,6 +623,46 @@ class DelayManager {
     );
   }
 
+  /**
+   * 批量静默写入后触发一次全局与分组监听刷新（避免每条 setDelay 触发全量防抖风暴）。
+   */
+  flushAfterBulkSilentWrites() {
+    this.scheduleGlobalFlush();
+    this.scheduleNotifyAllGroupListeners();
+  }
+
+  /** 组级测速开始前将成员标为测试中（-2） */
+  markGroupDelayTesting(groupName: string, memberNames: string[]) {
+    for (const name of memberNames) {
+      if (!name || name === "DIRECT" || name === "REJECT") continue;
+      this.setDelay(name, groupName, -2, { silentGlobal: true });
+    }
+    this.flushAfterBulkSilentWrites();
+  }
+
+  /**
+   * 将内核组级 URLTest（`GET /group/{name}/delay`，与 Android `healthCheckWithTimeout` 同源）的
+   * 结果写入 UI 缓存。未出现在 `delays` 中的成员视为测速失败或超时，按 delay 0 处理。
+   */
+  applyGroupUrlTestDelays(
+    groupName: string,
+    memberNames: string[],
+    delays: Record<string, number>,
+    opts?: { bulkReuseMap?: Map<string, DelayUpdate> },
+  ) {
+    for (const name of memberNames) {
+      if (!name || name === "DIRECT" || name === "REJECT") continue;
+      const raw = delays[name];
+      const value =
+        raw != null && Number.isFinite(raw) && raw > 0 ? raw : 0;
+      const update = this.setDelay(name, groupName, value, {
+        silentGlobal: true,
+      });
+      opts?.bulkReuseMap?.set(name, { ...update });
+    }
+    this.flushAfterBulkSilentWrites();
+  }
+
   formatDelay(delay: number, timeout = DEFAULT_GROUP_TIMEOUT_MS) {
     if (delay === -1) return "-";
     if (delay === -2) return "testing";

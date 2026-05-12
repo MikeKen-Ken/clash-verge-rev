@@ -93,7 +93,7 @@ export const AppDataProvider = ({
   // 任意节点延迟更新时触发一次刷新，使 UI 自动显示最新延迟（测速/健康检测完成后）
   useEffect(() => {
     const handler = () => {
-      refreshProxy().catch(() => {});
+      refreshProxy().catch(() => { });
     };
     delayManager.setGlobalListener(handler);
     return () => delayManager.removeGlobalListener();
@@ -119,7 +119,7 @@ export const AppDataProvider = ({
       initialPollingTimerRef.current = setTimeout(() => {
         initialPollingTimerRef.current = null;
         initialPollingCountRef.current += 1;
-        refreshProxy().catch(() => {});
+        refreshProxy().catch(() => { });
         if (initialPollingCountRef.current < INITIAL_POLL_MAX_COUNT) {
           scheduleNext();
         }
@@ -159,7 +159,7 @@ export const AppDataProvider = ({
       pollingTimerRef.current = setTimeout(() => {
         pollingTimerRef.current = null;
         pollingCountRef.current += 1;
-        refreshProxy().catch(() => {});
+        refreshProxy().catch(() => { });
         if (pollingCountRef.current < POLL_MAX_COUNT) {
           scheduleNextPoll();
         }

@@ -453,9 +453,7 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
-      void handleProxyGroupChange(group, proxy).catch((err) => {
-        console.error("[ProxyGroups] 切换节点失败", err);
-      });
+      handleProxyGroupChange(group, proxy);
     },
     [handleProxyGroupChange, isChainMode, t],
   );
@@ -552,16 +550,30 @@ export const ProxyGroups = (props: Props) => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${groupName}」（${names.length} 个节点，超时 ${timeout}ms）`,
+          `${phaseLabel}：正在测速「${groupName}」（组级 URLTest，${names.length} 个叶子，超时 ${timeout}ms）`,
         );
 
-        // 触发 core 侧 health check 以清除 fixed 选择，不等待结果
-        delayGroup(groupName, url, timeout).catch(() => { });
-
-        await delayManager.checkListDelay(names, groupName, timeout, {
-          bulkReuseMap,
-          fullBulkMaxConcurrency: true,
-        });
+        // 与 Android 一致：优先内核组级 URLTest（GET /group/{name}/delay），一次请求内并行测成员；
+        // 失败时再回退为逐节点 delay API（旧行为）。
+        delayManager.markGroupDelayTesting(groupName, names);
+        try {
+          const dm = await delayGroup(groupName, url, timeout);
+          delayManager.applyGroupUrlTestDelays(groupName, names, dm, {
+            bulkReuseMap,
+          });
+        } catch (err) {
+          console.warn(
+            `[ProxyGroups] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
+            err,
+          );
+          pingDelayCheckNotice(
+            `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
+          );
+          await delayManager.checkListDelay(names, groupName, timeout, {
+            bulkReuseMap,
+            fullBulkMaxConcurrency: true,
+          });
+        }
 
         const successCandidates = names
           .map((proxyName, index) => {
@@ -594,7 +606,9 @@ export const ProxyGroups = (props: Props) => {
           pingDelayCheckNotice(
             `${phaseLabel}：测速已完成，正在请求核心切换「${groupName}」→ ${firstSuccessProxy}`,
           );
-          await selectNodeForGroup(groupName, firstSuccessProxy).catch((err) => {
+          await selectNodeForGroup(groupName, firstSuccessProxy, {
+            reason: "proxy-ui-delay-bulk-auto",
+          }).catch((err) => {
             console.warn(
               `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
               err,

@@ -571,23 +571,17 @@ export const CurrentProxyCard = () => {
 
       // 仅直连模式不写入 profile（全局模式需持久化 GLOBAL 节点选择以便重载配置后恢复）
       const skipConfigSave = isDirectMode;
-      const newProxyRecord = state.proxyData.records?.[newProxy] ?? null;
+      handleSelectChange(currentGroup, skipConfigSave)(event);
 
-      // 须先等核心 PUT /proxies 与 profile 并行完成，再测速；否则 checkDelay 与 selectNode 同时打内核会长时间互锁（控制台堆栈常见 checkDelay → invoke 偏慢）
-      void (async () => {
-        try {
-          await handleSelectChange(currentGroup, skipConfigSave)(event);
-        } catch {
-          return;
-        }
-        if (newProxyRecord) {
-          await checkCurrentProxyDelay({
-            groupName: currentGroup,
-            proxyName: newProxy,
-            proxyRecord: newProxyRecord,
-          });
-        }
-      })();
+      // 手动切换节点后立即检测新节点延迟，以显示最新速度
+      const newProxyRecord = state.proxyData.records?.[newProxy] ?? null;
+      if (newProxyRecord) {
+        checkCurrentProxyDelay({
+          groupName: currentGroup,
+          proxyName: newProxy,
+          proxyRecord: newProxyRecord,
+        });
+      }
     },
     [
       isDirectMode,

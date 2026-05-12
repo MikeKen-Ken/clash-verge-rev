@@ -34,6 +34,7 @@ import {
   getDelayCheckConcurrency,
   setDelayCheckConcurrency,
 } from "@/services/delay";
+import { isSelectNodeForGroupPending } from "@/services/proxy-select-node";
 import { useSystemState } from "@/hooks/use-system-state";
 import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
