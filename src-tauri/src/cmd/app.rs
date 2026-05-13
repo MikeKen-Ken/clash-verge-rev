@@ -41,6 +41,37 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
     open::that(url.as_str()).stringify_err()
 }
 
+/// 打开 Windows 安全中心「防火墙和网络保护」设置页（由此可进入「允许应用通过防火墙」）
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn open_windows_firewall_allowed_apps_settings() -> CmdResult<()> {
+    let primary = "ms-settings:windowsdefender-firewall";
+    let fallback = "ms-settings:windowsdefender";
+    match open::that(primary) {
+        Ok(()) => Ok(()),
+        Err(_) => open::that(fallback).stringify_err(),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn open_windows_firewall_allowed_apps_settings() -> CmdResult<()> {
+    Err("Only supported on Windows".into())
+}
+
+/// 打开 Windows 设置「代理」（系统 HTTP/HTTPS 手动代理等）
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn open_system_network_proxy_settings() -> CmdResult<()> {
+    open::that("ms-settings:network-proxy").stringify_err()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn open_system_network_proxy_settings() -> CmdResult<()> {
+    Err("Only supported on Windows".into())
+}
+
 // TODO 后续可以为前端提供接口，当前作为托盘菜单使用
 /// 打开 Verge 最新日志
 #[tauri::command]

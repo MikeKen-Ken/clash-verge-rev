@@ -32,7 +32,11 @@
       "healthCheckTimeout": "Timeout (ms)",
       "lanAccessInfoTitle": "LAN access info",
       "lanAccessNoIp": "No available LAN IP detected",
-      "lanAccessNoPort": "No available port detected"
+      "lanAccessNoPort": "No available port detected",
+      "openWindowsFirewallApps": "Firewall: allowed apps",
+      "openWindowsFirewallAppsTooltip": "Open Windows Security firewall settings (allow app through firewall)",
+      "openWindowsSystemProxySettings": "System proxy settings",
+      "openWindowsSystemProxySettingsTooltip": "Open Windows Settings → Network & internet → Proxy (manual HTTP/HTTPS proxy, etc.)"
     },
     "tooltips": {
       "locate": "locate",

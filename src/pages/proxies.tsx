@@ -28,7 +28,12 @@ import { useClash } from "@/hooks/use-clash";
 import { useNetworkInterfaces } from "@/hooks/use-network";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import { patchClashMode, patchRuntimeConfig } from "@/services/cmds";
+import {
+  openSystemNetworkProxySettings,
+  openWindowsFirewallAllowedAppsSettings,
+  patchClashMode,
+  patchRuntimeConfig,
+} from "@/services/cmds";
 import {
   DELAY_CHECK_CONCURRENCY_PRESETS,
   getDelayCheckConcurrency,
@@ -40,6 +45,7 @@ import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
 import { closeLanConnections } from "@/utils/close-connections";
+import getSystem from "@/utils/get-system";
 
 const MODES = ["rule", "global", "direct"] as const;
 type Mode = (typeof MODES)[number];
@@ -62,6 +68,8 @@ const WIFI_INTERFACE_NAME_RE = /wi-?fi|wlan|wireless/i;
 const ETHERNET_INTERFACE_NAME_RE = /ethernet|eth|en\d/i;
 const VIRTUAL_INTERFACE_NAME_RE =
   /vpn|tun|tap|tailscale|wireguard|wg|v2ray|utun|ppp|loopback|virtual|vmware|hyper-v|vbox|docker|zerotier/i;
+
+const IS_WINDOWS = getSystem() === "windows";
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -517,7 +525,68 @@ const ProxyPage = () => {
               </FormControl>
             </Tooltip>
           </Box>
-          <Box display="flex" alignItems="center" gap={1} sx={{ ml: "auto" }}>
+          <Box
+            display="flex"
+            alignItems="center"
+            gap={1}
+            flexWrap="wrap"
+            sx={{ ml: "auto" }}
+          >
+            {IS_WINDOWS && (
+              <>
+                <Tooltip
+                  title={t("proxies.page.labels.openWindowsFirewallAppsTooltip", {
+                    defaultValue:
+                      "Open Windows Security firewall settings (allow app through firewall)",
+                  })}
+                >
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      minWidth: "auto",
+                      px: 1,
+                      py: 0.25,
+                      whiteSpace: "nowrap",
+                    }}
+                    onClick={() => {
+                      void openWindowsFirewallAllowedAppsSettings();
+                    }}
+                  >
+                    {t("proxies.page.labels.openWindowsFirewallApps", {
+                      defaultValue: "Firewall: allowed apps",
+                    })}
+                  </Button>
+                </Tooltip>
+                <Tooltip
+                  title={t(
+                    "proxies.page.labels.openWindowsSystemProxySettingsTooltip",
+                    {
+                      defaultValue:
+                        "Open Windows Settings → Network & internet → Proxy (manual HTTP proxy, etc.)",
+                    },
+                  )}
+                >
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      minWidth: "auto",
+                      px: 1,
+                      py: 0.25,
+                      whiteSpace: "nowrap",
+                    }}
+                    onClick={() => {
+                      void openSystemNetworkProxySettings();
+                    }}
+                  >
+                    {t("proxies.page.labels.openWindowsSystemProxySettings", {
+                      defaultValue: "System proxy settings",
+                    })}
+                  </Button>
+                </Tooltip>
+              </>
+            )}
             <FormControlLabel
               control={
                 <Checkbox

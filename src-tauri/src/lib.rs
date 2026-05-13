@@ -139,6 +139,8 @@ mod app_init {
             cmd::open_app_dir,
             cmd::open_logs_dir,
             cmd::open_web_url,
+            cmd::open_windows_firewall_allowed_apps_settings,
+            cmd::open_system_network_proxy_settings,
             cmd::open_core_dir,
             cmd::open_app_log,
             cmd::open_core_log,

@@ -488,6 +488,20 @@ export const openWebUrl = async (url: string) => {
   }
 };
 
+/** Windows：打开安全中心防火墙页（可继续进入「允许应用通过防火墙」） */
+export async function openWindowsFirewallAllowedAppsSettings() {
+  return invoke<void>("open_windows_firewall_allowed_apps_settings").catch(
+    (err) => showNotice.error(err),
+  );
+}
+
+/** Windows：打开系统「代理」设置（手动 HTTP 代理等） */
+export async function openSystemNetworkProxySettings() {
+  return invoke<void>("open_system_network_proxy_settings").catch((err) =>
+    showNotice.error(err),
+  );
+}
+
 export async function cmdGetProxyDelay(
   name: string,
   timeout: number,
