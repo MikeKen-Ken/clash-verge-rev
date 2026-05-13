@@ -1,12 +1,28 @@
 import dayjs from "dayjs";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket, type LogLevel } from "tauri-plugin-mihomo-api";
 
 import { getClashLogs } from "@/services/cmds";
+import { debugLog } from "@/utils/debug";
 
 import { useClashLog } from "./use-clash-log";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
+
+/** 避免每轮 render 传入新 [] 触发 SWR 异常；内容勿原地修改 */
+const EMPTY_LOG_FALLBACK: ILogItem[] = [];
+
+/**
+ * 跨路由保留最近一次非空日志，重新进入「日志」页时写回缓存，避免订阅重建后长时间空白。
+ * 用户点击「清除」时同步清空。
+ */
+let latestStableLogs: ILogItem[] = [];
+
+/**
+ * 已应用到 WS 订阅的 logLevel（模块级，跨挂载保留）。
+ * 若用组件内 useRef，每次进入日志页都会误判为「级别变化」并 refresh，导致订阅 key 每次变新、列表恒为空。
+ */
+let lastWsLogLevelApplied: LogLevel | undefined;
 
 /**
  * Extract process name from log payload.
@@ -56,7 +72,9 @@ const filterLogsByLevel = (
 ): ILogItem[] => {
   if (allowedTypes.length === 0) return [];
   if (allowedTypes.length === DEFAULT_LOG_TYPES.length) return logs;
-  return logs.filter((log) => allowedTypes.includes(log.type));
+  return logs.filter((log) =>
+    allowedTypes.includes(String(log.type ?? "").toLowerCase() as LogType),
+  );
 };
 
 const appendLogs = (
@@ -106,7 +124,7 @@ export const useLogData = () => {
   >({
     storageKey: "mihomo_logs_date",
     buildSubscriptKey: (date) => (enableLog ? `getClashLog-${date}` : null),
-    fallbackData: [],
+    fallbackData: EMPTY_LOG_FALLBACK,
     keepPreviousData: true,
     connect: () => MihomoWebSocket.connect_logs(logLevel),
     setupHandlers: ({ next, scheduleReconnect, isMounted }) => {
@@ -140,9 +158,10 @@ export const useLogData = () => {
 
           try {
             const parsed = JSON.parse(data) as ILogItem;
+            parsed.type = String(parsed.type ?? "").toLowerCase();
             if (
               allowedTypes.length > 0 &&
-              !allowedTypes.includes(parsed.type)
+              !allowedTypes.includes(parsed.type as LogType)
             ) {
               return;
             }
@@ -162,7 +181,13 @@ export const useLogData = () => {
         async onConnected() {
           const logs = await getClashLogs();
           if (isMounted()) {
-            const snapshot = clampLogs(filterLogsByLevel(logs, allowedTypes));
+            const normalized = logs.map((row) => ({
+              ...row,
+              type: String(row.type ?? "").toLowerCase(),
+            }));
+            const snapshot = clampLogs(
+              filterLogsByLevel(normalized, allowedTypes),
+            );
             next(null, (prev) => mergeSnapshotIntoCurrent(prev, snapshot));
           }
         },
@@ -171,24 +196,46 @@ export const useLogData = () => {
     },
   });
 
-  const previousLogLevelRef = useRef<string | undefined>(undefined);
-
   useEffect(() => {
     if (!logLevel) {
-      previousLogLevelRef.current = logLevel ?? undefined;
       return;
     }
 
-    if (previousLogLevelRef.current === logLevel) {
+    if (lastWsLogLevelApplied === logLevel) {
       return;
     }
 
-    previousLogLevelRef.current = logLevel;
+    lastWsLogLevelApplied = logLevel;
+    // 新订阅参数下不应回填旧缓冲
+    latestStableLogs = [];
     refresh();
   }, [logLevel, refresh]);
 
+  // 有数据时写入模块缓存，供再次进入页面时恢复
+  useEffect(() => {
+    const d = response.data;
+    if (!Array.isArray(d) || d.length === 0) {
+      if (response.error != null) {
+        debugLog("[日志数据] SWR 订阅异常", response.error);
+      }
+      return;
+    }
+    latestStableLogs = d.slice();
+    debugLog("[日志数据] 已更新缓存条数", latestStableLogs.length);
+  }, [response.data, response.error]);
+
+  // 订阅 key 就绪后把上次缓存塞回 SWR，减轻 $sub$ mutate 触发的短暂空白
+  useEffect(() => {
+    if (!subscriptionCacheKey || latestStableLogs.length === 0) return;
+    mutate(subscriptionCacheKey, latestStableLogs.slice(), {
+      revalidate: false,
+    });
+    debugLog("[日志数据] 已从 latestStableLogs 回填", latestStableLogs.length);
+  }, [subscriptionCacheKey]);
+
   const refreshGetClashLog = (clear = false) => {
     if (clear) {
+      latestStableLogs = [];
       if (subscriptionCacheKey) {
         mutate(subscriptionCacheKey, []);
       }

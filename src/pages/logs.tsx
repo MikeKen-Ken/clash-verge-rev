@@ -9,7 +9,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
@@ -26,6 +26,7 @@ import { useClashLog } from "@/hooks/use-clash-log";
 import { useLogData } from "@/hooks/use-log-data";
 import { patchRuntimeConfig } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
+import { debugLog } from "@/utils/debug";
 
 const KERNEL_LOG_LEVELS = [
   "debug",
@@ -64,7 +65,7 @@ const LogPage = () => {
   const [match, setMatch] = useState(() => (_: string) => true);
   const [searchState, setSearchState] = useState<SearchState>();
   const {
-    response: { data: logData },
+    response: { data: logData, error: logSubscriptionError },
     refreshGetClashLog,
   } = useLogData();
 
@@ -82,12 +83,28 @@ const LogPage = () => {
 
       const matchesSearch = match(searchText);
 
-      return (
-        (logState == "all" ? true : data.type.includes(logState)) &&
-        matchesSearch
-      );
+      const rawType = String(data.type ?? "").toLowerCase();
+      const state = String(logState);
+      const matchesLevel =
+        logState === "all" ||
+        (state === "warn" && rawType.includes("warn")) ||
+        (state === "err" && rawType.includes("err")) ||
+        (state !== "all" && state !== "warn" && state !== "err"
+          ? rawType.includes(state)
+          : false);
+
+      return matchesLevel && matchesSearch;
     });
   }, [logData, logState, match]);
+
+  useEffect(() => {
+    debugLog("[日志页] 状态", {
+      原始条数: logData?.length ?? 0,
+      过滤后条数: filterLogs.length,
+      采集开启: enableLog,
+      订阅错误: logSubscriptionError,
+    });
+  }, [logData, filterLogs.length, enableLog, logSubscriptionError]);
 
   const filteredLogs = useMemo(
     () => (isDescending ? [...filterLogs].reverse() : filterLogs),
