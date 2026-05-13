@@ -34,7 +34,7 @@ function extractProcessName(payload: string): string | undefined {
   return undefined;
 }
 
-const MAX_LOG_NUM = 1000;
+export const MAX_LOG_NUM = 3000;
 const FLUSH_DELAY_MS = 50;
 type LogType = ILogItem["type"];
 
@@ -63,6 +63,37 @@ const appendLogs = (
   current: ILogItem[] | undefined,
   incoming: ILogItem[],
 ): ILogItem[] => clampLogs([...(current ?? []), ...incoming]);
+
+function logItemKey(item: ILogItem): string {
+  return `${item.time ?? ""}\0${item.type}\0${item.payload}`;
+}
+
+/**
+ * 合并文件快照与当前列表：避免 WebSocket 重连后 getClashLogs 返回空数组时把已有缓存清空。
+ * 快照中已存在于 current 的条目跳过；其余按快照顺序前置。
+ */
+function mergeSnapshotIntoCurrent(
+  current: ILogItem[] | undefined,
+  snapshot: ILogItem[],
+): ILogItem[] {
+  const cur = Array.isArray(current) ? [...current] : [];
+  if (snapshot.length === 0) {
+    return cur;
+  }
+  if (cur.length === 0) {
+    return snapshot;
+  }
+  const curKeys = new Set(cur.map(logItemKey));
+  const prefix: ILogItem[] = [];
+  for (const item of snapshot) {
+    const k = logItemKey(item);
+    if (!curKeys.has(k)) {
+      curKeys.add(k);
+      prefix.push(item);
+    }
+  }
+  return clampLogs([...prefix, ...cur]);
+}
 
 export const useLogData = () => {
   const [clashLog] = useClashLog();
@@ -131,7 +162,8 @@ export const useLogData = () => {
         async onConnected() {
           const logs = await getClashLogs();
           if (isMounted()) {
-            next(null, clampLogs(filterLogsByLevel(logs, allowedTypes)));
+            const snapshot = clampLogs(filterLogsByLevel(logs, allowedTypes));
+            next(null, (prev) => mergeSnapshotIntoCurrent(prev, snapshot));
           }
         },
         cleanup: clearFlushTimer,

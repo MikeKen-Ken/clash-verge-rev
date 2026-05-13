@@ -2,7 +2,22 @@ use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
 
-use crate::enhance::field::use_keys;
+use crate::{constants, enhance::field::use_keys};
+
+#[inline]
+fn merge_clash_for_android_mapping(config: &mut Mapping, patch_cfa: &Mapping) {
+    let mut cfa = config
+        .get("clash-for-android")
+        .and_then(|v| v.as_mapping())
+        .cloned()
+        .unwrap_or_default();
+    for key in use_keys(patch_cfa) {
+        if let Some(v) = patch_cfa.get(key.as_str()) {
+            cfa.insert(Value::from(key.as_str()), v.clone());
+        }
+    }
+    config.insert("clash-for-android".into(), Value::from(cfa));
+}
 
 const PATCH_CONFIG_INNER: [&str; 6] = [
     "allow-lan",
@@ -40,7 +55,7 @@ impl IRuntime {
         Self::default()
     }
 
-    // 这里只更改 allow-lan | bind-address | ipv6 | log-level | tun | tunnels | proxy-ads-block
+    // 这里只更改 allow-lan | bind-address | ipv6 | log-level | tun | tunnels | proxy-ads-block | clash-for-android（局域网设备禁用等）
     #[inline]
     pub fn patch_config(&mut self, patch: &Mapping) {
         let config = if let Some(config) = self.config.as_mut() {
@@ -58,6 +73,17 @@ impl IRuntime {
         // 代理页「屏蔽广告」开关：仅客户端使用，须写入运行时 Mapping，否则 PATCH 无效且刷新后前端会回退为默认开启
         if let Some(value) = patch.get("proxy-ads-block") {
             config.insert("proxy-ads-block".into(), value.clone());
+        }
+
+        // 局域网设备禁用 / 上限等：须写入运行时 YAML，核心才会注入 SRC-IP-CIDR REJECT-DROP 规则
+        match patch.get("clash-for-android") {
+            Some(Value::Null) => {
+                config.remove("clash-for-android");
+            }
+            Some(Value::Mapping(patch_cfa)) => {
+                merge_clash_for_android_mapping(config, patch_cfa);
+            }
+            _ => {}
         }
 
         let patch_tun = patch.get("tun");
@@ -96,6 +122,15 @@ impl IRuntime {
         if let Some(v) = prev_cfg.get("proxy-ads-block") {
             config.insert("proxy-ads-block".into(), v.clone());
         }
+        for key in [
+            constants::proxy_ads::RULE_INDEX_KEY,
+            constants::proxy_ads::NS_POLICY_INDEX_KEY,
+            constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
+        ] {
+            if let Some(v) = prev_cfg.get(key) {
+                config.insert(key.into(), v.clone());
+            }
+        }
 
         // tun：与 `patch_config` 的 tun 分支一致；`enable` 以当前 config 为准（已由 `use_tun` 根据 verge 写入）
         if let Some(prev_tun) = prev_cfg.get("tun").and_then(|v| v.as_mapping()) {
@@ -117,6 +152,24 @@ impl IRuntime {
                 tun.insert(Value::from("enable"), e);
             }
             config.insert("tun".into(), Value::from(tun));
+        }
+
+        // clash-for-android：全量 generate 后把上一版运行时的子表整表叠到新生成配置之上。
+        // 若只合并少数键，而上一版 YAML 省略了空的 `lan-blocked-devices`，则无法覆盖订阅里自带的列表，会导致「移除禁用」仍走拦截。
+        if let Some(prev_cfa) = prev_cfg.get("clash-for-android").and_then(|v| v.as_mapping()) {
+            let mut cfa = config
+                .get("clash-for-android")
+                .and_then(|v| v.as_mapping())
+                .cloned()
+                .unwrap_or_default();
+            for key in use_keys(prev_cfa) {
+                if let Some(v) = prev_cfa.get(key.as_str()) {
+                    cfa.insert(Value::from(key.as_str()), v.clone());
+                }
+            }
+            if !cfa.is_empty() {
+                config.insert("clash-for-android".into(), Value::from(cfa));
+            }
         }
     }
 

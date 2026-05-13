@@ -2,8 +2,13 @@ import {
   PlayCircleOutlineRounded,
   PauseCircleOutlineRounded,
   SwapVertRounded,
+  FileDownloadOutlined,
 } from "@mui/icons-material";
 import { Box, Button, IconButton, MenuItem } from "@mui/material";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { useLockFn } from "ahooks";
+import dayjs from "dayjs";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
@@ -20,6 +25,7 @@ import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
 import { useLogData } from "@/hooks/use-log-data";
 import { patchRuntimeConfig } from "@/services/cmds";
+import { showNotice } from "@/services/notice-service";
 
 const KERNEL_LOG_LEVELS = [
   "debug",
@@ -33,6 +39,15 @@ const toUiLogLevel = (level?: string) => (level === "warn" ? "warning" : level);
 
 const toKernelLogLevel = (level: string) =>
   level === "warning" ? "warn" : level;
+
+function formatLogExportLines(items: ILogItem[]): string {
+  return items
+    .map((row) => {
+      const proc = row.processName ? ` [${row.processName}]` : "";
+      return `[${row.time ?? "-"}] [${row.type}]${proc} ${row.payload}`;
+    })
+    .join("\n");
+}
 
 const LogPage = () => {
   const { t } = useTranslation();
@@ -78,6 +93,31 @@ const LogPage = () => {
     () => (isDescending ? [...filterLogs].reverse() : filterLogs),
     [filterLogs, isDescending],
   );
+
+  const handleExportLogs = useLockFn(async () => {
+    const raw = logData ?? [];
+    if (raw.length === 0) {
+      showNotice.info("当前没有可导出的日志");
+      return;
+    }
+    const defaultPath = `clash-verge-logs-${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.txt`;
+    const savePath = await save({
+      title: "导出日志",
+      defaultPath,
+    });
+    if (!savePath || Array.isArray(savePath)) {
+      return;
+    }
+    try {
+      await writeTextFile(savePath, formatLogExportLines(raw));
+      showNotice.success("日志已导出");
+    } catch (error) {
+      console.error(error);
+      showNotice.error(
+        error instanceof Error ? `导出失败：${error.message}` : "导出失败",
+      );
+    }
+  });
 
   const handleLogFilterChange = (newLevel: string) => {
     setClashLog((pre: any) => ({ ...pre, logFilter: newLevel }));
@@ -153,6 +193,16 @@ const LogPage = () => {
 
           <Button
             size="small"
+            variant="outlined"
+            startIcon={<FileDownloadOutlined />}
+            onClick={() => {
+              void handleExportLogs();
+            }}
+          >
+            导出日志
+          </Button>
+          <Button
+            size="small"
             variant="contained"
             onClick={() => {
               refreshGetClashLog(true);
@@ -207,7 +257,9 @@ const LogPage = () => {
 
       {filteredLogs.length > 0 ? (
         <Virtuoso
-          initialTopMostItemIndex={isDescending ? 0 : 999}
+          initialTopMostItemIndex={
+            isDescending ? 0 : Math.max(0, filteredLogs.length - 1)
+          }
           data={filteredLogs}
           style={{
             flex: 1,

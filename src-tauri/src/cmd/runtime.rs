@@ -2,6 +2,7 @@ use super::CmdResult;
 use crate::{
     cmd::StringifyErr as _,
     config::{runtime::IRuntime, Config, ConfigType},
+    constants,
     core::{CoreManager, handle},
     enhance,
 };
@@ -135,7 +136,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
             }
         }
     } else if ads_only {
-        // 仅同步 rules + 运行时中的 `proxy-ads-block`，PATCH 核心，避免全量 reload 与健康检测重跑
+        // 仅同步 rules、dns（含 nameserver-policy）及「屏蔽广告」相关快照键，PATCH 核心，避免全量 reload 与健康检测重跑
         let computed = {
             let runtime = Config::runtime().await;
             let cfg_src = runtime.latest_arc();
@@ -152,6 +153,21 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
                     if let Some(rules) = computed.get("rules") {
                         config.insert("rules".into(), rules.clone());
                     }
+                    if let Some(dns) = computed.get("dns") {
+                        config.insert("dns".into(), dns.clone());
+                    }
+                    for key in [
+                        constants::proxy_ads::RULE_INDEX_KEY,
+                        constants::proxy_ads::NS_POLICY_INDEX_KEY,
+                        constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
+                    ] {
+                        let vk = Value::from(key);
+                        if let Some(v) = computed.get(&vk) {
+                            config.insert(vk, v.clone());
+                        } else {
+                            config.remove(&vk);
+                        }
+                    }
                 }
             });
         }
@@ -161,7 +177,13 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
             .cloned()
             .unwrap_or(Value::Sequence(vec![]));
         let rules_json = serde_json::to_value(&rules_val).stringify_err()?;
-        let patch_json = serde_json::json!({ "rules": rules_json });
+
+        let patch_json = if let Some(dns) = computed.get("dns") {
+            let dns_json = serde_json::to_value(dns).stringify_err()?;
+            serde_json::json!({ "rules": rules_json, "dns": dns_json })
+        } else {
+            serde_json::json!({ "rules": rules_json })
+        };
 
         match handle::Handle::mihomo().await.patch_base_config(&patch_json).await {
             Ok(()) => {

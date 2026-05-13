@@ -629,15 +629,18 @@ const ConnectionsPage = () => {
           mx: "10px",
           minHeight: "36px",
           display: "flex",
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 1,
+          rowGap: 1,
+          minWidth: 0,
           userSelect: "text",
           position: "sticky",
           top: 0,
           zIndex: 2,
         }}
       >
-        <ButtonGroup sx={{ mr: 1, flexBasis: "content" }}>
+        <ButtonGroup sx={{ mr: 1, flexBasis: "content", flexShrink: 0 }}>
           <Button
             size="small"
             variant={connectionsType === "active" ? "contained" : "outlined"}
@@ -730,7 +733,15 @@ const ConnectionsPage = () => {
           </BaseStyledSelect>
         )}
         {connectionsType === "closed" && (
-          <>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              flexWrap: "wrap",
+              flexShrink: 0,
+            }}
+          >
             <BaseStyledSelect
               value={String(setting?.closedConnectionsRetentionHours ?? 8)}
               onChange={(e) =>
@@ -745,7 +756,7 @@ const ConnectionsPage = () => {
                   };
                 })
               }
-              sx={{ minWidth: 100 }}
+              sx={{ minWidth: 100, flexShrink: 0 }}
               title={t("connections.components.closedRetention")}
             >
               {CLOSED_CONNECTIONS_RETENTION_HOURS.map((h) => (
@@ -761,20 +772,23 @@ const ConnectionsPage = () => {
               variant={mergeByDomain ? "contained" : "outlined"}
               onClick={() => setMergeByDomain((v) => !v)}
               startIcon={<MergeTypeRounded />}
+              sx={{ flexShrink: 0 }}
             >
               {mergeByDomain
                 ? t("connections.components.actions.cancelMergeByDomain")
                 : t("connections.components.actions.mergeByDomain")}
             </Button>
-          </>
+          </Box>
         )}
         <Box
           sx={{
-            flex: 1,
+            flex: "1 1 140px",
+            minWidth: 0,
             display: "flex",
             alignItems: "center",
             "& > *": {
               flex: 1,
+              minWidth: 0,
             },
           }}
         >

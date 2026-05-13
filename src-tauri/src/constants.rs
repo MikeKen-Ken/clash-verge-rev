@@ -46,3 +46,10 @@ pub mod tun {
 
     pub const DNS_HIJACK: &[&str] = &["any:53"];
 }
+
+/// 代理页「屏蔽广告」关闭时记录 `rules` / `dns.nameserver-policy` 中广告项的位置与快照，热开关恢复时用；Mihomo 会忽略未知顶层键。
+pub mod proxy_ads {
+    pub const RULE_INDEX_KEY: &str = "proxy-ads-rule-index";
+    pub const NS_POLICY_INDEX_KEY: &str = "proxy-ads-ns-policy-index";
+    pub const NS_POLICY_VALUE_SNAPSHOT_KEY: &str = "proxy-ads-ns-policy-value";
+}

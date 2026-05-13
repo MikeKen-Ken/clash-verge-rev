@@ -785,6 +785,73 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
 
 const PROXY_ADS_BLOCK_KEY: &str = "proxy-ads-block";
 const PROXY_ADS_RULE: &str = "RULE-SET,ads,REJECT";
+const PROXY_ADS_NS_POLICY_KEY: &str = "rule-set:ads";
+const PROXY_ADS_NS_DEFAULT_VALUE: &str = "rcode://success";
+
+#[inline]
+fn rule_is_proxy_ads(rule: &Value) -> bool {
+    rule.as_str()
+        .map(|s| s.trim() == PROXY_ADS_RULE)
+        .unwrap_or(false)
+}
+
+#[inline]
+fn nameserver_policy_key_is_ads(k: &Value) -> bool {
+    k.as_str() == Some(PROXY_ADS_NS_POLICY_KEY)
+}
+
+#[inline]
+fn value_as_usize(v: &Value) -> Option<usize> {
+    v.as_u64()
+        .map(|n| n as usize)
+        .or_else(|| v.as_i64().and_then(|n| usize::try_from(n).ok()))
+}
+
+/// 无快照时：广告规则插在 `RULE-SET,trackerslist` 之后，否则插在首条 `MATCH` 之前（与常见订阅脚本顺序一致）。
+fn default_ads_rule_insert_index(rules: &[Value]) -> usize {
+    if let Some(i) = rules.iter().position(|r| {
+        r.as_str()
+            .map(|s| {
+                let t = s.trim();
+                t.starts_with("RULE-SET,trackerslist,")
+            })
+            .unwrap_or(false)
+    }) {
+        return (i + 1).min(rules.len());
+    }
+    rules
+        .iter()
+        .position(|r| {
+            r.as_str()
+                .map(|s| s.trim().starts_with("MATCH,"))
+                .unwrap_or(false)
+        })
+        .unwrap_or(rules.len())
+}
+
+/// 无快照时：`rule-set:ads` 插在 `rule-set:trackerslist` 之后（与常见 nameserver-policy 顺序一致）。
+fn default_ads_ns_policy_insert_index(policy: &Mapping) -> usize {
+    for (i, (k, _)) in policy.iter().enumerate() {
+        if k.as_str() == Some("rule-set:trackerslist") {
+            return (i + 1).min(policy.len());
+        }
+    }
+    policy.len()
+}
+
+fn insert_mapping_ordered(policy: &mut Mapping, insert_at: usize, key: Value, value: Value) {
+    if policy.iter().any(|(k, _)| k == &key || nameserver_policy_key_is_ads(k)) {
+        return;
+    }
+    let pairs: Vec<(Value, Value)> = policy
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let mut pairs = pairs;
+    let insert_at = insert_at.min(pairs.len());
+    pairs.insert(insert_at, (key, value));
+    *policy = pairs.into_iter().collect();
+}
 
 pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
     let enable_proxy_ads_block = config
@@ -792,30 +859,130 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
         .and_then(Value::as_bool)
         .unwrap_or(true);
 
-    if !enable_proxy_ads_block {
-        if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
-            rules.retain(|rule| {
-                rule.as_str()
-                    .map(|s| s.trim() != PROXY_ADS_RULE)
-                    .unwrap_or(true)
-            });
+    let has_ads_rule = config
+        .get("rules")
+        .and_then(|v| v.as_sequence())
+        .is_some_and(|rules| rules.iter().any(rule_is_proxy_ads));
+
+    let has_ads_ns = config
+        .get("dns")
+        .and_then(|v| v.as_mapping())
+        .and_then(|dns| dns.get("nameserver-policy"))
+        .and_then(|v| v.as_mapping())
+        .is_some_and(|p| p.iter().any(|(k, _)| nameserver_policy_key_is_ads(k)));
+
+    if enable_proxy_ads_block {
+        if has_ads_rule {
+            config.remove(&Value::from(constants::proxy_ads::RULE_INDEX_KEY));
+        }
+        if has_ads_ns {
+            config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
+            config.remove(&Value::from(
+                constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
+            ));
+        }
+
+        if !has_ads_rule {
+            let insert_idx = config
+                .get(constants::proxy_ads::RULE_INDEX_KEY)
+                .and_then(value_as_usize)
+                .unwrap_or_else(|| {
+                    config
+                        .get("rules")
+                        .and_then(|v| v.as_sequence())
+                        .map(|rules| default_ads_rule_insert_index(rules.as_slice()))
+                        .unwrap_or(0)
+                });
+            if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
+                let insert_idx = insert_idx.min(rules.len());
+                rules.insert(insert_idx, Value::from(PROXY_ADS_RULE));
+            }
+        }
+
+        if !has_ads_ns {
+            let ns_val = config
+                .get(constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
+                .cloned()
+                .unwrap_or_else(|| Value::from(PROXY_ADS_NS_DEFAULT_VALUE));
+            let insert_idx = config
+                .get(constants::proxy_ads::NS_POLICY_INDEX_KEY)
+                .and_then(value_as_usize);
+            if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
+                if dns.get(&Value::from("nameserver-policy")).is_none() {
+                    dns.insert(
+                        Value::from("nameserver-policy"),
+                        Value::Mapping(Mapping::new()),
+                    );
+                }
+                if let Some(Value::Mapping(policy)) = dns.get_mut(&Value::from("nameserver-policy")) {
+                    let insert_idx = insert_idx
+                        .unwrap_or_else(|| default_ads_ns_policy_insert_index(policy));
+                    insert_mapping_ordered(
+                        policy,
+                        insert_idx,
+                        Value::from(PROXY_ADS_NS_POLICY_KEY),
+                        ns_val,
+                    );
+                }
+            }
         }
     } else {
-        let has_ads_rule = config
+        let ads_rule_pos = config
             .get("rules")
             .and_then(|v| v.as_sequence())
-            .is_some_and(|rules| {
-                rules.iter().any(|rule| {
-                    rule.as_str()
-                        .map(|s| s.trim() == PROXY_ADS_RULE)
-                        .unwrap_or(false)
+            .and_then(|rules| rules.iter().position(rule_is_proxy_ads));
+        match ads_rule_pos {
+            Some(pos) => {
+                config.insert(
+                    Value::from(constants::proxy_ads::RULE_INDEX_KEY),
+                    Value::Number(serde_yaml_ng::Number::from(pos as i64)),
+                );
+                if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
+                    rules.remove(pos);
+                }
+            }
+            None => {
+                if config.get("rules").and_then(|v| v.as_sequence()).is_some() {
+                    config.remove(&Value::from(constants::proxy_ads::RULE_INDEX_KEY));
+                }
+            }
+        }
+
+        let ads_ns_info = config
+            .get("dns")
+            .and_then(|v| v.as_mapping())
+            .and_then(|dns| dns.get(&Value::from("nameserver-policy")))
+            .and_then(|v| v.as_mapping())
+            .and_then(|policy| {
+                policy.iter().enumerate().find_map(|(i, (k, v))| {
+                    nameserver_policy_key_is_ads(k).then_some((i, k.clone(), v.clone()))
                 })
             });
-        // 关闭过再从运行时恢复时，规则里可能已无该行；仅在已有 rules 列表时插入，避免误覆盖非列表结构
-        if !has_ads_rule {
-            if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
-                rules.insert(0, Value::from(PROXY_ADS_RULE));
+        if let Some((pos, key, val)) = ads_ns_info {
+            if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
+                if let Some(Value::Mapping(policy)) = dns.get_mut(&Value::from("nameserver-policy")) {
+                    policy.remove(&key);
+                }
             }
+            config.insert(
+                Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY),
+                Value::Number(serde_yaml_ng::Number::from(pos as i64)),
+            );
+            config.insert(
+                Value::from(constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY),
+                val,
+            );
+        } else if config
+            .get("dns")
+            .and_then(|v| v.as_mapping())
+            .and_then(|dns| dns.get(&Value::from("nameserver-policy")))
+            .and_then(|v| v.as_mapping())
+            .is_some()
+        {
+            config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
+            config.remove(&Value::from(
+                constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
+            ));
         }
     }
 
@@ -980,5 +1147,111 @@ proxy-groups:
             .expect("proxies should be a sequence");
         assert_eq!(proxies.len(), 1);
         assert_eq!(proxies[0].as_str(), Some("DIRECT"));
+    }
+
+    #[test]
+    fn proxy_ads_disable_removes_rule_and_nameserver_policy_with_snapshot() {
+        let yaml = r#"
+proxy-ads-block: false
+rules:
+  - GEOIP,CN,DIRECT
+  - RULE-SET,trackerslist,REJECT
+  - RULE-SET,ads,REJECT
+  - MATCH,PROXY
+dns:
+  nameserver-policy:
+    "rule-set:private": https://1.1.1.1/dns-query
+    "rule-set:trackerslist": rcode://success
+    "rule-set:ads": rcode://success
+    "rule-set:cn": https://dns.alidns.com/dns-query
+"#;
+        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(yaml).expect("yaml");
+        let config = super::apply_proxy_ads_block(config);
+
+        let rules = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rules");
+        assert_eq!(rules.len(), 3);
+        assert_eq!(rules[2].as_str(), Some("MATCH,PROXY"));
+        assert!(!rules.iter().any(|r| r.as_str().map(|s| s.trim()) == Some("RULE-SET,ads,REJECT")));
+
+        let policy = config
+            .get("dns")
+            .and_then(|d| d.as_mapping())
+            .and_then(|d| d.get(&serde_yaml_ng::Value::from("nameserver-policy")))
+            .and_then(|p| p.as_mapping())
+            .expect("policy");
+        assert!(!policy
+            .iter()
+            .any(|(k, _)| k.as_str() == Some("rule-set:ads")));
+
+        assert_eq!(
+            config
+                .get(crate::constants::proxy_ads::RULE_INDEX_KEY)
+                .and_then(|v| v.as_i64()),
+            Some(2)
+        );
+        assert!(config
+            .get(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
+            .is_some());
+    }
+
+    #[test]
+    fn proxy_ads_enable_restores_rule_and_policy_order() {
+        let yaml = r#"
+proxy-ads-block: true
+rules:
+  - GEOIP,CN,DIRECT
+  - RULE-SET,trackerslist,REJECT
+  - MATCH,PROXY
+dns:
+  nameserver-policy:
+    "rule-set:private": https://1.1.1.1/dns-query
+    "rule-set:trackerslist": rcode://success
+    "rule-set:cn": https://dns.alidns.com/dns-query
+"#;
+        let mut config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(yaml).expect("yaml");
+        config.insert(
+            serde_yaml_ng::Value::from(crate::constants::proxy_ads::RULE_INDEX_KEY),
+            serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(2_i64)),
+        );
+        config.insert(
+            serde_yaml_ng::Value::from(crate::constants::proxy_ads::NS_POLICY_INDEX_KEY),
+            serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(2_i64)),
+        );
+        config.insert(
+            serde_yaml_ng::Value::from(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY),
+            serde_yaml_ng::Value::from("rcode://success"),
+        );
+
+        let config = super::apply_proxy_ads_block(config);
+
+        let rules = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rules");
+        assert_eq!(rules.len(), 4);
+        assert_eq!(rules[2].as_str(), Some("RULE-SET,ads,REJECT"));
+        assert_eq!(rules[3].as_str(), Some("MATCH,PROXY"));
+
+        let keys: Vec<_> = config
+            .get("dns")
+            .and_then(|d| d.as_mapping())
+            .and_then(|d| d.get(&serde_yaml_ng::Value::from("nameserver-policy")))
+            .and_then(|p| p.as_mapping())
+            .expect("policy")
+            .iter()
+            .filter_map(|(k, _)| k.as_str())
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "rule-set:private",
+                "rule-set:trackerslist",
+                "rule-set:ads",
+                "rule-set:cn",
+            ]
+        );
     }
 }
