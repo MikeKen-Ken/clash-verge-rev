@@ -488,7 +488,7 @@ export const openWebUrl = async (url: string) => {
   }
 };
 
-/** Windows：打开安全中心防火墙页（可继续进入「允许应用通过防火墙」） */
+/** Windows：优先打开经典 firewall.cpl（左侧可进入「允许应用通过防火墙」），失败则打开设置中的防火墙页 */
 export async function openWindowsFirewallAllowedAppsSettings() {
   return invoke<void>("open_windows_firewall_allowed_apps_settings").catch(
     (err) => showNotice.error(err),
