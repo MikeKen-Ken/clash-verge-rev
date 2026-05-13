@@ -110,9 +110,9 @@ const LogItem = ({ value, searchState }: Props) => {
     const elements: ReactNode[] = [];
     let lastIndex = 0;
 
-    // 第二行格式：... --> host:port [--> ruleName] [match RuleSet(x)] --> proxy
-    // 仅标记第一个目标地址（host:port）与警告词；规则名（如 proxy）不标记
-    const destinationRegex = /\s-->\s+([^\s]+)(?=\s+(?:-->|match))/i;
+    // 第二行：首个真实目标 host:port 之后为链式 -->；兼容旧内核中文「匹配」「使用」及英文 match RuleSet
+    const destinationRegex =
+      /\s-->\s+([^\s]+)(?=\s+(?:-->|match\s|匹配|使用))/i;
     const destExec = destinationRegex.exec(text);
     const firstDest = destExec ? destExec[1] : null;
     const firstDestStart =
@@ -132,7 +132,7 @@ const LogItem = ({ value, searchState }: Props) => {
       start: number;
       end: number;
       text: string;
-      type: "destination" | "warning" | "rule-detail-value";
+      type: "destination" | "warning" | "rule-detail-value" | "ruleset-name";
     }> = [];
 
     // 只标记第一个目标地址（host:port），不标记规则名（如 proxy）
@@ -145,15 +145,43 @@ const LogItem = ({ value, searchState }: Props) => {
       });
     }
 
+    // RuleSet(名称) / RULE-SET(名称) 内的规则集名（与方括号内规则载荷区分）
+    {
+      const ruleSetNameRegex = /(?:RULE-SET|RuleSet)\s*\(([^)]+)\)/gi;
+      let rm: RegExpExecArray | null;
+      while ((rm = ruleSetNameRegex.exec(text)) !== null) {
+        const rawInner = rm[1];
+        const trimmed = rawInner.trim();
+        if (!trimmed) continue;
+        const openParen = rm.index + rm[0].indexOf("(");
+        const lead = rawInner.length - rawInner.trimStart().length;
+        const valueStart = openParen + 1 + lead;
+        const valueEnd = valueStart + trimmed.length;
+        matches.push({
+          start: valueStart,
+          end: valueEnd,
+          text: trimmed,
+          type: "ruleset-name",
+        });
+      }
+    }
+
     // 规则详情段：高亮所有 (RuleType,value) 或 [RuleType,value] 中的 value，仅 value 部分
     // 扫描整行文本，匹配所有规则类型,值模式
     {
+      // 与内核 RuleType.String()（如 ProcessNameWildcard）及配置写法（如 DOMAIN-SUFFIX、PROCESS-NAME-WILDCARD）对齐；缺省通配类型则方括号内载荷不会加粗
+      const ruleTypeAlternation =
+        "DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME-REGEX|PROCESS-PATH-REGEX|PROCESS-NAME-WILDCARD|PROCESS-PATH-WILDCARD|PROCESS-NAME|PROCESS-PATH|ProcessNameRegex|ProcessPathRegex|ProcessNameWildcard|ProcessPathWildcard|ProcessName|ProcessPath|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH|DomainSuffix|DomainKeyword";
       // 匹配 (RuleType,value) 中的 value
-      const parenRuleRegex =
-        /\((DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|ProcessName|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH|DomainSuffix|DomainKeyword),([^)]+)\)/gi;
+      const parenRuleRegex = new RegExp(
+        `\\((${ruleTypeAlternation}),([^)]+)\\)`,
+        "gi",
+      );
       // 匹配 [RuleType,value] 中的 value
-      const bracketRuleRegex =
-        /\[(DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|ProcessName|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH|DomainSuffix|DomainKeyword),([^\]]+)\]/gi;
+      const bracketRuleRegex = new RegExp(
+        `\\[(${ruleTypeAlternation}),([^\\]]+)\\]`,
+        "gi",
+      );
       let m: RegExpExecArray | null;
       while ((m = parenRuleRegex.exec(text)) !== null) {
         const ruleType = m[1];
@@ -234,7 +262,8 @@ const LogItem = ({ value, searchState }: Props) => {
       const className =
         match.type === "destination"
           ? "destination"
-          : match.type === "rule-detail-value"
+          : match.type === "rule-detail-value" ||
+            match.type === "ruleset-name"
             ? "rule-detail-value"
             : "log-warning";
       const color = match.type === "warning" ? warningColor : primaryColor;
@@ -378,7 +407,7 @@ const LogItem = ({ value, searchState }: Props) => {
       /\s+match\s+(DOMAIN-SUFFIX|DOMAIN|DOMAIN-KEYWORD|GEOIP|IP-CIDR|IP-CIDR6|GEOSITE|PROCESS-NAME|DST-PORT|SRC-PORT|IN-TYPE|IN-PORT|MATCH)\s*\(([^)]*)\)\s*(?:\[([^\]]*)\])?\s*/gi,
       (_, ruleType, payload, detail) => {
         if (detail) {
-          return ` --> ${ruleType},${payload} --> ${detail}`;
+          return ` --> ${ruleType},${payload} --> ${detail}`;    
         }
         return ` --> ${ruleType},${payload}`;
       },
