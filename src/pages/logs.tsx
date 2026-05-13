@@ -23,7 +23,7 @@ import {
 import LogItem from "@/components/log/log-item";
 import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
-import { useLogData } from "@/hooks/use-log-data";
+import { useLogDataContext } from "@/providers/log-data-context";
 import { patchRuntimeConfig } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
@@ -67,7 +67,7 @@ const LogPage = () => {
   const {
     response: { data: logData, error: logSubscriptionError },
     refreshGetClashLog,
-  } = useLogData();
+  } = useLogDataContext();
 
   const filterLogs = useMemo(() => {
     if (!logData || logData.length === 0) {

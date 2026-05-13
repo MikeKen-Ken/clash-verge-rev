@@ -22,6 +22,7 @@ import { Outlet, useNavigate } from "react-router";
 import { SWRConfig } from "swr";
 
 import { BaseErrorBoundary } from "@/components/base";
+import { LogDataProvider } from "@/providers/log-data-provider";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { NoticeManager } from "@/components/layout/notice-manager";
 import { WindowControls } from "@/components/layout/window-controller";
@@ -294,10 +295,10 @@ const Layout = () => {
             ({ palette }) => ({ bgcolor: palette.background.paper }),
             OS === "linux"
               ? {
-                  borderRadius: "8px",
-                  width: "100vw",
-                  height: "100vh",
-                }
+                borderRadius: "8px",
+                width: "100vw",
+                height: "100vh",
+              }
               : {},
           ]}
         >
@@ -387,9 +388,9 @@ const Layout = () => {
                 anchorPosition={
                   menuContextPosition
                     ? {
-                        top: menuContextPosition.top,
-                        left: menuContextPosition.left,
-                      }
+                      top: menuContextPosition.top,
+                      left: menuContextPosition.left,
+                    }
                     : undefined
                 }
                 transitionDuration={200}
@@ -425,9 +426,11 @@ const Layout = () => {
             <div className="layout-content__right">
               <div className="the-bar"></div>
               <div className="the-content">
-                <BaseErrorBoundary>
-                  <Outlet />
-                </BaseErrorBoundary>
+                <LogDataProvider>
+                  <BaseErrorBoundary>
+                    <Outlet />
+                  </BaseErrorBoundary>
+                </LogDataProvider>
               </div>
             </div>
           </div>
