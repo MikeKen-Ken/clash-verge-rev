@@ -41,15 +41,24 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
     open::that(url.as_str()).stringify_err()
 }
 
-/// 打开 Windows 安全中心「防火墙和网络保护」设置页（由此可进入「允许应用通过防火墙」）
+/// 直接打开控制面板「允许应用通过 Windows 防火墙」页面
+/// 优先使用 control.exe firewall.cpl 直接定位到允许的应用列表页；
+/// 若失败则降级到 ms-settings:windowsdefender-firewall，再降级到 ms-settings:windowsdefender。
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn open_windows_firewall_allowed_apps_settings() -> CmdResult<()> {
-    let primary = "ms-settings:windowsdefender-firewall";
-    let fallback = "ms-settings:windowsdefender";
-    match open::that(primary) {
+    // /name Microsoft.WindowsFirewall /page AllowedPrograms 可在 Win10/11 中直接展开允许的应用列表
+    let ok = std::process::Command::new("control.exe")
+        .args(["/name", "Microsoft.WindowsFirewall", "/page", "AllowedPrograms"])
+        .spawn()
+        .is_ok();
+    if ok {
+        return Ok(());
+    }
+    // 降级：打开防火墙和网络保护设置页
+    match open::that("ms-settings:windowsdefender-firewall") {
         Ok(()) => Ok(()),
-        Err(_) => open::that(fallback).stringify_err(),
+        Err(_) => open::that("ms-settings:windowsdefender").stringify_err(),
     }
 }
 
