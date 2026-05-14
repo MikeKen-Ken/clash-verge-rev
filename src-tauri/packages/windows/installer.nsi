@@ -579,97 +579,22 @@ FunctionEnd
       nsis_tauri_utils::KillProcess "verge-mihomo.exe"
     !endif
   ${EndIf}
-  
-
-  ; Tauri externalBin: verge-mihomo-custom-<target-triple>.exe
-
+  ; verge-mihomo-custom sidecar (verge-mihomo-custom.exe)
   !if "${INSTALLMODE}" == "currentUser"
-
-    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
-
+    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom.exe"
   !else
-
-    nsis_tauri_utils::FindProcess "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
-
+    nsis_tauri_utils::FindProcess "verge-mihomo-custom.exe"
   !endif
-
   Pop $R0
-
   ${If} $R0 = 0
-
-    DetailPrint "Kill verge-mihomo-custom-x86_64-pc-windows-msvc.exe..."
-
+    DetailPrint "Kill verge-mihomo-custom.exe..."
     !if "${INSTALLMODE}" == "currentUser"
-
-      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
-
+      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom.exe"
     !else
-
-      nsis_tauri_utils::KillProcess "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
-
+      nsis_tauri_utils::KillProcess "verge-mihomo-custom.exe"
     !endif
-
   ${EndIf}
 
-
-
-  !if "${INSTALLMODE}" == "currentUser"
-
-    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
-
-  !else
-
-    nsis_tauri_utils::FindProcess "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
-
-  !endif
-
-  Pop $R0
-
-  ${If} $R0 = 0
-
-    DetailPrint "Kill verge-mihomo-custom-aarch64-pc-windows-msvc.exe..."
-
-    !if "${INSTALLMODE}" == "currentUser"
-
-      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
-
-    !else
-
-      nsis_tauri_utils::KillProcess "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
-
-    !endif
-
-  ${EndIf}
-
-
-
-  !if "${INSTALLMODE}" == "currentUser"
-
-    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-i686-pc-windows-msvc.exe"
-
-  !else
-
-    nsis_tauri_utils::FindProcess "verge-mihomo-custom-i686-pc-windows-msvc.exe"
-
-  !endif
-
-  Pop $R0
-
-  ${If} $R0 = 0
-
-    DetailPrint "Kill verge-mihomo-custom-i686-pc-windows-msvc.exe..."
-
-    !if "${INSTALLMODE}" == "currentUser"
-
-      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-i686-pc-windows-msvc.exe"
-
-    !else
-
-      nsis_tauri_utils::KillProcess "verge-mihomo-custom-i686-pc-windows-msvc.exe"
-
-    !endif
-
-  ${EndIf}
   ; Check if clash-meta-alpha.exe is running
   !if "${INSTALLMODE}" == "currentUser"
     nsis_tauri_utils::FindProcessCurrentUser "clash-meta-alpha.exe"
@@ -849,24 +774,24 @@ Section CheckAndInstallVSRuntime
   ${EndIf}
 
   ${If} $VC_RUNTIME_NEEDED != "1"
-    DetailPrint "已检测到匹配的 Visual C++ Redistributable，跳过安装"
+    DetailPrint "宸叉娴嬪埌鍖归厤鐨?Visual C++ Redistributable锛岃烦杩囧畨瑁?
     Goto done_vc
   ${EndIf}
 
-  DetailPrint "正在下载 Visual C++ Redistributable..."
+  DetailPrint "姝ｅ湪涓嬭浇 Visual C++ Redistributable..."
   nsisdl::download "$VC_REDIST_URL" "$TEMP\$VC_REDIST_EXE"
   Pop $0
   ${If} $0 == "success"
-    DetailPrint "正在安装 Visual C++ Redistributable..."
+    DetailPrint "姝ｅ湪瀹夎 Visual C++ Redistributable..."
     ExecWait '"$TEMP\$VC_REDIST_EXE" /quiet /norestart' $0
     ${If} $0 == 0
-      DetailPrint "Visual C++ Redistributable 安装成功"
+      DetailPrint "Visual C++ Redistributable 瀹夎鎴愬姛"
     ${Else}
-      DetailPrint "Visual C++ Redistributable 安装失败"
+      DetailPrint "Visual C++ Redistributable 瀹夎澶辫触"
     ${EndIf}
     Delete "$TEMP\$VC_REDIST_EXE"
   ${Else}
-    DetailPrint "Visual C++ Redistributable 下载失败"
+    DetailPrint "Visual C++ Redistributable 涓嬭浇澶辫触"
   ${EndIf}
 
   done_vc:
