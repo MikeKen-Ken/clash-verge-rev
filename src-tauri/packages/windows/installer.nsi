@@ -579,7 +579,97 @@ FunctionEnd
       nsis_tauri_utils::KillProcess "verge-mihomo.exe"
     !endif
   ${EndIf}
+  
 
+  ; Tauri externalBin: verge-mihomo-custom-<target-triple>.exe
+
+  !if "${INSTALLMODE}" == "currentUser"
+
+    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
+
+  !else
+
+    nsis_tauri_utils::FindProcess "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
+
+  !endif
+
+  Pop $R0
+
+  ${If} $R0 = 0
+
+    DetailPrint "Kill verge-mihomo-custom-x86_64-pc-windows-msvc.exe..."
+
+    !if "${INSTALLMODE}" == "currentUser"
+
+      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
+
+    !else
+
+      nsis_tauri_utils::KillProcess "verge-mihomo-custom-x86_64-pc-windows-msvc.exe"
+
+    !endif
+
+  ${EndIf}
+
+
+
+  !if "${INSTALLMODE}" == "currentUser"
+
+    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
+
+  !else
+
+    nsis_tauri_utils::FindProcess "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
+
+  !endif
+
+  Pop $R0
+
+  ${If} $R0 = 0
+
+    DetailPrint "Kill verge-mihomo-custom-aarch64-pc-windows-msvc.exe..."
+
+    !if "${INSTALLMODE}" == "currentUser"
+
+      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
+
+    !else
+
+      nsis_tauri_utils::KillProcess "verge-mihomo-custom-aarch64-pc-windows-msvc.exe"
+
+    !endif
+
+  ${EndIf}
+
+
+
+  !if "${INSTALLMODE}" == "currentUser"
+
+    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-custom-i686-pc-windows-msvc.exe"
+
+  !else
+
+    nsis_tauri_utils::FindProcess "verge-mihomo-custom-i686-pc-windows-msvc.exe"
+
+  !endif
+
+  Pop $R0
+
+  ${If} $R0 = 0
+
+    DetailPrint "Kill verge-mihomo-custom-i686-pc-windows-msvc.exe..."
+
+    !if "${INSTALLMODE}" == "currentUser"
+
+      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-custom-i686-pc-windows-msvc.exe"
+
+    !else
+
+      nsis_tauri_utils::KillProcess "verge-mihomo-custom-i686-pc-windows-msvc.exe"
+
+    !endif
+
+  ${EndIf}
   ; Check if clash-meta-alpha.exe is running
   !if "${INSTALLMODE}" == "currentUser"
     nsis_tauri_utils::FindProcessCurrentUser "clash-meta-alpha.exe"
