@@ -44,25 +44,15 @@ async function resolvePortable() {
   const zip = new AdmZip();
 
   const releaseEntries = await fsp.readdir(releaseDir);
-  /** 优先固定名 verge-mihomo-custom.exe；否则为 Tauri externalBin 默认名 verge-mihomo-custom-<triple>.exe */
-  const tripleName = target
-    ? `verge-mihomo-custom-${target}.exe`
-    : null;
-  const customSidecar =
-    (releaseEntries.includes("verge-mihomo-custom.exe") &&
-      "verge-mihomo-custom.exe") ||
-    (tripleName &&
-      releaseEntries.includes(tripleName) &&
-      tripleName) ||
-    releaseEntries.find(
-      (f) =>
-        f.startsWith("verge-mihomo-custom-") &&
-        f.endsWith(".exe") &&
-        f !== "verge-mihomo-custom.exe",
+  // 优先短名；Tauri 默认 release 常为 verge-mihomo-custom-<target-triple>.exe
+  const customSidecar = releaseEntries.includes("verge-mihomo-custom.exe")
+    ? "verge-mihomo-custom.exe"
+    : releaseEntries.find(
+      (f) => f.startsWith("verge-mihomo-custom-") && f.endsWith(".exe"),
     );
   if (!customSidecar) {
     throw new Error(
-      "verge-mihomo-custom sidecar not found in release dir (expected verge-mihomo-custom.exe or verge-mihomo-custom-<triple>.exe)",
+      "verge-mihomo-custom sidecar not found in release dir (expected verge-mihomo-custom.exe or verge-mihomo-custom-*.exe)",
     );
   }
 

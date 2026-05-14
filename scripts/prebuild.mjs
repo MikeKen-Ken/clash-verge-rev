@@ -330,6 +330,7 @@ function clashMetaCustom() {
   const urlExt = isWin ? "zip" : "gz";
   return {
     name: "verge-mihomo-custom",
+    // Tauri externalBin 要求 src-tauri/sidecar 下文件名为 verge-mihomo-custom-<host-triple>(.exe)，与「仅 verge-mihomo-custom.exe」不是同一命名规则。
     targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile: `${assetBase}${isWin ? ".exe" : ""}`,
     zipFile: `${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`,
