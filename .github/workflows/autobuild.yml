@@ -2,6 +2,8 @@ name: Auto Build
 
 on:
   workflow_dispatch:
+  # 推送时触发；是否真正执行构建由 check_commit 判定（手动运行 force_build）
+  push:
 permissions: write-all
 env:
   TAG_NAME: autobuild
