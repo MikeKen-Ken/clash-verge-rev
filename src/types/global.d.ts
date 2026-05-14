@@ -57,7 +57,7 @@ interface IConfigData {
     "enhanced-mode"?: "fake-ip" | "redir-host";
     "fake-ip-range"?: string;
     "fake-ip-filter"?: string[];
-    "fake-ip-filter-mode"?: "blacklist" | "whitelist";
+    "fake-ip-filter-mode"?: "blacklist" | "whitelist" | "rule";
     "prefer-h3"?: boolean;
     "respect-rules"?: boolean;
     nameserver?: string[];

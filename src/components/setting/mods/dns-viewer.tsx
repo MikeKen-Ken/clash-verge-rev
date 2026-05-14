@@ -128,13 +128,15 @@ function parseList(str: string): string[] {
     .filter(Boolean);
 }
 
+type DnsFakeIpFilterMode = "blacklist" | "whitelist" | "rule";
+
 // 默认DNS配置
 const DEFAULT_DNS_CONFIG = {
   enable: true,
   listen: ":53",
   "enhanced-mode": "fake-ip" as "fake-ip" | "redir-host",
   "fake-ip-range": "198.18.0.1/16",
-  "fake-ip-filter-mode": "blacklist" as "blacklist" | "whitelist",
+  "fake-ip-filter-mode": "blacklist" as DnsFakeIpFilterMode,
   "prefer-h3": false,
   "respect-rules": false,
   "use-hosts": false,
@@ -194,7 +196,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
     listen: string;
     enhancedMode: "fake-ip" | "redir-host";
     fakeIpRange: string;
-    fakeIpFilterMode: "blacklist" | "whitelist";
+    fakeIpFilterMode: DnsFakeIpFilterMode;
     preferH3: boolean;
     respectRules: boolean;
     useHosts: boolean;
@@ -267,8 +269,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
       const fakeIpFilterMode =
         dnsConfig["fake-ip-filter-mode"] ||
         DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
-      const validFakeIpFilterMode =
-        fakeIpFilterMode === "blacklist" || fakeIpFilterMode === "whitelist"
+      const validFakeIpFilterMode: DnsFakeIpFilterMode =
+        fakeIpFilterMode === "blacklist" ||
+        fakeIpFilterMode === "whitelist" ||
+        fakeIpFilterMode === "rule"
           ? fakeIpFilterMode
           : DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
 
@@ -734,6 +738,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
               >
                 <MenuItem value="blacklist">blacklist</MenuItem>
                 <MenuItem value="whitelist">whitelist</MenuItem>
+                <MenuItem value="rule">rule</MenuItem>
               </Select>
             </FormControl>
           </Item>
