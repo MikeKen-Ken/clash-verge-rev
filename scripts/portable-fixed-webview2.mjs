@@ -43,9 +43,16 @@ async function resolvePortable() {
 
   const zip = new AdmZip();
 
+  const releaseEntries = await fsp.readdir(releaseDir);
+  const customSidecar = releaseEntries.find(
+    (f) => f.startsWith("verge-mihomo-custom-") && f.endsWith(".exe"),
+  );
+  if (!customSidecar) {
+    throw new Error("verge-mihomo-custom sidecar not found in release dir");
+  }
+
   zip.addLocalFile(path.join(releaseDir, "Clash Verge.exe"));
-  zip.addLocalFile(path.join(releaseDir, "verge-mihomo.exe"));
-  zip.addLocalFile(path.join(releaseDir, "verge-mihomo-alpha.exe"));
+  zip.addLocalFile(path.join(releaseDir, customSidecar));
   zip.addLocalFolder(path.join(releaseDir, "resources"), "resources");
   zip.addLocalFolder(
     path.join(

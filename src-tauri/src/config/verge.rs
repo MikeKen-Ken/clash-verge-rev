@@ -290,19 +290,17 @@ pub struct IVergeTheme {
     pub css_injection: Option<String>,
 }
 
-/// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名。
-/// "verge-mihomo-custom" 使用与 Alpha 相同的二进制 "verge-mihomo-alpha"。
+/// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名（与 Tauri `externalBin` 名称一致）。
 pub fn sidecar_binary_name(core: &str) -> &str {
     match core {
-        "verge-mihomo-custom" => "verge-mihomo-alpha",
+        "verge-mihomo" | "verge-mihomo-alpha" => "verge-mihomo-custom",
         _ => core,
     }
 }
 
 impl IVerge {
-    /// 有效的clash核心名称（含私人内核选项 verge-mihomo-custom，实际使用 alpha 二进制）
-    pub const VALID_CLASH_CORES: &'static [&'static str] =
-        &["verge-mihomo", "verge-mihomo-alpha", "verge-mihomo-custom"];
+    /// 仅内置 MikeKen-Ken fork 单一 sidecar：`verge-mihomo-custom`。
+    pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo-custom"];
 
     /// 验证并修正配置文件中的clash_core值
     pub async fn validate_and_fix_config() -> Result<()> {

@@ -30,17 +30,6 @@ const VALID_CORE = [
     core: "verge-mihomo-custom",
     chipKey: "settings.modals.clashCore.variants.custom",
   },
-  {
-    name: "Mihomo",
-    core: "verge-mihomo",
-    chipKey: "settings.modals.clashCore.variants.release",
-  },
-  // Alpha 版本已隐藏，因为它与 Custom 版本使用相同的二进制文件
-  // {
-  //   name: "Mihomo Alpha",
-  //   core: "verge-mihomo-alpha",
-  //   chipKey: "settings.modals.clashCore.variants.alpha",
-  // },
 ];
 
 export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
@@ -171,7 +160,7 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
           const displayName = isCustom && clashVersion && clashVersion !== "-"
             ? `${clashVersion} (${t(each.chipKey)})`
             : each.name;
-          
+
           return (
             <ListItemButton
               key={each.core}

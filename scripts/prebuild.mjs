@@ -65,8 +65,8 @@ const { platform, arch } = target
 const SIDECAR_HOST = target
   ? target
   : execSync("rustc -vV")
-      .toString()
-      .match(/(?<=host: ).+(?=\s*)/g)[0];
+    .toString()
+    .match(/(?<=host: ).+(?=\s*)/g)[0];
 
 // =======================
 // Version Cache
@@ -163,23 +163,17 @@ async function updateHashCache(targetPath) {
 }
 
 // =======================
-// Meta maps (stable & alpha)
+// 单一自定义内核（MikeKen-Ken fork）
 // =======================
-// Alpha 内核使用自建 fork: https://github.com/MikeKen-Ken/mihomo (阿尔法分支)
-// Custom 版本 (verge-mihomo-custom) 实际使用与 Alpha 相同的二进制 (verge-mihomo-alpha)
-// 你当前只发布 mihomo-windows-amd64-{version}.zip，故 win32-x64 使用 mihomo-windows-amd64
-const META_ALPHA_VERSION_URL =
+// 仅打包 `verge-mihomo-custom`，下载自: https://github.com/MikeKen-Ken/mihomo (Prerelease-Alpha)
+// Windows amd64 发布包名为 mihomo-windows-amd64-{version}.zip
+const META_CUSTOM_VERSION_URL =
   "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_ALPHA_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
-const META_ALPHA_RELEASE_TAG_API =
+const META_CUSTOM_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
+const META_CUSTOM_RELEASE_TAG_API =
   "https://api.github.com/repos/MikeKen-Ken/mihomo/releases/tags/Prerelease-Alpha";
-let META_ALPHA_VERSION;
-let META_ALPHA_RELEASE_CACHE;
-
-const META_VERSION_URL =
-  "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
-const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
-let META_VERSION;
+let META_CUSTOM_VERSION;
+let META_CUSTOM_RELEASE_CACHE;
 
 function createFetchOptions() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
@@ -239,18 +233,18 @@ async function fetchAlphaVersionFromReleaseApi(options) {
 }
 
 async function fetchAlphaRelease(options) {
-  if (META_ALPHA_RELEASE_CACHE?.assets) return META_ALPHA_RELEASE_CACHE;
-  const response = await fetch(META_ALPHA_RELEASE_TAG_API, {
+  if (META_CUSTOM_RELEASE_CACHE?.assets) return META_CUSTOM_RELEASE_CACHE;
+  const response = await fetch(META_CUSTOM_RELEASE_TAG_API, {
     ...options,
     method: "GET",
   });
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch ${META_ALPHA_RELEASE_TAG_API}: ${response.status}`,
+      `Failed to fetch ${META_CUSTOM_RELEASE_TAG_API}: ${response.status}`,
     );
   }
-  META_ALPHA_RELEASE_CACHE = await response.json();
-  return META_ALPHA_RELEASE_CACHE;
+  META_CUSTOM_RELEASE_CACHE = await response.json();
+  return META_CUSTOM_RELEASE_CACHE;
 }
 
 async function downloadAlphaAssetViaApi(fileName, outPath, options) {
@@ -276,7 +270,7 @@ async function downloadAlphaAssetViaApi(fileName, outPath, options) {
   log_success(`download finished via API: ${fileName}`);
 }
 
-const META_ALPHA_MAP = {
+const META_CUSTOM_ASSET_MAP = {
   "win32-x64": "mihomo-windows-amd64",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
@@ -290,28 +284,14 @@ const META_ALPHA_MAP = {
   "linux-loong64": "mihomo-linux-loong64",
 };
 
-const META_MAP = {
-  "win32-x64": "mihomo-windows-amd64-v2",
-  "win32-ia32": "mihomo-windows-386",
-  "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64-v2-go122",
-  "darwin-arm64": "mihomo-darwin-arm64-go122",
-  "linux-x64": "mihomo-linux-amd64-v2",
-  "linux-ia32": "mihomo-linux-386",
-  "linux-arm64": "mihomo-linux-arm64",
-  "linux-arm": "mihomo-linux-armv7",
-  "linux-riscv64": "mihomo-linux-riscv64",
-  "linux-loong64": "mihomo-linux-loong64",
-};
-
 // =======================
 // Fetch latest versions
 // =======================
-async function getLatestAlphaVersion() {
+async function getLatestCustomVersion() {
   if (!FORCE) {
-    const cached = await getCachedVersion("META_ALPHA_VERSION");
+    const cached = await getCachedVersion("META_CUSTOM_VERSION");
     if (cached) {
-      META_ALPHA_VERSION = cached;
+      META_CUSTOM_VERSION = cached;
       return;
     }
   }
@@ -319,35 +299,15 @@ async function getLatestAlphaVersion() {
 
   try {
     try {
-      META_ALPHA_VERSION = await fetchText(META_ALPHA_VERSION_URL, options);
+      META_CUSTOM_VERSION = await fetchText(META_CUSTOM_VERSION_URL, options);
     } catch (directErr) {
-      log_debug(`Direct alpha version URL failed, fallback to API: ${directErr.message}`);
-      META_ALPHA_VERSION = await fetchAlphaVersionFromReleaseApi(options);
+      log_debug(`Direct custom version URL failed, fallback to API: ${directErr.message}`);
+      META_CUSTOM_VERSION = await fetchAlphaVersionFromReleaseApi(options);
     }
-    log_info(`Latest alpha version: ${META_ALPHA_VERSION}`);
-    await setCachedVersion("META_ALPHA_VERSION", META_ALPHA_VERSION);
+    log_info(`MikeKen-Ken mihomo version: ${META_CUSTOM_VERSION}`);
+    await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
   } catch (err) {
-    log_error("Error fetching latest alpha version:", err.message);
-    process.exit(1);
-  }
-}
-
-async function getLatestReleaseVersion() {
-  if (!FORCE) {
-    const cached = await getCachedVersion("META_VERSION");
-    if (cached) {
-      META_VERSION = cached;
-      return;
-    }
-  }
-  const options = createFetchOptions();
-
-  try {
-    META_VERSION = await fetchText(META_VERSION_URL, options);
-    log_info(`Latest release version: ${META_VERSION}`);
-    await setCachedVersion("META_VERSION", META_VERSION);
-  } catch (err) {
-    log_error("Error fetching latest release version:", err.message);
+    log_error("Error fetching custom mihomo version:", err.message);
     process.exit(1);
   }
 }
@@ -355,41 +315,25 @@ async function getLatestReleaseVersion() {
 // =======================
 // Validate availability
 // =======================
-if (!META_MAP[`${platform}-${arch}`]) {
-  throw new Error(`clash meta unsupported platform "${platform}-${arch}"`);
-}
-if (!META_ALPHA_MAP[`${platform}-${arch}`]) {
+if (!META_CUSTOM_ASSET_MAP[`${platform}-${arch}`]) {
   throw new Error(
-    `clash meta alpha unsupported platform "${platform}-${arch}"`,
+    `mihomo custom unsupported platform "${platform}-${arch}"`,
   );
 }
 
 // =======================
 // Build meta objects
 // =======================
-function clashMetaAlpha() {
-  const name = META_ALPHA_MAP[`${platform}-${arch}`];
+function clashMetaCustom() {
+  const assetBase = META_CUSTOM_ASSET_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
   return {
-    name: "verge-mihomo-alpha",
-    targetFile: `verge-mihomo-alpha-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
-    exeFile: `${name}${isWin ? ".exe" : ""}`,
-    zipFile: `${name}-${META_ALPHA_VERSION}.${urlExt}`,
-    downloadURL: `${META_ALPHA_URL_PREFIX}/${name}-${META_ALPHA_VERSION}.${urlExt}`,
-  };
-}
-
-function clashMeta() {
-  const name = META_MAP[`${platform}-${arch}`];
-  const isWin = platform === "win32";
-  const urlExt = isWin ? "zip" : "gz";
-  return {
-    name: "verge-mihomo",
-    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
-    exeFile: `${name}${isWin ? ".exe" : ""}`,
-    zipFile: `${name}-${META_VERSION}.${urlExt}`,
-    downloadURL: `${META_URL_PREFIX}/${META_VERSION}/${name}-${META_VERSION}.${urlExt}`,
+    name: "verge-mihomo-custom",
+    targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    exeFile: `${assetBase}${isWin ? ".exe" : ""}`,
+    zipFile: `${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`,
+    downloadURL: `${META_CUSTOM_URL_PREFIX}/${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`,
   };
 }
 
@@ -407,7 +351,7 @@ async function downloadFile(url, outPath) {
   if (!response.ok) {
     if (
       response.status === 404 &&
-      url.startsWith(META_ALPHA_URL_PREFIX + "/")
+      url.startsWith(META_CUSTOM_URL_PREFIX + "/")
     ) {
       const fileName = decodeURIComponent(url.split("/").pop() || "");
       if (fileName) {
@@ -723,15 +667,9 @@ const resolveUnSetDnsScript = () =>
 // =======================
 const tasks = [
   {
-    name: "verge-mihomo-alpha",
+    name: "verge-mihomo-custom",
     func: () =>
-      getLatestAlphaVersion().then(() => resolveSidecar(clashMetaAlpha())),
-    retry: 5,
-  },
-  {
-    name: "verge-mihomo",
-    func: () =>
-      getLatestReleaseVersion().then(() => resolveSidecar(clashMeta())),
+      getLatestCustomVersion().then(() => resolveSidecar(clashMetaCustom())),
     retry: 5,
   },
   { name: "plugin", func: resolvePlugin, retry: 5, winOnly: true },

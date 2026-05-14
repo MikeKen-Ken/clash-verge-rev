@@ -150,9 +150,7 @@ impl ChainSupport {
         match core {
             Some(core) => matches!(
                 (self, core.as_str()),
-                (Self::ClashMeta, "verge-mihomo")
-                    | (Self::ClashMetaAlpha, "verge-mihomo-alpha")
-                    | (Self::ClashMetaAlpha, "verge-mihomo-custom")
+                (Self::ClashMetaAlpha, "verge-mihomo-custom")
             ),
             None => true,
         }
