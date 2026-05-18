@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   ButtonGroup,
-  Checkbox,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -18,6 +17,7 @@ import {
 import { useLockFn } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router";
 import { closeAllConnections, flushFakeIp } from "tauri-plugin-mihomo-api";
 
 import { BasePage } from "@/components/base";
@@ -53,9 +53,7 @@ const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
 
-const AUTO_REFRESH_INTERVALS = [5, 10, 30, 60] as const;
-const STORAGE_KEY_AUTO_REFRESH = "proxies_auto_refresh";
-const STORAGE_KEY_AUTO_REFRESH_INTERVAL = "proxies_auto_refresh_interval";
+const DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS = 5;
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 250;
 
@@ -73,6 +71,8 @@ const IS_WINDOWS = getSystem() === "windows";
 
 const ProxyPage = () => {
   const { t } = useTranslation();
+
+  const location = useLocation();
 
   const { clashConfig, refreshClashConfig, refreshProxy } = useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
@@ -93,26 +93,6 @@ const ProxyPage = () => {
     return "rule";
   });
 
-  const [autoRefresh, setAutoRefresh] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY_AUTO_REFRESH) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(() => {
-    try {
-      const v = parseInt(
-        localStorage.getItem(STORAGE_KEY_AUTO_REFRESH_INTERVAL) ?? "10",
-        10,
-      );
-      return (
-        (AUTO_REFRESH_INTERVALS as readonly number[]).includes(v) ? v : 10
-      );
-    } catch {
-      return 10;
-    }
-  });
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
@@ -144,36 +124,18 @@ const ProxyPage = () => {
     }
   }, [clashConfig?.mode, refreshClashConfig]);
 
+  // 默认开启自动刷新，并固定 5 秒刷新一次（不再支持动态配置）
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_AUTO_REFRESH, autoRefresh ? "1" : "0");
-      localStorage.setItem(
-        STORAGE_KEY_AUTO_REFRESH_INTERVAL,
-        String(autoRefreshInterval),
-      );
-    } catch {
-      // ignore
-    }
-  }, [autoRefresh, autoRefreshInterval]);
-
-  useEffect(() => {
-    if (!autoRefresh) {
-      if (autoRefreshTimerRef.current) {
-        clearInterval(autoRefreshTimerRef.current);
-        autoRefreshTimerRef.current = null;
-      }
-      return;
-    }
     autoRefreshTimerRef.current = setInterval(() => {
       refreshProxy().catch(() => { });
-    }, autoRefreshInterval * 1000);
+    }, DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS * 1000);
     return () => {
       if (autoRefreshTimerRef.current) {
         clearInterval(autoRefreshTimerRef.current);
         autoRefreshTimerRef.current = null;
       }
     };
-  }, [autoRefresh, autoRefreshInterval, refreshProxy]);
+  }, [refreshProxy]);
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
@@ -253,6 +215,12 @@ const ProxyPage = () => {
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
   });
+
+  // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
+  useEffect(() => {
+    if (location.pathname !== "/proxies") return;
+    void handleRefreshProxy();
+  }, [location.pathname, handleRefreshProxy]);
 
   const handleFlushFakeIp = useLockFn(async () => {
     await flushFakeIp();
@@ -587,36 +555,6 @@ const ProxyPage = () => {
                 </Tooltip>
               </>
             )}
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={autoRefresh}
-                  onChange={(_, checked) => setAutoRefresh(checked)}
-                />
-              }
-              label={
-                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                  {t("proxies.page.labels.autoRefresh")}
-                </Typography>
-              }
-            />
-            <FormControl size="small" sx={{ minWidth: 64 }} disabled={!autoRefresh}>
-              <Select
-                value={autoRefreshInterval}
-                onChange={(e) =>
-                  setAutoRefreshInterval(Number(e.target.value))
-                }
-                displayEmpty
-                sx={{ height: 32 }}
-              >
-                {AUTO_REFRESH_INTERVALS.map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {s} s
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <Tooltip title={t("shared.actions.refresh")}>
               <IconButton
                 size="small"
