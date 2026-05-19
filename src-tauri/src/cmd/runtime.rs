@@ -136,7 +136,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
             }
         }
     } else if ads_only {
-        // 仅同步 rules、dns（含 nameserver-policy）及「屏蔽广告」相关快照键，PATCH 核心，避免全量 reload 与健康检测重跑
+        // 仅同步 rules、dns 及「屏蔽广告」规则位置快照，PATCH 核心，避免全量 reload 与健康检测重跑
         let computed = {
             let runtime = Config::runtime().await;
             let cfg_src = runtime.latest_arc();
@@ -156,11 +156,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
                     if let Some(dns) = computed.get("dns") {
                         config.insert("dns".into(), dns.clone());
                     }
-                    for key in [
-                        constants::proxy_ads::RULE_INDEX_KEY,
-                        constants::proxy_ads::NS_POLICY_INDEX_KEY,
-                        constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
-                    ] {
+                    for key in [constants::proxy_ads::RULE_INDEX_KEY] {
                         let vk = Value::from(key);
                         if let Some(v) = computed.get(&vk) {
                             config.insert(vk, v.clone());

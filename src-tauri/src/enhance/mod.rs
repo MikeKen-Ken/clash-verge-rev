@@ -786,7 +786,6 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
 const PROXY_ADS_BLOCK_KEY: &str = "proxy-ads-block";
 const PROXY_ADS_RULE: &str = "RULE-SET,ads,REJECT";
 const PROXY_ADS_NS_POLICY_KEY: &str = "rule-set:ads";
-const PROXY_ADS_NS_DEFAULT_VALUE: &str = "rcode://success";
 
 #[inline]
 fn rule_is_proxy_ads(rule: &Value) -> bool {
@@ -829,28 +828,20 @@ fn default_ads_rule_insert_index(rules: &[Value]) -> usize {
         .unwrap_or(rules.len())
 }
 
-/// 无快照时：`rule-set:ads` 插在 `rule-set:trackerslist` 之后（与常见 nameserver-policy 顺序一致）。
-fn default_ads_ns_policy_insert_index(policy: &Mapping) -> usize {
-    for (i, (k, _)) in policy.iter().enumerate() {
-        if k.as_str() == Some("rule-set:trackerslist") {
-            return (i + 1).min(policy.len());
-        }
-    }
-    policy.len()
+fn strip_ads_nameserver_policy(policy: &mut Mapping) {
+    policy.retain(|k, _| !nameserver_policy_key_is_ads(k));
 }
 
-fn insert_mapping_ordered(policy: &mut Mapping, insert_at: usize, key: Value, value: Value) {
-    if policy.iter().any(|(k, _)| k == &key || nameserver_policy_key_is_ads(k)) {
-        return;
+/// 从 dns 块移除 rule-set:ads 的 nameserver-policy（不再注入 rcode://success）。
+fn strip_ads_nameserver_policy_from_dns(dns: &mut Mapping) {
+    for key in ["nameserver-policy", "proxy-server-nameserver-policy"] {
+        if let Some(Value::Mapping(policy)) = dns.get_mut(&Value::from(key)) {
+            strip_ads_nameserver_policy(policy);
+            if policy.is_empty() {
+                dns.remove(&Value::from(key));
+            }
+        }
     }
-    let pairs: Vec<(Value, Value)> = policy
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
-    let mut pairs = pairs;
-    let insert_at = insert_at.min(pairs.len());
-    pairs.insert(insert_at, (key, value));
-    *policy = pairs.into_iter().collect();
 }
 
 pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
@@ -859,30 +850,23 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
         .and_then(Value::as_bool)
         .unwrap_or(true);
 
+    if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
+        strip_ads_nameserver_policy_from_dns(dns);
+    }
+    config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
+    config.remove(&Value::from(
+        constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
+    ));
+
     let has_ads_rule = config
         .get("rules")
         .and_then(|v| v.as_sequence())
         .is_some_and(|rules| rules.iter().any(rule_is_proxy_ads));
 
-    let has_ads_ns = config
-        .get("dns")
-        .and_then(|v| v.as_mapping())
-        .and_then(|dns| dns.get("nameserver-policy"))
-        .and_then(|v| v.as_mapping())
-        .is_some_and(|p| p.iter().any(|(k, _)| nameserver_policy_key_is_ads(k)));
-
     if enable_proxy_ads_block {
         if has_ads_rule {
             config.remove(&Value::from(constants::proxy_ads::RULE_INDEX_KEY));
-        }
-        if has_ads_ns {
-            config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
-            config.remove(&Value::from(
-                constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
-            ));
-        }
-
-        if !has_ads_rule {
+        } else {
             let insert_idx = config
                 .get(constants::proxy_ads::RULE_INDEX_KEY)
                 .and_then(value_as_usize)
@@ -896,34 +880,6 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
             if let Some(Value::Sequence(rules)) = config.get_mut("rules") {
                 let insert_idx = insert_idx.min(rules.len());
                 rules.insert(insert_idx, Value::from(PROXY_ADS_RULE));
-            }
-        }
-
-        if !has_ads_ns {
-            let ns_val = config
-                .get(constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
-                .cloned()
-                .unwrap_or_else(|| Value::from(PROXY_ADS_NS_DEFAULT_VALUE));
-            let insert_idx = config
-                .get(constants::proxy_ads::NS_POLICY_INDEX_KEY)
-                .and_then(value_as_usize);
-            if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
-                if dns.get(&Value::from("nameserver-policy")).is_none() {
-                    dns.insert(
-                        Value::from("nameserver-policy"),
-                        Value::Mapping(Mapping::new()),
-                    );
-                }
-                if let Some(Value::Mapping(policy)) = dns.get_mut(&Value::from("nameserver-policy")) {
-                    let insert_idx = insert_idx
-                        .unwrap_or_else(|| default_ads_ns_policy_insert_index(policy));
-                    insert_mapping_ordered(
-                        policy,
-                        insert_idx,
-                        Value::from(PROXY_ADS_NS_POLICY_KEY),
-                        ns_val,
-                    );
-                }
             }
         }
     } else {
@@ -946,43 +902,6 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
                     config.remove(&Value::from(constants::proxy_ads::RULE_INDEX_KEY));
                 }
             }
-        }
-
-        let ads_ns_info = config
-            .get("dns")
-            .and_then(|v| v.as_mapping())
-            .and_then(|dns| dns.get(&Value::from("nameserver-policy")))
-            .and_then(|v| v.as_mapping())
-            .and_then(|policy| {
-                policy.iter().enumerate().find_map(|(i, (k, v))| {
-                    nameserver_policy_key_is_ads(k).then_some((i, k.clone(), v.clone()))
-                })
-            });
-        if let Some((pos, key, val)) = ads_ns_info {
-            if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
-                if let Some(Value::Mapping(policy)) = dns.get_mut(&Value::from("nameserver-policy")) {
-                    policy.remove(&key);
-                }
-            }
-            config.insert(
-                Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY),
-                Value::Number(serde_yaml_ng::Number::from(pos as i64)),
-            );
-            config.insert(
-                Value::from(constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY),
-                val,
-            );
-        } else if config
-            .get("dns")
-            .and_then(|v| v.as_mapping())
-            .and_then(|dns| dns.get(&Value::from("nameserver-policy")))
-            .and_then(|v| v.as_mapping())
-            .is_some()
-        {
-            config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
-            config.remove(&Value::from(
-                constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
-            ));
         }
     }
 
@@ -1150,7 +1069,7 @@ proxy-groups:
     }
 
     #[test]
-    fn proxy_ads_disable_removes_rule_and_nameserver_policy_with_snapshot() {
+    fn proxy_ads_disable_removes_rule_and_strips_nameserver_policy() {
         let yaml = r#"
 proxy-ads-block: false
 rules:
@@ -1194,11 +1113,11 @@ dns:
         );
         assert!(config
             .get(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
-            .is_some());
+            .is_none());
     }
 
     #[test]
-    fn proxy_ads_enable_restores_rule_and_policy_order() {
+    fn proxy_ads_enable_restores_rule_without_nameserver_policy() {
         let yaml = r#"
 proxy-ads-block: true
 rules:
@@ -1215,14 +1134,6 @@ dns:
         config.insert(
             serde_yaml_ng::Value::from(crate::constants::proxy_ads::RULE_INDEX_KEY),
             serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(2_i64)),
-        );
-        config.insert(
-            serde_yaml_ng::Value::from(crate::constants::proxy_ads::NS_POLICY_INDEX_KEY),
-            serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(2_i64)),
-        );
-        config.insert(
-            serde_yaml_ng::Value::from(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY),
-            serde_yaml_ng::Value::from("rcode://success"),
         );
 
         let config = super::apply_proxy_ads_block(config);
@@ -1246,12 +1157,7 @@ dns:
             .collect();
         assert_eq!(
             keys,
-            vec![
-                "rule-set:private",
-                "rule-set:trackerslist",
-                "rule-set:ads",
-                "rule-set:cn",
-            ]
+            vec!["rule-set:private", "rule-set:trackerslist", "rule-set:cn",]
         );
     }
 }

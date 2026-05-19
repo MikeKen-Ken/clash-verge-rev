@@ -122,14 +122,8 @@ impl IRuntime {
         if let Some(v) = prev_cfg.get("proxy-ads-block") {
             config.insert("proxy-ads-block".into(), v.clone());
         }
-        for key in [
-            constants::proxy_ads::RULE_INDEX_KEY,
-            constants::proxy_ads::NS_POLICY_INDEX_KEY,
-            constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
-        ] {
-            if let Some(v) = prev_cfg.get(key) {
-                config.insert(key.into(), v.clone());
-            }
+        if let Some(v) = prev_cfg.get(constants::proxy_ads::RULE_INDEX_KEY) {
+            config.insert(constants::proxy_ads::RULE_INDEX_KEY.into(), v.clone());
         }
 
         // tun：与 `patch_config` 的 tun 分支一致；`enable` 以当前 config 为准（已由 `use_tun` 根据 verge 写入）
