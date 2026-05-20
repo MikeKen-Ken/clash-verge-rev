@@ -3,13 +3,16 @@ import { selectNodeForGroup } from "@/services/proxy-select-node";
 
 import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";
-import { syncTrayProxySelection } from "@/services/cmds";
+import {
+  clearProxyGroupManualSelection,
+  syncTrayProxySelection,
+} from "@/services/cmds";
 import { closeConnectionsForProxyGroup } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
 interface ProxySelectionOptions {
   onSuccess?: () => void;
-  onError?: (error: any) => void;
+  onError?: (error: unknown) => void;
   /** 仅刷新当前选中节点的延迟（不触发全量 refreshProxy）；轮询 1～10s 时若提供则调用此项 */
   onRefreshSelectedNodeOnly?: (groupName: string, proxyName: string) => void | Promise<void>;
 }
@@ -18,7 +21,7 @@ interface ProxySelectionOptions {
 export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   const { current, patchCurrent } = useProfiles();
 
-  const { onSuccess, onRefreshSelectedNodeOnly } = options;
+  const { onSuccess, onRefreshSelectedNodeOnly, onError } = options;
 
   // 切换节点：先等核心与 profile 同步完成，再刷新代理列表，避免过早刷新拿到旧 now 导致界面「选不上」
   const changeProxy = useCallback(
@@ -149,6 +152,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
         })
         .catch((err) => {
+          onError?.(err);
           console.error("=== [ProxySelection] 后端同步失败 ===", {
             错误: err,
             组名: groupName,
@@ -157,7 +161,50 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => onSuccess?.(), delayMs);
         });
     },
-    [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly],
+    [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly, onError],
+  );
+
+  /** 点击「手动固定」图标解除 profile 与内核的钉选（DELETE /proxies/{group}） */
+  const clearManualSelectionForGroup = useCallback(
+    async (groupName: string) => {
+      debugLog(`[ProxySelection] 取消手动固定: ${groupName}`);
+      markManualProxySelectionStarted();
+      try {
+        await clearProxyGroupManualSelection(groupName);
+      } catch (err) {
+        console.error("[ProxySelection] 取消手动固定失败", err);
+        onError?.(err);
+        throw err;
+      }
+
+      if (current) {
+        const selected = current.selected ? [...current.selected] : [];
+        const next = selected.filter((item) => item.name !== groupName);
+        if (next.length !== selected.length) {
+          await patchCurrent({ selected: next });
+        }
+      }
+
+      await syncTrayProxySelection().catch((err) => {
+        console.warn("[ProxySelection] syncTray 失败（非关键）", err);
+      });
+
+      void closeConnectionsForProxyGroup(groupName).then((n) => {
+        if (n > 0) {
+          debugLog(
+            `[ProxySelection] 取消手动后已关闭 ${n} 条经过组 ${groupName} 的连接`,
+          );
+        }
+      });
+
+      const delayMs = 400;
+      const delayMs2 = 900;
+      const delayMs3 = 1800;
+      setTimeout(() => onSuccess?.(), delayMs);
+      setTimeout(() => onSuccess?.(), delayMs2);
+      setTimeout(() => onSuccess?.(), delayMs3);
+    },
+    [current, patchCurrent, onSuccess, onError],
   );
 
   const handleSelectChange = useCallback(
@@ -180,5 +227,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     changeProxy,
     handleSelectChange,
     handleProxyGroupChange,
+    clearManualSelectionForGroup,
   };
 };

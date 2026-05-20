@@ -2,7 +2,6 @@ import { CheckCircleOutlineRounded, LabelOutlined } from "@mui/icons-material";
 import { alpha, Box, ListItemButton, styled, Typography } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useReducer } from "react";
-import { useTranslation } from "react-i18next";
 
 import { BaseLoading } from "@/components/base";
 import delayManager, {
@@ -19,6 +18,8 @@ interface Props {
   showType?: boolean;
   /** 当该项是子分组时，展示「分组名 (该分组当前使用的节点)」 */
   itemDisplayName?: string;
+  /** 手动固定图标点击解除钉选 */
+  onClearManualSelection?: () => void;
   onClick?: (name: string) => void;
 }
 
@@ -31,10 +32,9 @@ export const ProxyItemMini = (props: Props) => {
     showManualIcon = false,
     showType = true,
     itemDisplayName,
+    onClearManualSelection,
     onClick,
   } = props;
-
-  const { t } = useTranslation();
 
   const presetList = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"];
   const isPreset = presetList.includes(proxy.name);
@@ -110,6 +110,7 @@ export const ProxyItemMini = (props: Props) => {
           pr: 1,
           justifyContent: "space-between",
           alignItems: "center",
+          position: "relative",
         },
         ({ palette: { mode, primary, success } }) => {
           const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
@@ -171,15 +172,47 @@ export const ProxyItemMini = (props: Props) => {
           }}
         >
           {showManualIcon && group.type?.toLowerCase() !== "fallback" && (
-            <LabelOutlined
+            <Box
+              component="span"
+              role={onClearManualSelection ? "button" : undefined}
+              tabIndex={onClearManualSelection ? 0 : undefined}
+              title="点击取消手动固定"
+              onClick={(e) => {
+                if (!onClearManualSelection) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onClearManualSelection();
+              }}
+              onKeyDown={(e) => {
+                if (!onClearManualSelection) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClearManualSelection();
+                }
+              }}
               sx={{
-                fontSize: 14,
+                display: "inline-flex",
+                alignItems: "center",
                 mr: 0.5,
                 flexShrink: 0,
-                color: "primary.main",
+                cursor: onClearManualSelection ? "pointer" : "default",
+                borderRadius: 0.5,
+                ...(onClearManualSelection && {
+                  "&:hover": {
+                    bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
+                  },
+                }),
               }}
-              titleAccess="manual"
-            />
+            >
+              <LabelOutlined
+                sx={{
+                  fontSize: 14,
+                  color: "primary.main",
+                }}
+                titleAccess="manual"
+              />
+            </Box>
           )}
           {itemDisplayName ?? proxy.name}
         </Typography>
@@ -304,9 +337,26 @@ export const ProxyItemMini = (props: Props) => {
           )}
       </Box>
       {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
-        <span className="the-pin" title="manual">
+        <Box
+          component="span"
+          className="the-pin"
+          role={onClearManualSelection ? "button" : undefined}
+          title="点击取消手动固定"
+          onClick={(e) => {
+            if (!onClearManualSelection) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onClearManualSelection();
+          }}
+          sx={{
+            cursor: onClearManualSelection ? "pointer" : "default",
+            ...(onClearManualSelection && {
+              "&:hover": { opacity: 0.85 },
+            }),
+          }}
+        >
           📌
-        </span>
+        </Box>
       )}
     </ListItemButton>
   );

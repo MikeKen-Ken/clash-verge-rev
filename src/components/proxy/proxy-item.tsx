@@ -28,6 +28,8 @@ interface Props {
   showType?: boolean;
   /** 当该项是子分组时，展示「分组名 (该分组当前使用的节点)」 */
   itemDisplayName?: string;
+  /** 手动固定图标点击时解除钉选（与点击整行选中节点分离） */
+  onClearManualSelection?: () => void;
   sx?: SxProps<Theme>;
   onClick?: (name: string) => void;
 }
@@ -59,6 +61,7 @@ export const ProxyItem = (props: Props) => {
     showType = true,
     itemDisplayName,
     sx,
+    onClearManualSelection,
     onClick,
   } = props;
 
@@ -130,7 +133,10 @@ export const ProxyItem = (props: Props) => {
         selected={selected}
         onClick={() => onClick?.(proxy.name)}
         sx={[
-          { borderRadius: 1, position: "relative" },
+          {
+            borderRadius: 1,
+            position: "relative",
+          },
           ({ palette: { mode, primary, success } }) => {
             const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
             const selectColor = mode === "light" ? primary.main : primary.light;
@@ -193,10 +199,43 @@ export const ProxyItem = (props: Props) => {
                 }}
               >
                 {showManualIcon && group.type?.toLowerCase() !== "fallback" && (
-                  <LabelOutlined
-                    sx={{ fontSize: 14, mr: 0.5, color: "primary.main" }}
-                    titleAccess="manual"
-                  />
+                  <Box
+                    component="span"
+                    role={onClearManualSelection ? "button" : undefined}
+                    tabIndex={onClearManualSelection ? 0 : undefined}
+                    title="点击取消手动固定"
+                    onClick={(e) => {
+                      if (!onClearManualSelection) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onClearManualSelection();
+                    }}
+                    onKeyDown={(e) => {
+                      if (!onClearManualSelection) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClearManualSelection();
+                      }
+                    }}
+                    sx={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      mr: 0.5,
+                      cursor: onClearManualSelection ? "pointer" : "default",
+                      borderRadius: 0.5,
+                      ...(onClearManualSelection && {
+                        "&:hover": {
+                          bgcolor: (t) => alpha(t.palette.primary.main, 0.12),
+                        },
+                      }),
+                    }}
+                  >
+                    <LabelOutlined
+                      sx={{ fontSize: 14, color: "primary.main" }}
+                      titleAccess="manual"
+                    />
+                  </Box>
                 )}
                 {itemDisplayName ?? proxy.name}
                 {showType && proxy.now && !itemDisplayName && ` - ${proxy.now}`}
@@ -275,9 +314,26 @@ export const ProxyItem = (props: Props) => {
           )}
         </ListItemIcon>
         {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
-          <span className="the-pin" title="manual">
+          <Box
+            component="span"
+            className="the-pin"
+            role={onClearManualSelection ? "button" : undefined}
+            title="点击取消手动固定"
+            onClick={(e) => {
+              if (!onClearManualSelection) return;
+              e.preventDefault();
+              e.stopPropagation();
+              onClearManualSelection();
+            }}
+            sx={{
+              cursor: onClearManualSelection ? "pointer" : "default",
+              ...(onClearManualSelection && {
+                "&:hover": { opacity: 0.85 },
+              }),
+            }}
+          >
             📌
-          </span>
+          </Box>
         )}
       </ListItemButton>
     </ListItem>

@@ -11,6 +11,7 @@ use crate::config::{Config, IClashTemp};
 
 const RESET_TIMEOUT: Duration = Duration::from_secs(5);
 const RULE_PREVIEW_TIMEOUT: Duration = Duration::from_secs(120);
+const PROXY_MANUAL_UNFIX_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 规则提供者展开预览（GET `/providers/rules/{name}`），与 Mihomo REST 对齐。
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -127,4 +128,29 @@ pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProvid
     serde_json::from_str(&body).with_context(|| {
         format!("parse rule provider preview JSON for provider {provider_name:?}")
     })
+}
+
+/// DELETE `/proxies/{name}` — 取消代理组「手动固定」，与 Mihomo `unfixedProxy` 一致。
+pub async fn delete_proxy_manual_unfix(group_name: &str) -> Result<()> {
+    let (client, headers) = build_ipc_client(PROXY_MANUAL_UNFIX_TIMEOUT).await?;
+    let enc = encode_rule_provider_path_segment(group_name);
+    let url = format!("http://localhost/proxies/{enc}");
+    let response = client
+        .delete(&url)
+        .headers(headers)
+        .send()
+        .await
+        .with_context(|| format!("send DELETE {url}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "DELETE /proxies/{{…}} returned {} for group {:?}: {}",
+            status,
+            group_name,
+            body
+        );
+    }
+    Ok(())
 }

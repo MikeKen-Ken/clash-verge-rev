@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
@@ -264,7 +265,7 @@ export const ProxyGroups = (props: Props) => {
   );
 
   // 统代理选择
-  const { handleProxyGroupChange } = useProxySelection({
+  const { handleProxyGroupChange, clearManualSelectionForGroup } = useProxySelection({
     onSuccess: () => {
       onProxies();
     },
@@ -279,6 +280,13 @@ export const ProxyGroups = (props: Props) => {
         silentGlobal: true,
       });
     },
+  });
+
+  const handleClearManualByIcon = useLockFn(async (group: IProxyGroupItem) => {
+    if (isChainMode) return;
+    const gt = group.type?.toLowerCase();
+    if (!gt || !["selector", "url-test", "fallback"].includes(gt)) return;
+    await clearManualSelectionForGroup(group.name);
   });
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -877,6 +885,7 @@ export const ProxyGroups = (props: Props) => {
                   getDisplayNowForGroup={getDisplayNowForGroup}
                   getManualSelectionForGroup={getManualSelectionForGroup}
                   isChainMode={isChainMode}
+                  onClearManualSelection={handleClearManualByIcon}
                 />
               )}
             />
@@ -1015,6 +1024,7 @@ export const ProxyGroups = (props: Props) => {
             getSelectedForGroup={getSelectedForGroup}
             getDisplayNowForGroup={getDisplayNowForGroup}
             getManualSelectionForGroup={getManualSelectionForGroup}
+            onClearManualSelection={handleClearManualByIcon}
           />
         )}
       />

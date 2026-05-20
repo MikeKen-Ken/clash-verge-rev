@@ -6,7 +6,6 @@ import {
 } from "@mui/icons-material";
 import { Box, Button, IconButton, MenuItem } from "@mui/material";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
@@ -24,7 +23,7 @@ import LogItem from "@/components/log/log-item";
 import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
 import { useLogDataContext } from "@/providers/log-data-context";
-import { patchRuntimeConfig } from "@/services/cmds";
+import { exportTextFile, patchRuntimeConfig } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
 
@@ -126,7 +125,7 @@ const LogPage = () => {
       return;
     }
     try {
-      await writeTextFile(savePath, formatLogExportLines(raw));
+      await exportTextFile(savePath, formatLogExportLines(raw));
       showNotice.success("日志已导出");
     } catch (error) {
       console.error(error);

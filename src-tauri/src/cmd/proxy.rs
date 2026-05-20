@@ -18,3 +18,11 @@ pub async fn sync_tray_proxy_selection() -> CmdResult<()> {
         }
     }
 }
+
+/// 取消指定代理组的手动固定（内核 DELETE `/proxies/{group}` + 与桌面 profile 解钉由前端 patchCurrent 完成）。
+#[tauri::command]
+pub async fn clear_proxy_group_manual_selection(group: String) -> CmdResult<()> {
+    crate::utils::mihomo_ipc::delete_proxy_manual_unfix(&group)
+        .await
+        .map_err(|e| e.to_string())
+}

@@ -8,7 +8,7 @@ use crate::{
 };
 use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager as _};
 use tokio::fs;
 use tokio::io::AsyncWriteExt as _;
@@ -33,6 +33,20 @@ pub async fn open_core_dir() -> CmdResult<()> {
 pub async fn open_logs_dir() -> CmdResult<()> {
     let log_dir = dirs::app_logs_dir().stringify_err()?;
     open::that(log_dir).stringify_err()
+}
+
+/// 将文本内容写入用户选择的路径（日志导出等场景）
+#[tauri::command]
+pub async fn export_text_file(destination: String, content: String) -> CmdResult<()> {
+    let dest_path = PathBuf::from(destination.as_str());
+    if let Some(parent) = dest_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).await.stringify_err()?;
+        }
+    }
+    fs::write(&dest_path, content.as_bytes())
+        .await
+        .stringify_err()
 }
 
 /// 打开网页链接
