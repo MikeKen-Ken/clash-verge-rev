@@ -180,7 +180,7 @@ impl IRuntime {
         })
     }
 
-    /// 是否仅为代理页「屏蔽广告」开关（可走 PATCH `rules`，避免 `reload_config` 触发健康检测）。
+    /// 是否仅为代理页「屏蔽广告」开关（写入 runtime 后 `reload_config`，使 `RULE-SET,ads,REJECT` 立刻生效）。
     #[inline]
     pub fn is_proxy_ads_block_only_patch(patch: &Mapping) -> bool {
         !patch.is_empty()
