@@ -12,16 +12,48 @@ import { debugLog } from "@/utils/debug";
 
 interface ProxySelectionOptions {
   onSuccess?: () => void;
-  onError?: (error: unknown) => void;
+  onError?: (error: any) => void;
   /** 仅刷新当前选中节点的延迟（不触发全量 refreshProxy）；轮询 1～10s 时若提供则调用此项 */
   onRefreshSelectedNodeOnly?: (groupName: string, proxyName: string) => void | Promise<void>;
 }
+
+const supportsClearManualSelection = (groupType?: string) => {
+  const type = groupType?.toLowerCase();
+  return (
+    type === "selector" ||
+    type === "url-test" ||
+    type === "urltest" ||
+    type === "fallback"
+  );
+};
 
 // 代理选择 Hook
 export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   const { current, patchCurrent } = useProfiles();
 
-  const { onSuccess, onRefreshSelectedNodeOnly, onError } = options;
+  const { onSuccess, onRefreshSelectedNodeOnly } = options;
+
+  const clearManualSelection = useCallback(
+    async (groupName: string, skipConfigSave: boolean = false) => {
+      debugLog(`[ProxySelection] 清除手动选择: ${groupName}`);
+      await clearProxyGroupManualSelection(groupName);
+
+      if (!skipConfigSave && current) {
+        const selected = (current.selected ?? []).filter(
+          (item) => item.name !== groupName,
+        );
+        await patchCurrent({ selected });
+      }
+
+      await syncTrayProxySelection().catch((err) => {
+        console.warn("[ProxySelection] clear syncTray 失败（非关键）", err);
+      });
+      onSuccess?.();
+      setTimeout(() => onSuccess?.(), 450);
+      setTimeout(() => onSuccess?.(), 1000);
+    },
+    [current, onSuccess, patchCurrent],
+  );
 
   // 切换节点：先等核心与 profile 同步完成，再刷新代理列表，避免过早刷新拿到旧 now 导致界面「选不上」
   const changeProxy = useCallback(
@@ -152,7 +184,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
         })
         .catch((err) => {
-          onError?.(err);
           console.error("=== [ProxySelection] 后端同步失败 ===", {
             错误: err,
             组名: groupName,
@@ -161,50 +192,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => onSuccess?.(), delayMs);
         });
     },
-    [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly, onError],
-  );
-
-  /** 点击「手动固定」图标解除 profile 与内核的钉选（DELETE /proxies/{group}） */
-  const clearManualSelectionForGroup = useCallback(
-    async (groupName: string) => {
-      debugLog(`[ProxySelection] 取消手动固定: ${groupName}`);
-      markManualProxySelectionStarted();
-      try {
-        await clearProxyGroupManualSelection(groupName);
-      } catch (err) {
-        console.error("[ProxySelection] 取消手动固定失败", err);
-        onError?.(err);
-        throw err;
-      }
-
-      if (current) {
-        const selected = current.selected ? [...current.selected] : [];
-        const next = selected.filter((item) => item.name !== groupName);
-        if (next.length !== selected.length) {
-          await patchCurrent({ selected: next });
-        }
-      }
-
-      await syncTrayProxySelection().catch((err) => {
-        console.warn("[ProxySelection] syncTray 失败（非关键）", err);
-      });
-
-      void closeConnectionsForProxyGroup(groupName).then((n) => {
-        if (n > 0) {
-          debugLog(
-            `[ProxySelection] 取消手动后已关闭 ${n} 条经过组 ${groupName} 的连接`,
-          );
-        }
-      });
-
-      const delayMs = 400;
-      const delayMs2 = 900;
-      const delayMs3 = 1800;
-      setTimeout(() => onSuccess?.(), delayMs);
-      setTimeout(() => onSuccess?.(), delayMs2);
-      setTimeout(() => onSuccess?.(), delayMs3);
-    },
-    [current, patchCurrent, onSuccess, onError],
+    [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly],
   );
 
   const handleSelectChange = useCallback(
@@ -217,16 +205,27 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   );
 
   const handleProxyGroupChange = useCallback(
-    (group: { name: string; now?: string }, proxy: { name: string }) => {
+    (
+      group: { name: string; now?: string; type?: string },
+      proxy: { name: string },
+      options?: { isManualSelection?: boolean; skipConfigSave?: boolean },
+    ) => {
+      if (
+        options?.isManualSelection &&
+        proxy.name === group.now &&
+        supportsClearManualSelection(group.type)
+      ) {
+        void clearManualSelection(group.name, options?.skipConfigSave ?? false);
+        return;
+      }
       changeProxy(group.name, proxy.name);
     },
-    [changeProxy],
+    [changeProxy, clearManualSelection],
   );
 
   return {
     changeProxy,
     handleSelectChange,
     handleProxyGroupChange,
-    clearManualSelectionForGroup,
   };
 };

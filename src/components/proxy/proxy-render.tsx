@@ -34,9 +34,8 @@ interface RenderProps {
   onChangeProxy: (
     group: IRenderItem["group"],
     proxy: IRenderItem["proxy"] & { name: string },
+    options?: { isManualSelection?: boolean },
   ) => void;
-  /** 点击手动固定图标解除钉选 */
-  onClearManualSelection?: (group: IRenderItem["group"]) => void | Promise<void>;
   /** 当前使用的节点名（用于高亮） */
   getSelectedForGroup?: (groupName: string) => string | undefined;
   /** 组头显示的「当前节点」文案；当 now 为子分组时会解析为「子分组名 (实际节点)」 */
@@ -61,7 +60,6 @@ const ProxyRenderInner = (props: RenderProps) => {
     getSelectedForGroup,
     getDisplayNowForGroup,
     getManualSelectionForGroup,
-    onClearManualSelection,
     isChainMode: _ = false,
   } = props;
   const { type, group, headState, proxy, proxyCol } = item;
@@ -107,15 +105,10 @@ const ProxyRenderInner = (props: RenderProps) => {
           selected={selectedName != null ? selectedName === name : false}
           showManualIcon={manualName != null && manualName === name}
           showType={headState?.showType}
-          onClick={() => onChangeProxy(group, proxyItem!)}
-          onClearManualSelection={
-            manualName != null &&
-              manualName === name &&
-              onClearManualSelection
-              ? () => {
-                void onClearManualSelection(group);
-              }
-              : undefined
+          onClick={() =>
+            onChangeProxy(group, proxyItem!, {
+              isManualSelection: manualName != null && manualName === name,
+            })
           }
         />
       );
@@ -127,10 +120,8 @@ const ProxyRenderInner = (props: RenderProps) => {
     group,
     headState,
     onChangeProxy,
-    onClearManualSelection,
     getSelectedForGroup,
     getManualSelectionForGroup,
-    getDisplayNowForGroup,
   ]);
 
   if (type === 0) {
@@ -272,15 +263,10 @@ const ProxyRenderInner = (props: RenderProps) => {
         showManualIcon={manualName != null && manualName === name}
         showType={headState?.showType}
         sx={{ py: 0, pl: 2 }}
-        onClick={() => onChangeProxy(group, proxy!)}
-        onClearManualSelection={
-          manualName != null &&
-            manualName === name &&
-            onClearManualSelection
-            ? () => {
-              void onClearManualSelection(group);
-            }
-            : undefined
+        onClick={() =>
+          onChangeProxy(group, proxy!, {
+            isManualSelection: manualName != null && manualName === name,
+          })
         }
       />
     );

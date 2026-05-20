@@ -11,7 +11,6 @@ use crate::config::{Config, IClashTemp};
 
 const RESET_TIMEOUT: Duration = Duration::from_secs(5);
 const RULE_PREVIEW_TIMEOUT: Duration = Duration::from_secs(120);
-const PROXY_MANUAL_UNFIX_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 规则提供者展开预览（GET `/providers/rules/{name}`），与 Mihomo REST 对齐。
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -87,6 +86,24 @@ fn push_pct_upper_hex(out: &mut String, byte: u8) {
     out.push(HEX[(byte & 0xf) as usize] as char);
 }
 
+fn encode_path_segment(segment: &str) -> String {
+    let reserve = segment
+        .as_bytes()
+        .iter()
+        .copied()
+        .filter(|&b| !(b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~')))
+        .count();
+    let mut out = String::with_capacity(segment.len() + reserve * 2);
+    for &byte in segment.as_bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            out.push(byte as char);
+        } else {
+            push_pct_upper_hex(&mut out, byte);
+        }
+    }
+    out
+}
+
 /// POST `/traffic/reset` — clears global upload/download counters (same as Android `Clash.reset()` on Tun start).
 pub async fn post_traffic_reset() -> Result<()> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
@@ -130,26 +147,23 @@ pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProvid
     })
 }
 
-/// DELETE `/proxies/{name}` — 取消代理组「手动固定」，与 Mihomo `unfixedProxy` 一致。
-pub async fn delete_proxy_manual_unfix(group_name: &str) -> Result<()> {
-    let (client, headers) = build_ipc_client(PROXY_MANUAL_UNFIX_TIMEOUT).await?;
-    let enc = encode_rule_provider_path_segment(group_name);
-    let url = format!("http://localhost/proxies/{enc}");
+/// DELETE `/proxies/{group}` — clear manual selection for URL-Test/Fallback groups.
+pub async fn delete_proxy_fixed(group_name: &str) -> Result<()> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+    let encoded = encode_path_segment(group_name);
+    let url = format!("http://localhost/proxies/{encoded}");
     let response = client
-        .delete(&url)
+        .request(Method::DELETE, &url)
         .headers(headers)
         .send()
         .await
         .with_context(|| format!("send DELETE {url}"))?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
         anyhow::bail!(
-            "DELETE /proxies/{{…}} returned {} for group {:?}: {}",
-            status,
-            group_name,
-            body
+            "DELETE /proxies/{{name}} returned {} for group {:?}",
+            response.status(),
+            group_name
         );
     }
     Ok(())

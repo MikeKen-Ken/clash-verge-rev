@@ -132,11 +132,8 @@ export async function syncTrayProxySelection() {
   return invoke<void>("sync_tray_proxy_selection");
 }
 
-/** 内核 DELETE `/proxies/{group}`：取消手动固定（与 Android `clearManualSelectionForGroup` 对齐）。 */
-export async function clearProxyGroupManualSelection(groupName: string) {
-  return invoke<void>("clear_proxy_group_manual_selection", {
-    group: groupName,
-  });
+export async function clearProxyGroupManualSelection(group: string) {
+  return invoke<void>("clear_proxy_group_manual_selection", { group });
 }
 
 type RuntimeGroupDisplayConfig = {
