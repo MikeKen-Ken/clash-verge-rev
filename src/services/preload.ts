@@ -1,5 +1,5 @@
 import { getVergeConfig } from "./cmds";
-import { applyConnectionTableOrderFromBackupFile } from "./ui-preferences-backup";
+import { applyConnectionTableUiFromBackupFile } from "./ui-preferences-backup";
 import {
   cacheLanguage,
   FALLBACK_LANGUAGE,
@@ -68,7 +68,7 @@ export const preloadLanguage = async (
 
 export const preloadUiPreferences = async () => {
   try {
-    await applyConnectionTableOrderFromBackupFile();
+    await applyConnectionTableUiFromBackupFile();
   } catch (error) {
     console.warn("[preload.ts] 无法加载 UI 偏好:", error);
   }

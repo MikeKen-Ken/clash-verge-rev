@@ -28,7 +28,8 @@ import { useTranslation } from "react-i18next";
 
 import {
   CONNECTION_TABLE_ORDER_KEY,
-  syncConnectionTableOrderToBackupFile,
+  CONNECTION_TABLE_VISIBILITY_KEY,
+  syncConnectionTableUiToBackupFile,
 } from "@/services/ui-preferences-backup";
 import parseTraffic from "@/utils/parse-traffic";
 import { truncateStr } from "@/utils/truncate-str";
@@ -130,7 +131,7 @@ export const ConnectionTable = (props: Props) => {
 
   const [columnVisibilityModel, setColumnVisibilityModel] =
     useLocalStorage<VisibilityState>(
-      "connection-table-visibility",
+      CONNECTION_TABLE_VISIBILITY_KEY,
       {},
       {
         serializer: JSON.stringify,
@@ -288,10 +289,17 @@ export const ConnectionTable = (props: Props) => {
     });
   }, [baseColumns, setColumnOrder]);
 
+  const skipInitialUiSync = useRef(true);
   useEffect(() => {
-    if (!Array.isArray(columnOrder) || columnOrder.length === 0) return;
-    void syncConnectionTableOrderToBackupFile(columnOrder);
-  }, [columnOrder]);
+    if (skipInitialUiSync.current) {
+      skipInitialUiSync.current = false;
+      return;
+    }
+    void syncConnectionTableUiToBackupFile({
+      order: Array.isArray(columnOrder) ? columnOrder : [],
+      visibility: columnVisibilityModel ?? {},
+    });
+  }, [columnOrder, columnVisibilityModel]);
 
   const handleColumnVisibilityChange = useCallback(
     (update: Updater<VisibilityState>) => {
