@@ -226,6 +226,8 @@ mod app_init {
             cmd::list_webdav_backup,
             cmd::delete_webdav_backup,
             cmd::restore_webdav_backup,
+            cmd::save_connection_table_order,
+            cmd::get_connection_table_order,
             cmd::get_unlock_items,
             cmd::check_media_unlock,
         ]

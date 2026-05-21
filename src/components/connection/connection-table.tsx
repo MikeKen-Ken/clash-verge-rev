@@ -26,6 +26,10 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  CONNECTION_TABLE_ORDER_KEY,
+  syncConnectionTableOrderToBackupFile,
+} from "@/services/ui-preferences-backup";
 import parseTraffic from "@/utils/parse-traffic";
 import { truncateStr } from "@/utils/truncate-str";
 
@@ -143,7 +147,7 @@ export const ConnectionTable = (props: Props) => {
     );
 
   const [columnOrder, setColumnOrder] = useLocalStorage<string[]>(
-    "connection-table-order",
+    CONNECTION_TABLE_ORDER_KEY,
     [],
     {
       serializer: JSON.stringify,
@@ -283,6 +287,11 @@ export const ConnectionTable = (props: Props) => {
       return reconciled;
     });
   }, [baseColumns, setColumnOrder]);
+
+  useEffect(() => {
+    if (!Array.isArray(columnOrder) || columnOrder.length === 0) return;
+    void syncConnectionTableOrderToBackupFile(columnOrder);
+  }, [columnOrder]);
 
   const handleColumnVisibilityChange = useCallback(
     (update: Updater<VisibilityState>) => {

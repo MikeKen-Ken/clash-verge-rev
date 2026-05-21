@@ -1,4 +1,4 @@
-use crate::constants::files::DNS_CONFIG;
+use crate::{constants::files::DNS_CONFIG, feat::ui_preferences};
 use crate::{config::Config, process::AsyncHandler, utils::dirs};
 use anyhow::Error;
 use arc_swap::{ArcSwap, ArcSwapOption};
@@ -292,6 +292,11 @@ pub async fn create_backup() -> Result<(String, PathBuf), Error> {
 
     zip.start_file(dirs::PROFILE_YAML, options)?;
     zip.write_all(fs::read(dirs::profiles_path()?).await?.as_slice())?;
+
+    if let Err(err) = ui_preferences::ensure_ui_preferences_in_backup(&mut zip, options).await {
+        logging!(warn, Type::Backup, "跳过 UI 偏好备份: {err:#?}");
+    }
+
     zip.finish()?;
     Ok((zip_file_name, zip_path))
 }

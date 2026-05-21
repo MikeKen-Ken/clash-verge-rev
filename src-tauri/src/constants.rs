@@ -39,6 +39,8 @@ pub mod files {
     pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
     pub const DNS_CONFIG: &str = "dns_config.yaml";
     pub const WINDOW_STATE: &str = "window_state.json";
+    /// 前端 UI 偏好（如连接表列顺序），随备份 zip 打包
+    pub const UI_PREFERENCES: &str = "ui-preferences.json";
 }
 
 pub mod tun {

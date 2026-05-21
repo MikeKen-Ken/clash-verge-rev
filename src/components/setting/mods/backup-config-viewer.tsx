@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 
 import { useVerge } from "@/hooks/use-verge";
 import { saveWebdavConfig, createWebdavBackup } from "@/services/cmds";
+import { prepareBackupUiPreferences } from "@/services/ui-preferences-backup";
 import { showNotice } from "@/services/notice-service";
 import {
   buildWebdavSignature,
@@ -124,11 +125,11 @@ export const BackupConfigViewer = memo(
           (current) =>
             current
               ? {
-                  ...current,
-                  webdav_url: trimmedUrl,
-                  webdav_username: trimmedUsername,
-                  webdav_password: data.password,
-                }
+                ...current,
+                webdav_url: trimmedUrl,
+                webdav_username: trimmedUsername,
+                webdav_password: data.password,
+              }
               : current,
           false,
         );
@@ -156,6 +157,7 @@ export const BackupConfigViewer = memo(
 
       try {
         setLoading(true);
+        await prepareBackupUiPreferences();
         await createWebdavBackup().then(async () => {
           showNotice.success("settings.modals.backup.messages.backupCreated");
           await onBackupSuccess();
@@ -239,9 +241,9 @@ export const BackupConfigViewer = memo(
               sx={{ height: "100%" }}
             >
               {webdavChanged ||
-              webdav_url === undefined ||
-              webdav_username === undefined ||
-              webdav_password === undefined ? (
+                webdav_url === undefined ||
+                webdav_username === undefined ||
+                webdav_password === undefined ? (
                 <Button
                   variant="contained"
                   color={"primary"}

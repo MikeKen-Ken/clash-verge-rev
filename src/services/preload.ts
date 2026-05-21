@@ -1,4 +1,5 @@
 import { getVergeConfig } from "./cmds";
+import { applyConnectionTableOrderFromBackupFile } from "./ui-preferences-backup";
 import {
   cacheLanguage,
   FALLBACK_LANGUAGE,
@@ -65,12 +66,21 @@ export const preloadLanguage = async (
   return FALLBACK_LANGUAGE;
 };
 
+export const preloadUiPreferences = async () => {
+  try {
+    await applyConnectionTableOrderFromBackupFile();
+  } catch (error) {
+    console.warn("[preload.ts] 无法加载 UI 偏好:", error);
+  }
+};
+
 export const preloadAppData = async () => {
   const configPromise = preloadConfig();
   const initialLanguage = await preloadLanguage(undefined, () => configPromise);
   const [config] = await Promise.all([
     configPromise,
     initializeLanguage(initialLanguage),
+    preloadUiPreferences(),
   ]);
   const initialThemeMode = resolveThemeMode(config);
   return { initialThemeMode };

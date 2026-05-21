@@ -21,6 +21,7 @@ import {
   importLocalBackup,
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
+import { prepareBackupUiPreferences } from "@/services/ui-preferences-backup";
 import {
   buildWebdavSignature,
   setWebdavStatus,
@@ -58,6 +59,7 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const handleBackup = useLockFn(async (target: BackupSource) => {
     try {
       setBusyAction(target);
+      await prepareBackupUiPreferences();
       if (target === "local") {
         await createLocalBackup();
         showNotice.success(
