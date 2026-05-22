@@ -301,18 +301,28 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
 
   const handleSave = useLockFn(async () => {
     try {
-      // Disallow saving if initial content never loaded successfully to avoid accidental overwrite
-      if (!readOnly && hasLoadedOnce) {
-        // Guard: if the editor/model hasn't mounted, bail out
-        if (!editorRef.current) {
-          return;
-        }
-        currDataRef.current = editorRef.current.getValue();
-        if (onSave) {
-          await onSave(prevDataRef.current, currDataRef.current);
-          // If save succeeds, align prev with current
-          prevDataRef.current = currDataRef.current;
-        }
+      if (readOnly) {
+        onClose();
+        return;
+      }
+      if (!hasLoadedOnce) {
+        showNotice.error(
+          "shared.feedback.notifications.common.saveFailed",
+          new Error("Editor content is not ready"),
+        );
+        return;
+      }
+      if (!editorRef.current) {
+        showNotice.error(
+          "shared.feedback.notifications.common.saveFailed",
+          new Error("Editor is not mounted"),
+        );
+        return;
+      }
+      currDataRef.current = editorRef.current.getValue();
+      if (onSave) {
+        await onSave(prevDataRef.current, currDataRef.current);
+        prevDataRef.current = currDataRef.current;
       }
       onClose();
     } catch (err) {

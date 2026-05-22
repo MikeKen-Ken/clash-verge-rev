@@ -236,5 +236,5 @@ pub async fn update_profile(
 
 /// 增强配置
 pub async fn enhance_profiles() -> Result<(bool, String)> {
-    crate::core::CoreManager::global().update_config().await
+    crate::core::CoreManager::global().force_update_config().await
 }
