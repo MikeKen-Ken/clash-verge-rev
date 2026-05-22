@@ -8,6 +8,10 @@ import {
   setClosedConnectionsInStorage,
   setConnectionSnapshot,
 } from "@/utils/closed-connections-storage";
+import {
+  compactRejectClosed,
+  upsertRejectClosed,
+} from "@/utils/reject-closed-dedupe";
 
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
@@ -158,20 +162,29 @@ const mergeConnectionSnapshot = (
     knownClosedIds,
   );
 
+  let closedAcc: IConnectionsItem[] = [...previousClosed];
+  for (const conn of newlyClosed) {
+    closedAcc = upsertRejectClosed(closedAcc, conn);
+  }
+  for (const conn of fromRecentClosed) {
+    closedAcc = upsertRejectClosed(closedAcc, conn);
+  }
+
   // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
   const closedConnections = filterClosedConnectionsByRetention(
-    dedupeClosedConnectionsById([
-      ...previousClosed,
-      ...newlyClosed,
-      ...fromRecentClosed,
-    ]),
+    dedupeClosedConnectionsById(closedAcc),
     PERSIST_RETENTION_HOURS,
   );
-  if (
+  const closedChanged =
     newlyClosed.length > 0 ||
     fromRecentClosed.length > 0 ||
-    closedConnections.length !== previousClosed.length
-  ) {
+    closedConnections.length !== previousClosed.length ||
+    closedConnections.some(
+      (conn, index) =>
+        previousClosed[index]?.id !== conn.id ||
+        previousClosed[index]?.closedAt !== conn.closedAt,
+    );
+  if (closedChanged) {
     void setClosedConnectionsInStorage(closedConnections);
   }
 
@@ -292,7 +305,7 @@ export const useConnectionData = () => {
       .then((raw) => {
         if (!raw || !Array.isArray(raw)) return;
         const closed = filterClosedConnectionsByRetention(
-          raw,
+          compactRejectClosed(raw),
           PERSIST_RETENTION_HOURS,
         );
         if (closed.length === 0) return;
