@@ -47,6 +47,17 @@ impl CoreManager {
         self.perform_config_update().await
     }
 
+    /// 用户显式保存配置时使用，必须立即重新生成并应用运行配置。
+    pub async fn force_update_config(&self) -> Result<(bool, String)> {
+        if handle::Handle::global().is_exiting() {
+            return Ok((true, String::new()));
+        }
+
+        let _update_guard = self.update_lock.lock().await;
+        self.set_last_update(Instant::now());
+        self.perform_config_update().await
+    }
+
     fn should_update_config(&self) -> bool {
         let now = Instant::now();
         let last = self.get_last_update();

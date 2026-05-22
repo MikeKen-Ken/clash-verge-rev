@@ -92,12 +92,29 @@ async fn handle_merge_file(
     match CoreConfigValidator::validate_config_file(file_path_str, Some(true)).await {
         Ok((true, _)) => {
             logging!(info, Type::Config, "[cmd配置save] merge文件语法验证通过");
-            if let Err(e) = CoreManager::global().update_config().await {
-                logging!(warn, Type::Config, "[cmd配置save] 更新整体配置时发生错误: {}", e);
-            } else {
-                handle::Handle::refresh_clash();
+            match CoreManager::global().force_update_config().await {
+                Ok((true, _)) => {
+                    handle::Handle::refresh_clash();
+                    Ok(true)
+                }
+                Ok((false, error_msg)) => {
+                    logging!(
+                        warn,
+                        Type::Config,
+                        "[cmd配置save] merge文件合并后的运行配置验证失败: {}",
+                        error_msg
+                    );
+                    restore_original(file_path, original_content).await?;
+                    let result = (false, error_msg.clone());
+                    crate::cmd::validate::handle_yaml_validation_notice(&result, "合并后的运行配置");
+                    Ok(false)
+                }
+                Err(e) => {
+                    logging!(warn, Type::Config, "[cmd配置save] 更新整体配置时发生错误: {}", e);
+                    restore_original(file_path, original_content).await?;
+                    Err(e.to_string().into())
+                }
             }
-            Ok(true)
         }
         Ok((false, error_msg)) => {
             logging!(warn, Type::Config, "[cmd配置save] merge文件语法验证失败: {}", error_msg);
