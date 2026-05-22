@@ -266,6 +266,8 @@ interface IConnections {
   downloadTotal: number;
   uploadTotal: number;
   connections: IConnectionsItem[];
+  /** 内核在 REJECT 连接关闭时缓冲的短时记录，避免轮询间隔漏采 */
+  recentClosed?: IConnectionsItem[];
 }
 
 /** 已关闭连接保留时间（小时） */

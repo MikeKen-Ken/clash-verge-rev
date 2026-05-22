@@ -48,6 +48,47 @@ export interface ConnectionMonitorData {
   closedConnections: IConnectionsItem[];
 }
 
+/** 按 id 去重，保留较新的 closedAt */
+const dedupeClosedConnectionsById = (
+  items: IConnectionsItem[],
+): IConnectionsItem[] => {
+  const map = new Map<string, IConnectionsItem>();
+  for (const item of items) {
+    const closedAt = item.closedAt ?? new Date(item.start || 0).getTime();
+    const existing = map.get(item.id);
+    const existingClosedAt =
+      existing?.closedAt ?? new Date(existing?.start || 0).getTime();
+    if (!existing || closedAt >= existingClosedAt) {
+      map.set(item.id, { ...item, closedAt });
+    }
+  }
+  return Array.from(map.values());
+};
+
+const normalizeRecentClosedFromPayload = (
+  payload: IConnections,
+  activeIds: Set<string>,
+  knownClosedIds: Set<string>,
+): IConnectionsItem[] => {
+  const seen = new Set<string>();
+  return (payload.recentClosed ?? [])
+    .filter((conn) => {
+      if (!conn.id || activeIds.has(conn.id) || knownClosedIds.has(conn.id)) {
+        return false;
+      }
+      if (seen.has(conn.id)) return false;
+      seen.add(conn.id);
+      return true;
+    })
+    .map(
+      (conn) =>
+        ({
+          ...conn,
+          closedAt: conn.closedAt ?? Date.now(),
+        }) as IConnectionsItem,
+    );
+};
+
 /** 按保留时间（小时）过滤已关闭连接：只保留关闭时间在 retentionHours 内的（供展示与持久化使用） */
 export const filterClosedConnectionsByRetention = (
   closedConnections: IConnectionsItem[],
@@ -109,13 +150,28 @@ const mergeConnectionSnapshot = (
     .filter((conn) => !newIds.has(conn.id))
     .map((conn) => ({ ...conn, closedAt: now } as IConnectionsItem));
 
-  // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
   const previousClosed = previous.closedConnections ?? [];
+  const knownClosedIds = new Set(previousClosed.map((conn) => conn.id));
+  const fromRecentClosed = normalizeRecentClosedFromPayload(
+    payload,
+    newIds,
+    knownClosedIds,
+  );
+
+  // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
   const closedConnections = filterClosedConnectionsByRetention(
-    [...previousClosed, ...newlyClosed],
+    dedupeClosedConnectionsById([
+      ...previousClosed,
+      ...newlyClosed,
+      ...fromRecentClosed,
+    ]),
     PERSIST_RETENTION_HOURS,
   );
-  if (newlyClosed.length > 0 || closedConnections.length !== previousClosed.length) {
+  if (
+    newlyClosed.length > 0 ||
+    fromRecentClosed.length > 0 ||
+    closedConnections.length !== previousClosed.length
+  ) {
     void setClosedConnectionsInStorage(closedConnections);
   }
 
@@ -195,25 +251,24 @@ export const useConnectionData = () => {
           try {
             const parsed = JSON.parse(data) as IConnections;
             const nextConnections = parsed.connections ?? [];
-            next(null, (old = initConnData) =>
-              {
-                // 部分环境下重连后会短暂收到空 connections 快照，容易导致连接页闪空。
-                // 这里给一个短暂宽限期，连续空快照超过阈值才认定为真实空列表。
-                if (nextConnections.length === 0 && (old.activeConnections?.length ?? 0) > 0) {
-                  const now = Date.now();
-                  if (emptySnapshotStartedAtRef.current == null) {
-                    emptySnapshotStartedAtRef.current = now;
-                    return old;
-                  }
-                  if (now - emptySnapshotStartedAtRef.current < EMPTY_SNAPSHOT_GRACE_MS) {
-                    return old;
-                  }
-                } else {
-                  emptySnapshotStartedAtRef.current = null;
+            next(null, (old = initConnData) => {
+              // 部分环境下重连后会短暂收到空 connections 快照，容易导致连接页闪空。
+              // 这里给一个短暂宽限期，连续空快照超过阈值才认定为真实空列表。
+              if (nextConnections.length === 0 && (old.activeConnections?.length ?? 0) > 0) {
+                const now = Date.now();
+                if (emptySnapshotStartedAtRef.current == null) {
+                  emptySnapshotStartedAtRef.current = now;
+                  return old;
                 }
+                if (now - emptySnapshotStartedAtRef.current < EMPTY_SNAPSHOT_GRACE_MS) {
+                  return old;
+                }
+              } else {
+                emptySnapshotStartedAtRef.current = null;
+              }
 
-                return normalizeTotals(mergeConnectionSnapshot(parsed, old));
-              },
+              return normalizeTotals(mergeConnectionSnapshot(parsed, old));
+            },
             );
           } catch (error) {
             next(error);
@@ -253,7 +308,7 @@ export const useConnectionData = () => {
           { revalidate: false },
         );
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [subscriptionCacheKey]);
 
   // 有连接数据时持久化完整快照，供重新进入连接页时恢复
