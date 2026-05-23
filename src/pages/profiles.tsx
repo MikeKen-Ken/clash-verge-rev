@@ -1367,23 +1367,14 @@ const ProfilePage = () => {
           <Box sx={{ mt: 1.5, mb: "10px" }}>
             <Grid container spacing={{ xs: 1, lg: 1 }}>
               <Grid size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
-                <ProfileMore
-                  id="Merge"
-                  onSave={async (prev, curr) => {
-                    if (prev !== curr) {
-                      await onEnhance(false);
-                    }
-                  }}
-                />
+                <ProfileMore id="Merge" />
               </Grid>
               <Grid size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
                 <ProfileMore
                   id="Script"
                   logInfo={chainLogs["Script"]}
-                  onSave={async (prev, curr) => {
-                    if (prev !== curr) {
-                      await onEnhance(false);
-                    }
+                  onSave={async () => {
+                    await mutateLogs();
                   }}
                 />
               </Grid>

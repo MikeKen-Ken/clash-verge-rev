@@ -186,7 +186,9 @@ export const ProfileMore = (props: Props) => {
           language={id === "Merge" ? "yaml" : "javascript"}
           onSave={async (prev, curr) => {
             await saveProfileFile(id, curr ?? "");
-            await onSave?.(prev, curr);
+            if (prev !== curr) {
+              await onSave?.(prev, curr);
+            }
             showNotice.success("shared.feedback.notifications.saved");
           }}
           onClose={() => setFileOpen(false)}

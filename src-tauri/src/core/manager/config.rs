@@ -55,7 +55,7 @@ impl CoreManager {
 
         let _update_guard = self.update_lock.lock().await;
         self.set_last_update(Instant::now());
-        self.perform_config_update().await
+        self.perform_config_update_force().await
     }
 
     fn should_update_config(&self) -> bool {
@@ -75,6 +75,35 @@ impl CoreManager {
     async fn perform_config_update(&self) -> Result<(bool, String)> {
         Config::generate().await?;
         self.apply_generate_config().await
+    }
+
+    /// 用户保存 Merge/Script 等增强文件：已做过片段校验，跳过耗时的全量内核校验，直接写盘并 reload。
+    async fn perform_config_update_force(&self) -> Result<(bool, String)> {
+        Config::generate().await?;
+        self.apply_generate_config_force().await
+    }
+
+    async fn apply_generate_config_force(&self) -> Result<(bool, String)> {
+        let run_path = match Config::generate_file(ConfigType::Run).await {
+            Ok(path) => path,
+            Err(e) => {
+                Config::runtime().await.discard();
+                return Err(e);
+            }
+        };
+        logging!(
+            info,
+            Type::Core,
+            "Writing runtime config (force apply): {}",
+            run_path.display()
+        );
+        match self.apply_config(run_path).await {
+            Ok(()) => Ok((true, String::new())),
+            Err(e) => {
+                Config::runtime().await.discard();
+                Err(e)
+            }
+        }
     }
 
     pub async fn apply_generate_config(&self) -> Result<(bool, String)> {

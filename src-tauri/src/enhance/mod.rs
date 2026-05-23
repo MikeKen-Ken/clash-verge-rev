@@ -309,6 +309,21 @@ async fn collect_profile_items() -> ProfileItems {
     }
 }
 
+fn chain_merge_mapping(item: &ChainItem) -> Option<Mapping> {
+    match &item.data {
+        ChainType::Merge(merge) => Some(merge.clone()),
+        _ => None,
+    }
+}
+
+/// 在 `merge_persistent_runtime_patch_from_prev` 之后再次叠入 Merge，使全局/订阅 Merge 文件中的字段优先于旧运行时缓存。
+fn reapply_merge_layers(config: Mapping, layers: &[Option<Mapping>]) -> Mapping {
+    layers
+        .iter()
+        .filter_map(|layer| layer.as_ref())
+        .fold(config, |cfg, merge| use_merge(merge, cfg))
+}
+
 fn process_global_items(
     mut config: Mapping,
     global_merge: ChainItem,
@@ -680,6 +695,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     let global_merge = profile.global_merge;
     let global_script = profile.global_script;
     let profile_name = profile.profile_name;
+    let global_merge_snapshot = chain_merge_mapping(&global_merge);
+    let profile_merge_snapshot = chain_merge_mapping(&merge_item);
 
     // process globals
     let (config, exists_keys, result_map) = process_global_items(config, global_merge, global_script, &profile_name);
@@ -733,6 +750,12 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     IRuntime::merge_persistent_runtime_patch_from_prev(
         Config::runtime().await.latest_arc().config.as_ref(),
         &mut config,
+    );
+
+    // 全局/订阅 Merge 须在 persistent patch 之后再次合并，否则 allow-lan、tun、dns 等会被旧运行时覆盖，保存 Merge 后 clash-verge.yaml 看似无变化
+    config = reapply_merge_layers(
+        config,
+        &[global_merge_snapshot, profile_merge_snapshot],
     );
 
     config = apply_proxy_ads_block(config);
