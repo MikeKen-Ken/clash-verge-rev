@@ -208,6 +208,11 @@ impl IProfiles {
                 patch!(each, item, extra);
                 patch!(each, item, updated);
                 patch!(each, item, option);
+                each.home = item
+                    .home
+                    .as_ref()
+                    .filter(|s| !s.is_empty())
+                    .cloned();
 
                 self.items = Some(items);
                 return self.save_file().await;
@@ -235,7 +240,9 @@ impl IProfiles {
                 if each.uid == some_uid {
                     each.extra = item.extra;
                     each.updated = item.updated;
-                    each.home = item.home.to_owned();
+                    if item.home.is_some() {
+                        each.home = item.home.to_owned();
+                    }
                     each.option = PrfOption::merge(each.option.as_ref(), item.option.as_ref());
                     // save the file data
                     // move the field value after save

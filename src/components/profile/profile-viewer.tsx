@@ -51,6 +51,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         type: "remote",
         name: "",
         desc: "",
+        home: "",
         url: "",
         option: {
           with_proxy: false,
@@ -110,7 +111,8 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         }
 
         const name = form.name || `${form.type} file`;
-        const item = { ...form, name, option };
+        const home = form.home?.trim() || null;
+        const item = { ...form, name, home, option };
         const isRemote = form.type === "remote";
         const isUpdate = openType === "edit";
 
@@ -281,6 +283,19 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 {...field}
                 multiline
                 label={t("profiles.modals.profileForm.fields.subscriptionUrl")}
+              />
+            )}
+          />
+
+          <Controller
+            name="home"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...text}
+                {...field}
+                label={t("profiles.modals.profileForm.fields.dashboard")}
+                placeholder="https://"
               />
             )}
           />

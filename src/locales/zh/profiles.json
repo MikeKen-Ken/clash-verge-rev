@@ -83,7 +83,8 @@
     "profileItem": {
       "tooltips": {
         "showLast": "点击查看上次更新时间",
-        "showNext": "点击查看下一次更新"
+        "showNext": "点击查看下一次更新",
+        "openDashboard": "打开机场面板"
       },
       "status": {
         "lastUpdateFailed": "上次更新失败",
@@ -104,6 +105,7 @@
         "type": "类型",
         "description": "描述",
         "subscriptionUrl": "订阅链接",
+        "dashboard": "机场面板",
         "httpTimeout": "HTTP 请求超时",
         "updateInterval": "更新间隔",
         "useSystemProxy": "使用系统代理更新",

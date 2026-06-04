@@ -5,6 +5,7 @@ import {
   DragIndicatorRounded,
   CheckBoxRounded,
   CheckBoxOutlineBlankRounded,
+  OpenInNewRounded,
 } from "@mui/icons-material";
 import {
   Box,
@@ -392,12 +393,12 @@ export const ProfileItem = (props: Props) => {
   const urlModeMenu: ContextMenuItem[] = [
     ...(hasHome
       ? [
-          {
-            label: menuLabels.home,
-            handler: onOpenHome,
-            disabled: false,
-          } satisfies ContextMenuItem,
-        ]
+        {
+          label: menuLabels.home,
+          handler: onOpenHome,
+          disabled: false,
+        } satisfies ContextMenuItem,
+      ]
       : []),
     {
       label: menuLabels.select,
@@ -678,6 +679,25 @@ export const ProfileItem = (props: Props) => {
             </Typography>
           </Box>
 
+          {hasHome && (
+            <IconButton
+              title={t("profiles.components.profileItem.tooltips.openDashboard")}
+              sx={{
+                position: "absolute",
+                p: "3px",
+                top: -1,
+                right: hasUrl ? 28 : -5,
+              }}
+              size="small"
+              color="inherit"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenHome();
+              }}
+            >
+              <OpenInNewRounded color="inherit" fontSize="small" />
+            </IconButton>
+          )}
           {/* only if has url can it be updated */}
           {hasUrl && (
             <IconButton
