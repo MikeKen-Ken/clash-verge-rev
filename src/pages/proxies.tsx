@@ -513,15 +513,6 @@ const ProxyPage = () => {
             flexWrap="wrap"
             sx={{ ml: "auto" }}
           >
-            <Tooltip title="累计代理转发流量（不含直连，切换 TUN 后重新计数）">
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}
-              >
-                {tunnelTrafficText}
-              </Typography>
-            </Tooltip>
             {IS_WINDOWS && (
               <>
                 <Tooltip
@@ -620,6 +611,20 @@ const ProxyPage = () => {
                 </Button>
               ))}
             </ButtonGroup>
+            <Tooltip title="累计代理转发流量（不含直连，切换 TUN 后重新计数）">
+              <Typography
+                variant="body2"
+                color="text.primary"
+                sx={{
+                  whiteSpace: "nowrap",
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 600,
+                  ml: 0.5,
+                }}
+              >
+                {tunnelTrafficText}
+              </Typography>
+            </Tooltip>
           </Box>
         </Box>
       }
