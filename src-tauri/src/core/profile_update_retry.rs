@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::sleep};
 
 /// 自首次失败时刻起，在第 5 / 15 / 30 分钟各重试一次。
 const FAILURE_RETRY_DELAYS_MIN: [i64; 3] = [5, 15, 30];
@@ -157,8 +157,9 @@ impl ProfileUpdateRetry {
         let lock = self.uid_lock(uid);
         let _guard = lock.lock().await;
 
+        let uid_ss: smartstring::alias::String = uid.into();
         match feat::update_profile(
-            &uid.to_string(),
+            &uid_ss,
             None,
             auto_refresh,
             ignore_auto_update,
@@ -177,7 +178,7 @@ impl ProfileUpdateRetry {
     pub async fn can_schedule_failure_retries(uid: &str) -> bool {
         let profiles = Config::profiles().await;
         let profiles = profiles.latest_arc();
-        let Ok(item) = profiles.get_item(&uid.to_string()) else {
+        let Ok(item) = profiles.get_item(uid) else {
             return false;
         };
         if !item.itype.as_ref().is_some_and(|s| s == "remote") {
