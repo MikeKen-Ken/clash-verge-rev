@@ -23,7 +23,10 @@ import { closeAllConnections, flushFakeIp } from "tauri-plugin-mihomo-api";
 import { BasePage } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
-import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
+import {
+  resetConnectionTrafficSession,
+  useConnectionData,
+} from "@/hooks/use-connection-data";
 import { useClash } from "@/hooks/use-clash";
 import { useNetworkInterfaces } from "@/hooks/use-network";
 import { useVerge } from "@/hooks/use-verge";
@@ -46,6 +49,7 @@ import { ProviderButton as RuleProviderButton } from "@/components/rule/provider
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
 import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
+import parseTraffic from "@/utils/parse-traffic";
 
 const MODES = ["rule", "global", "direct"] as const;
 type Mode = (typeof MODES)[number];
@@ -79,6 +83,15 @@ const ProxyPage = () => {
   const { clash, mutateClash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
   const { isTunModeAvailable } = useSystemState();
+  const {
+    response: { data: connections },
+  } = useConnectionData();
+
+  const tunnelTrafficText = useMemo(() => {
+    const [dl, dlUnit] = parseTraffic(connections?.downloadTotal);
+    const [ul, ulUnit] = parseTraffic(connections?.uploadTotal);
+    return `${dl} ${dlUnit}↓\u00a0\u00a0${ul} ${ulUnit}↑`;
+  }, [connections?.downloadTotal, connections?.uploadTotal]);
 
   const modeList = useMemo(() => MODES, []);
 
@@ -500,6 +513,15 @@ const ProxyPage = () => {
             flexWrap="wrap"
             sx={{ ml: "auto" }}
           >
+            <Tooltip title="累计代理转发流量（不含直连，切换 TUN 后重新计数）">
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}
+              >
+                {tunnelTrafficText}
+              </Typography>
+            </Tooltip>
             {IS_WINDOWS && (
               <>
                 <Tooltip
