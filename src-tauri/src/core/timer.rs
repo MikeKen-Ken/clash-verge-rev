@@ -1,4 +1,10 @@
-use crate::{config::Config, feat, singleton, utils::resolve::is_resolve_done};
+use crate::{
+    config::Config,
+    core::profile_update_retry::ProfileUpdateRetry,
+    feat::{self, handle_update_retry_side_effects},
+    singleton,
+    utils::resolve::is_resolve_done,
+};
 use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging, logging_error};
 use delay_timer::prelude::{DelayTimer, DelayTimerBuilder, TaskBuilder};
@@ -163,6 +169,7 @@ impl Timer {
             for (uid, diff) in diff_map {
                 match diff {
                     DiffFlag::Del(tid) => {
+                        ProfileUpdateRetry::global().cancel_failure_retries(&uid);
                         self.timer_map.write().remove(&uid);
                         let value = self.delay_timer.write().remove_task(tid);
                         if let Err(e) = value {
@@ -430,8 +437,8 @@ impl Timer {
         }
     }
 
-    /// Emit update events for frontend notification
-    fn emit_update_event(_uid: &str, _is_start: bool) {
+    /// 通知前端订阅正在/完成更新
+    pub(crate) fn emit_update_event(_uid: &str, _is_start: bool) {
         {
             if _is_start {
                 super::handle::Handle::notify_profile_update_started(_uid.into());
@@ -446,44 +453,44 @@ impl Timer {
         let task_start = std::time::Instant::now();
         logging!(info, Type::Timer, "Running timer task for profile: {}", uid);
 
-        match tokio::time::timeout(std::time::Duration::from_secs(40), async {
-            Self::emit_update_event(uid, true);
+        let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
+        logging!(
+            info,
+            Type::Timer,
+            "配置 {} 是否为当前激活配置: {}，定时更新仅保存订阅文件，不立即应用运行配置",
+            uid,
+            is_current
+        );
 
-            let is_current = Config::profiles().await.latest_arc().current.as_ref() == Some(uid);
-            logging!(
-                info,
-                Type::Timer,
-                "配置 {} 是否为当前激活配置: {}，定时更新仅保存订阅文件，不立即应用运行配置",
-                uid,
-                is_current
-            );
+        Self::emit_update_event(uid, true);
 
-            feat::update_profile(uid, None, false, false).await
+        let result = match tokio::time::timeout(std::time::Duration::from_secs(40), async {
+            ProfileUpdateRetry::global()
+                .run_locked_update(uid, false, false)
+                .await
         })
         .await
         {
-            Ok(result) => match result {
-                Ok(_) => {
-                    let duration = task_start.elapsed().as_millis();
-                    logging!(
-                        info,
-                        Type::Timer,
-                        "Timer task completed successfully for uid: {} (took {}ms)",
-                        uid,
-                        duration
-                    );
-                }
-                Err(e) => {
-                    logging_error!(Type::Timer, "Failed to update profile uid {}: {}", uid, e);
-                }
-            },
+            Ok(result) => {
+                let duration = task_start.elapsed().as_millis();
+                logging!(
+                    info,
+                    Type::Timer,
+                    "Timer task finished for uid: {} outcome={:?} (took {}ms)",
+                    uid,
+                    result,
+                    duration
+                );
+                result
+            }
             Err(_) => {
                 logging_error!(Type::Timer, "Timer task timed out for uid: {}", uid);
+                feat::ProfileUpdateResult::DownloadFailed
             }
-        }
+        };
 
-        // Emit completed event
         Self::emit_update_event(uid, false);
+        handle_update_retry_side_effects(uid, result);
     }
 
     async fn wait_until_resolve_done(max_wait: Duration) {

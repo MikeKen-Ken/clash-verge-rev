@@ -158,7 +158,8 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 #[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
     match feat::update_profile(&index, option.as_ref(), true, true).await {
-        Ok(_) => {
+        Ok(result) => {
+            feat::handle_update_retry_side_effects(&index, result);
             let _: () = Config::profiles().await.apply();
             Ok(())
         }
@@ -173,6 +174,7 @@ pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResu
 /// 删除配置文件
 #[tauri::command]
 pub async fn delete_profile(index: String) -> CmdResult {
+    crate::core::profile_update_retry::ProfileUpdateRetry::global().cancel_failure_retries(&index);
     // 使用Send-safe helper函数
     let should_update = profiles_delete_item_safe(&index).await.stringify_err()?;
     profiles_save_file_safe().await.stringify_err()?;

@@ -119,12 +119,27 @@ async fn should_update_profile(uid: &String, ignore_auto_update: bool) -> Result
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileUpdateResult {
+    /// 非远程、禁止自动更新等，未尝试下载
+    Skipped,
+    /// 订阅文件已成功拉取并写入
+    DownloadSucceeded,
+    /// 直连与代理方式均拉取失败
+    DownloadFailed,
+}
+
+enum PerformUpdateResult {
+    Succeeded(bool),
+    Failed,
+}
+
 async fn perform_profile_update(
     uid: &String,
     url: &String,
     opt: Option<&PrfOption>,
     option: Option<&PrfOption>,
-) -> Result<bool> {
+) -> Result<PerformUpdateResult> {
     logging!(info, Type::Config, "[订阅更新] 开始下载新的订阅内容");
     let mut merged_opt = PrfOption::merge(opt, option);
     let is_current = {
@@ -144,7 +159,7 @@ async fn perform_profile_update(
         Ok(mut item) => {
             logging!(info, Type::Config, "[订阅更新] 更新订阅配置成功");
             profiles_draft_update_item_safe(uid, &mut item).await?;
-            return Ok(is_current);
+            return Ok(PerformUpdateResult::Succeeded(is_current));
         }
         Err(err) => {
             logging!(
@@ -165,13 +180,13 @@ async fn perform_profile_update(
             profiles_draft_update_item_safe(uid, &mut item).await?;
             handle::Handle::notice_message("update_with_clash_proxy", profile_name);
             drop(last_err);
-            return Ok(is_current);
+            return Ok(PerformUpdateResult::Succeeded(is_current));
         }
         Err(err) => {
             logging!(
                 warn,
                 Type::Config,
-                "Warning: [订阅更新] 正常更新失败: {err}，尝试使用Clash代理更新"
+                "Warning: [订阅更新] Clash 代理更新失败: {err}，尝试使用系统代理更新"
             );
             last_err = err;
         }
@@ -186,20 +201,20 @@ async fn perform_profile_update(
             profiles_draft_update_item_safe(uid, &mut item).await?;
             handle::Handle::notice_message("update_with_clash_proxy", profile_name);
             drop(last_err);
-            return Ok(is_current);
+            return Ok(PerformUpdateResult::Succeeded(is_current));
         }
         Err(err) => {
             logging!(
                 warn,
                 Type::Config,
-                "Warning: [订阅更新] 正常更新失败: {err}，尝试使用系统代理更新"
+                "Warning: [订阅更新] 系统代理更新失败: {err}",
             );
             last_err = err;
         }
     }
 
     handle::Handle::notice_message("update_failed_even_with_clash", format!("{profile_name} - {last_err}"));
-    Ok(is_current)
+    Ok(PerformUpdateResult::Failed)
 }
 
 pub async fn update_profile(
@@ -207,31 +222,55 @@ pub async fn update_profile(
     option: Option<&PrfOption>,
     auto_refresh: bool,
     ignore_auto_update: bool,
-) -> Result<()> {
+) -> Result<ProfileUpdateResult> {
     logging!(info, Type::Config, "[订阅更新] 开始更新订阅 {}", uid);
     let url_opt = should_update_profile(uid, ignore_auto_update).await?;
 
-    let should_refresh = match url_opt {
-        Some((url, opt)) => perform_profile_update(uid, &url, opt.as_ref(), option).await? && auto_refresh,
-        None => auto_refresh,
+    let outcome = match url_opt {
+        Some((url, opt)) => match perform_profile_update(uid, &url, opt.as_ref(), option).await? {
+            PerformUpdateResult::Succeeded(is_current) => {
+                if auto_refresh && is_current {
+                    logging!(info, Type::Config, "[订阅更新] 更新内核配置");
+                    match CoreManager::global().update_config().await {
+                        Ok(_) => {
+                            logging!(info, Type::Config, "[订阅更新] 更新成功");
+                            handle::Handle::refresh_clash();
+                        }
+                        Err(err) => {
+                            logging!(error, Type::Config, "[订阅更新] 更新失败: {}", err);
+                            handle::Handle::notice_message("update_failed", format!("{err}"));
+                            logging!(error, Type::Config, "{err}");
+                        }
+                    }
+                }
+                ProfileUpdateResult::DownloadSucceeded
+            }
+            PerformUpdateResult::Failed => ProfileUpdateResult::DownloadFailed,
+        },
+        None => ProfileUpdateResult::Skipped,
     };
 
-    if should_refresh {
-        logging!(info, Type::Config, "[订阅更新] 更新内核配置");
-        match CoreManager::global().update_config().await {
-            Ok(_) => {
-                logging!(info, Type::Config, "[订阅更新] 更新成功");
-                handle::Handle::refresh_clash();
-            }
-            Err(err) => {
-                logging!(error, Type::Config, "[订阅更新] 更新失败: {}", err);
-                handle::Handle::notice_message("update_failed", format!("{err}"));
-                logging!(error, Type::Config, "{err}");
-            }
-        }
-    }
+    Ok(outcome)
+}
 
-    Ok(())
+/// 根据更新结果维护失败重试链（与 `update_interval` 定时器无关）
+pub fn handle_update_retry_side_effects(uid: &str, result: ProfileUpdateResult) {
+    use crate::core::profile_update_retry::ProfileUpdateRetry;
+
+    match result {
+        ProfileUpdateResult::DownloadFailed => {
+            let uid_owned = uid.to_string();
+            tokio::spawn(async move {
+                if ProfileUpdateRetry::can_schedule_failure_retries(&uid_owned).await {
+                    ProfileUpdateRetry::global().schedule_failure_retries(uid_owned);
+                }
+            });
+        }
+        ProfileUpdateResult::DownloadSucceeded => {
+            ProfileUpdateRetry::global().cancel_failure_retries(uid);
+        }
+        ProfileUpdateResult::Skipped => {}
+    }
 }
 
 /// 增强配置

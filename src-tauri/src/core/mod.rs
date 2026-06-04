@@ -6,6 +6,7 @@ pub mod manager;
 mod notification;
 pub mod service;
 pub mod sysopt;
+pub mod profile_update_retry;
 pub mod timer;
 pub mod tray;
 pub mod validate;
