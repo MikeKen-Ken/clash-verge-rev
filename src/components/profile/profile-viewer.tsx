@@ -111,7 +111,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         }
 
         const name = form.name || `${form.type} file`;
-        const home = form.home?.trim() || null;
+        const home = form.home?.trim() || undefined;
         const item = { ...form, name, home, option };
         const isRemote = form.type === "remote";
         const isUpdate = openType === "edit";

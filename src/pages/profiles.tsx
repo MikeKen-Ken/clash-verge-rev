@@ -16,6 +16,7 @@ import {
   ClearRounded,
   ContentPasteRounded,
   DataObjectRounded,
+  FolderOpenRounded,
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
@@ -63,6 +64,7 @@ import {
   //restartCore,
   getRuntimeLogs,
   importProfile,
+  openAppDir,
   patchProfile,
   readProfileFile,
   reorderProfile,
@@ -1182,6 +1184,15 @@ const ProfilePage = () => {
             onClick={() => configRef.current?.open()}
           >
             <TextSnippetOutlined />
+          </IconButton>
+
+          <IconButton
+            size="small"
+            color="inherit"
+            title="打开 Clash 数据目录"
+            onClick={() => void openAppDir()}
+          >
+            <FolderOpenRounded />
           </IconButton>
 
           <IconButton
