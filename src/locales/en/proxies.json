@@ -42,6 +42,7 @@
       "locate": "locate",
       "delayCheck": "Delay check",
       "flushFakeIp": "Flush DNS cache",
+      "tunnelTraffic": "Cumulative proxied traffic this session (excludes DIRECT; resets when TUN is toggled)",
       "sortDefault": "Sort by default",
       "sortDelay": "Sort by delay",
       "sortName": "Sort by name",

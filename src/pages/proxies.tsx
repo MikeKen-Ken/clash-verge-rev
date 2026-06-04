@@ -1,7 +1,10 @@
+import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
+import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import DnsRounded from "@mui/icons-material/DnsRounded";
 import {
+  alpha,
   Box,
   Button,
   ButtonGroup,
@@ -24,6 +27,7 @@ import { BasePage } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import {
+  computeNonDirectSessionTraffic,
   resetConnectionTrafficSession,
   useConnectionData,
 } from "@/hooks/use-connection-data";
@@ -85,13 +89,22 @@ const ProxyPage = () => {
   const { isTunModeAvailable } = useSystemState();
   const {
     response: { data: connections },
+    sessionStartMs,
   } = useConnectionData();
 
-  const tunnelTrafficText = useMemo(() => {
-    const [dl, dlUnit] = parseTraffic(connections?.downloadTotal);
-    const [ul, ulUnit] = parseTraffic(connections?.uploadTotal);
-    return `${dl} ${dlUnit}↓\u00a0\u00a0${ul} ${ulUnit}↑`;
-  }, [connections?.downloadTotal, connections?.uploadTotal]);
+  const nonDirectTraffic = useMemo(
+    () => computeNonDirectSessionTraffic(connections, sessionStartMs),
+    [connections, sessionStartMs],
+  );
+
+  const [downloadText, downloadUnit] = useMemo(
+    () => parseTraffic(nonDirectTraffic.download),
+    [nonDirectTraffic.download],
+  );
+  const [uploadText, uploadUnit] = useMemo(
+    () => parseTraffic(nonDirectTraffic.upload),
+    [nonDirectTraffic.upload],
+  );
 
   const modeList = useMemo(() => MODES, []);
 
@@ -611,19 +624,72 @@ const ProxyPage = () => {
                 </Button>
               ))}
             </ButtonGroup>
-            <Tooltip title="累计代理转发流量（不含直连，切换 TUN 后重新计数）">
-              <Typography
-                variant="body2"
-                color="text.primary"
+            <Tooltip title={t("proxies.page.tooltips.tunnelTraffic")}>
+              <Box
                 sx={{
-                  whiteSpace: "nowrap",
-                  fontVariantNumeric: "tabular-nums",
-                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.25,
                   ml: 0.5,
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 1,
+                  bgcolor: (theme) => alpha(theme.palette.divider, 0.08),
+                  border: (theme) =>
+                    `1px solid ${alpha(theme.palette.divider, 0.2)}`,
                 }}
               >
-                {tunnelTrafficText}
-              </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
+                  }}
+                >
+                  <ArrowDownwardRounded
+                    sx={{ fontSize: 16, color: "primary.main", flexShrink: 0 }}
+                  />
+                  <Typography
+                    variant="body2"
+                    color="text.primary"
+                    sx={{
+                      fontVariantNumeric: "tabular-nums",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {downloadText} {downloadUnit}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
+                  }}
+                >
+                  <ArrowUpwardRounded
+                    sx={{
+                      fontSize: 16,
+                      color: "secondary.main",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Typography
+                    variant="body2"
+                    color="text.primary"
+                    sx={{
+                      fontVariantNumeric: "tabular-nums",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {uploadText} {uploadUnit}
+                  </Typography>
+                </Box>
+              </Box>
             </Tooltip>
           </Box>
         </Box>

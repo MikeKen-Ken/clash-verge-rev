@@ -52,6 +52,9 @@ export interface ConnectionMonitorData {
   closedConnections: IConnectionsItem[];
 }
 
+export type { NonDirectSessionTraffic } from "@/utils/non-direct-session-traffic";
+export { computeNonDirectSessionTraffic } from "@/utils/non-direct-session-traffic";
+
 /** 按 id 去重，保留较新的 closedAt */
 const dedupeClosedConnectionsById = (
   items: IConnectionsItem[],

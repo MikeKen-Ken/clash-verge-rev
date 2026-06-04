@@ -42,6 +42,7 @@
       "locate": "当前节点",
       "delayCheck": "延迟测试",
       "flushFakeIp": "清除 DNS 缓存",
+      "tunnelTraffic": "当前会话经代理转发的累计流量（不含直连；切换 TUN 后重新计数）",
       "sortDefault": "默认排序",
       "sortDelay": "按延迟排序",
       "sortName": "按名称排序",
