@@ -34,7 +34,6 @@ import {
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import {
-  computeNonDirectSessionTraffic,
   filterClosedConnectionsByRetention,
   useConnectionData,
 } from "@/hooks/use-connection-data";
@@ -163,7 +162,6 @@ const ConnectionsPage = () => {
   const {
     response: { data: connections },
     clearClosedConnections,
-    sessionStartMs,
   } = useConnectionData();
 
   const [setting, setSetting] = useConnectionSetting();
@@ -177,11 +175,6 @@ const ConnectionsPage = () => {
   );
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
-
-  const nonDirectTraffic = useMemo(
-    () => computeNonDirectSessionTraffic(connections, sessionStartMs),
-    [connections, sessionStartMs],
-  );
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
@@ -540,14 +533,6 @@ const ConnectionsPage = () => {
               {t("shared.actions.clear")}
             </Button>
           )}
-          <Box sx={{ mx: 1 }}>
-            {t("shared.labels.downloaded")}:{" "}
-            {parseTraffic(nonDirectTraffic.download)}
-          </Box>
-          <Box sx={{ mx: 1 }}>
-            {t("shared.labels.uploaded")}:{" "}
-            {parseTraffic(nonDirectTraffic.upload)}
-          </Box>
           <IconButton
             color="inherit"
             size="small"
