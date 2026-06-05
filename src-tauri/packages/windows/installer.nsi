@@ -406,6 +406,7 @@ FunctionEnd
 
 ; Uninstaller Pages
 ; 1. Confirm uninstall page
+; "Delete application data" checkbox removed (Tauri default un.ConfirmShow / DeleteAppDataCheckbox)
 !define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
 !insertmacro MUI_UNPAGE_CONFIRM
 
