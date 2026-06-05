@@ -271,7 +271,20 @@ const GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY = "profiles.global.nextUpdateAt";
 const GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY =
   "profiles.global.updateIntervalHours.applied";
 const CUSTOM_PROXY_ORDER_STORAGE_KEY = "profiles.customProxyOrder";
+const MERGE_INCLUSION_STORAGE_KEY = "profiles.mergeInclusion";
 const DEFAULT_CUSTOM_PROXY_ORDER = ["🇭🇰", "🇯🇵", "🇸🇬", "🇹🇼", "🇺🇸"] as const;
+
+const loadMergeInclusionMap = (): Record<string, boolean> => {
+  try {
+    const raw = localStorage.getItem(MERGE_INCLUSION_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+};
 
 const ProfilePage = () => {
   const { t } = useTranslation();
@@ -290,6 +303,9 @@ const ProfilePage = () => {
     if (saved && saved.trim()) return saved;
     return DEFAULT_CUSTOM_PROXY_ORDER.join(",");
   });
+  const [mergeInclusion, setMergeInclusion] = useState<Record<string, boolean>>(
+    loadMergeInclusionMap,
+  );
 
   // 防止重复切换
   const switchingProfileRef = useRef<string | null>(null);
@@ -491,107 +507,110 @@ const ProfilePage = () => {
     [parseCustomProxyOrder],
   );
 
-  const onGenerateMergedProfile = useLockFn(async () => {
-    showNotice.info("开始执行配置合并", 1500);
-    const items = profileItems;
-    const targetIndex = items.findIndex((item) => item.type === "local");
-    if (targetIndex === -1) {
-      showNotice.error("No local target profile found");
-      return;
-    }
-
-    const targetProfile = items[targetIndex];
-    const sourceProfiles = items
-      .slice(targetIndex + 1)
-      .filter((item) => item.type === "remote");
-
-    if (!sourceProfiles.length) {
-      showNotice.error("No remote source profiles found after target local profile");
-      return;
-    }
-
-    try {
-      const targetRaw = await readProfileFile(targetProfile.uid);
-      const targetYaml = YAML.load(targetRaw) as Record<string, any>;
-      if (!targetYaml || typeof targetYaml !== "object") {
-        throw new Error("Target profile content is invalid");
+  const onGenerateMergedProfile = useLockFn(
+    async (inclusionOverride?: Record<string, boolean>) => {
+      showNotice.info("开始执行配置合并", 1500);
+      const items = profileItems;
+      const inclusion = inclusionOverride ?? mergeInclusion;
+      const targetIndex = items.findIndex((item) => item.type === "local");
+      if (targetIndex === -1) {
+        showNotice.error("No local target profile found");
+        return;
       }
 
-      const generatedGroupNames: string[] = [];
-      const generatedProxies: any[] = [];
-      const usedNames = new Set<string>();
+      const targetProfile = items[targetIndex];
+      const sourceProfiles = items
+        .slice(targetIndex + 1)
+        .filter(
+          (item) => item.type === "remote" && inclusion[item.uid] !== false,
+        );
 
-      for (const source of sourceProfiles) {
-        const sourceRaw = await readProfileFile(source.uid);
-        const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
-        const sourceProxiesRaw = Array.isArray(sourceYaml?.proxies)
-          ? sourceYaml.proxies.filter(isValidProxyNode)
-          : [];
-        const sourceProxies = sortProxiesByCustomOrder(sourceProxiesRaw);
+      if (!sourceProfiles.length) {
+        showNotice.error("没有勾选参与合并的远程订阅");
+        return;
+      }
 
-        const sourceDisplayName = source.name || source.desc || source.uid;
-        const localFlagCounters = new Map<string, number>();
-        let droppedCount = 0;
+      try {
+        const targetRaw = await readProfileFile(targetProfile.uid);
+        const targetYaml = YAML.load(targetRaw) as Record<string, any>;
+        if (!targetYaml || typeof targetYaml !== "object") {
+          throw new Error("Target profile content is invalid");
+        }
 
-        for (const proxy of sourceProxies) {
-          const proxyName = String(proxy?.name || "");
-          const flag = resolveFlag(proxyName);
-          // 中文关键字未命中：归属无法确定，直接丢弃，不进入合并结果
-          if (!flag) {
-            droppedCount += 1;
-            continue;
+        const generatedGroupNames: string[] = [];
+        const generatedProxies: any[] = [];
+        const usedNames = new Set<string>();
+
+        for (const source of sourceProfiles) {
+          const sourceRaw = await readProfileFile(source.uid);
+          const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
+          const sourceProxiesRaw = Array.isArray(sourceYaml?.proxies)
+            ? sourceYaml.proxies.filter(isValidProxyNode)
+            : [];
+          const sourceProxies = sortProxiesByCustomOrder(sourceProxiesRaw);
+
+          const sourceDisplayName = source.name || source.desc || source.uid;
+          const localFlagCounters = new Map<string, number>();
+          let droppedCount = 0;
+
+          for (const proxy of sourceProxies) {
+            const proxyName = String(proxy?.name || "");
+            const flag = resolveFlag(proxyName);
+            // 中文关键字未命中：归属无法确定，直接丢弃，不进入合并结果
+            if (!flag) {
+              droppedCount += 1;
+              continue;
+            }
+            const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
+            localFlagCounters.set(flag, nextIndex);
+            const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
+            const generatedName = ensureUniqueName(baseName, usedNames);
+
+            generatedGroupNames.push(generatedName);
+            generatedProxies.push({
+              ...proxy,
+              name: generatedName,
+            });
           }
-          const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
-          localFlagCounters.set(flag, nextIndex);
-          const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
-          const generatedName = ensureUniqueName(baseName, usedNames);
 
-          generatedGroupNames.push(generatedName);
-          generatedProxies.push({
-            ...proxy,
-            name: generatedName,
-          });
+          if (droppedCount > 0) {
+            debugLog(
+              `[订阅合并] ${sourceDisplayName}：跳过 ${droppedCount} 个未匹配中文国家关键字的节点`,
+            );
+          }
         }
 
-        if (droppedCount > 0) {
-          debugLog(
-            `[订阅合并] ${sourceDisplayName}：跳过 ${droppedCount} 个未匹配中文国家关键字的节点`,
-          );
+        if (!generatedProxies.length) {
+          throw new Error("No valid proxies generated from source subscriptions");
         }
-      }
 
-      if (!generatedProxies.length) {
-        throw new Error("No valid proxies generated from source subscriptions");
-      }
+        const profileGroups = Array.isArray(targetYaml["proxy-groups"])
+          ? targetYaml["proxy-groups"]
+          : [];
+        const firstNodeGroup = profileGroups.find(
+          (group: any) => group?.name === "🚀 节点选择",
+        );
+        if (firstNodeGroup && typeof firstNodeGroup === "object") {
+          firstNodeGroup.proxies = generatedGroupNames;
+        }
 
-      const profileGroups = Array.isArray(targetYaml["proxy-groups"])
-        ? targetYaml["proxy-groups"]
-        : [];
-      const firstNodeGroup = profileGroups.find(
-        (group: any) => group?.name === "🚀 节点选择",
-      );
-      if (firstNodeGroup && typeof firstNodeGroup === "object") {
-        firstNodeGroup.proxies = generatedGroupNames;
-      }
+        targetYaml.proxies = generatedProxies;
 
-      targetYaml.proxies = generatedProxies;
+        await rotateLocalBackups(targetRaw);
 
-      await rotateLocalBackups(targetRaw);
-
-      const nextText = YAML.dump(targetYaml, {
-        lineWidth: -1,
-        noRefs: true,
-      });
-      await saveProfileFile(targetProfile.uid, nextText);
-      if (profiles.current === targetProfile.uid) {
+        const nextText = YAML.dump(targetYaml, {
+          lineWidth: -1,
+          noRefs: true,
+        });
+        await saveProfileFile(targetProfile.uid, nextText);
         await enhanceProfiles();
+        await mutateProfiles();
+        showNotice.success(`合并完成：已处理 ${sourceProfiles.length} 个远程配置`, 3000);
+      } catch (err: any) {
+        showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
       }
-      await mutateProfiles();
-      showNotice.success(`合并完成：已处理 ${sourceProfiles.length} 个远程配置`, 3000);
-    } catch (err: any) {
-      showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
-    }
-  });
+    },
+  );
 
   const updateAllRemoteAndMerge = useLockFn(async (source: string) => {
     showNotice.info(`${source}：开始更新远程规则`, 1500);
@@ -673,6 +692,37 @@ const ProfilePage = () => {
 
     return items.filter((i) => i && type1.includes(i.type!));
   }, [profiles]);
+
+  const mergeTargetIndex = useMemo(
+    () => profileItems.findIndex((item) => item.type === "local"),
+    [profileItems],
+  );
+
+  const firstLocalUid =
+    mergeTargetIndex >= 0 ? profileItems[mergeTargetIndex]?.uid : undefined;
+
+  const onMergeInclusionChange = useLockFn(async (uid: string, included: boolean) => {
+    const next = { ...mergeInclusion, [uid]: included };
+    setMergeInclusion(next);
+    localStorage.setItem(MERGE_INCLUSION_STORAGE_KEY, JSON.stringify(next));
+    await onGenerateMergedProfile(next);
+  });
+
+  useEffect(() => {
+    if (mergeTargetIndex < 0) return;
+    setMergeInclusion((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      profileItems.slice(mergeTargetIndex + 1).forEach((item) => {
+        if (item.type !== "remote" || next[item.uid] !== undefined) return;
+        next[item.uid] = true;
+        changed = true;
+      });
+      if (!changed) return prev;
+      localStorage.setItem(MERGE_INCLUSION_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [profileItems, mergeTargetIndex]);
 
   const currentActivatings = () => {
     return [...new Set([profiles.current ?? ""])].filter(Boolean);
@@ -969,6 +1019,14 @@ const ProfilePage = () => {
     })();
   }, [current, activateProfile, mutateProfiles]);
 
+  // 强制使用第一个 local 作为当前配置
+  useEffect(() => {
+    if (!firstLocalUid) return;
+    if (profiles.current === firstLocalUid) return;
+    if (switchingProfileRef.current) return;
+    void activateProfile(firstLocalUid, false);
+  }, [firstLocalUid, profiles.current, activateProfile]);
+
   const onEnhance = useLockFn(async (notifySuccess: boolean) => {
     if (switchingProfileRef.current) {
       debugLog(
@@ -1000,13 +1058,31 @@ const ProfilePage = () => {
   });
 
   const onDelete = useLockFn(async (uid: string) => {
-    const current = profiles.current === uid;
+    const wasCurrent = profiles.current === uid;
+    const wasMergeSource =
+      mergeTargetIndex >= 0 &&
+      profileItems
+        .slice(mergeTargetIndex + 1)
+        .some((item) => item.uid === uid && item.type === "remote");
     try {
-      setActivatings([...(current ? currentActivatings() : []), uid]);
+      setActivatings([...(wasCurrent ? currentActivatings() : []), uid]);
       await deleteProfile(uid);
+      if (mergeInclusion[uid] !== undefined) {
+        setMergeInclusion((prev) => {
+          const next = { ...prev };
+          delete next[uid];
+          localStorage.setItem(MERGE_INCLUSION_STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+      }
       mutateProfiles();
       mutateLogs();
-      if (current) {
+      if (wasCurrent && firstLocalUid) {
+        await activateProfile(firstLocalUid, false);
+      }
+      if (wasMergeSource) {
+        await onGenerateMergedProfile();
+      } else if (wasCurrent) {
         await onEnhance(false);
       }
     } catch (err: any) {
@@ -1344,17 +1420,25 @@ const ProfilePage = () => {
                   return x.uid;
                 })}
               >
-                {profileItems.map((item) => (
+                {profileItems.map((item, index) => (
                   <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.file}>
                     <ProfileItem
                       id={item.uid}
-                      selected={profiles.current === item.uid}
+                      selected={firstLocalUid === item.uid}
                       activating={activatings.includes(item.uid)}
                       itemData={item}
-                      onSelect={(f) => onSelect(item.uid, f)}
+                      allowProfileSelect={false}
+                      mergeIncludeEnabled={
+                        item.type === "remote" && index > mergeTargetIndex
+                      }
+                      mergeIncluded={mergeInclusion[item.uid] !== false}
+                      onMergeIncludedChange={(included) =>
+                        onMergeInclusionChange(item.uid, included)
+                      }
+                      onSelect={() => { }}
                       onEdit={() => viewerRef.current?.edit(item)}
                       onSave={async (prev, curr) => {
-                        if (prev !== curr && profiles.current === item.uid) {
+                        if (prev !== curr && firstLocalUid === item.uid) {
                           await onEnhance(false);
                           //  await restartCore();
                           //   Notice.success(t("settings.feedback.notifications.clash.restartSuccess"), 1000);

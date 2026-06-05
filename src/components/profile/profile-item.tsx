@@ -59,6 +59,12 @@ interface Props {
   batchMode?: boolean;
   isSelected?: boolean;
   onSelectionChange?: () => void;
+  /** 为 false 时不可点击切换为当前配置 */
+  allowProfileSelect?: boolean;
+  /** 参与合并勾选（仅远程订阅） */
+  mergeIncludeEnabled?: boolean;
+  mergeIncluded?: boolean;
+  onMergeIncludedChange?: (included: boolean) => void;
 }
 
 export const ProfileItem = (props: Props) => {
@@ -74,6 +80,10 @@ export const ProfileItem = (props: Props) => {
     batchMode,
     isSelected,
     onSelectionChange,
+    allowProfileSelect = true,
+    mergeIncludeEnabled = false,
+    mergeIncluded = true,
+    onMergeIncludedChange,
   } = props;
   const {
     attributes,
@@ -372,6 +382,7 @@ export const ProfileItem = (props: Props) => {
     label: string;
     handler: () => void;
     disabled: boolean;
+    show?: boolean;
   };
 
   const menuLabels: Record<string, string> = {
@@ -404,6 +415,7 @@ export const ProfileItem = (props: Props) => {
       label: menuLabels.select,
       handler: onForceSelect,
       disabled: false,
+      show: allowProfileSelect,
     },
     {
       label: menuLabels.editInfo,
@@ -476,6 +488,7 @@ export const ProfileItem = (props: Props) => {
       label: menuLabels.select,
       handler: onForceSelect,
       disabled: false,
+      show: allowProfileSelect,
     },
     {
       label: menuLabels.editInfo,
@@ -587,8 +600,7 @@ export const ProfileItem = (props: Props) => {
       <ProfileBox
         aria-selected={selected}
         onClick={(e) => {
-          // 如果正在激活中，阻止重复点击
-          if (activating) {
+          if (activating || !allowProfileSelect) {
             e.preventDefault();
             e.stopPropagation();
             return;
@@ -629,6 +641,23 @@ export const ProfileItem = (props: Props) => {
         )}
         <Box position="relative">
           <Box sx={{ display: "flex", justifyContent: "start" }}>
+            {mergeIncludeEnabled && (
+              <IconButton
+                size="small"
+                sx={{ padding: "2px", marginRight: "4px", marginLeft: "-8px" }}
+                title={mergeIncluded ? "参与合并" : "不参与合并"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMergeIncludedChange?.(!mergeIncluded);
+                }}
+              >
+                {mergeIncluded ? (
+                  <CheckBoxRounded color="primary" />
+                ) : (
+                  <CheckBoxOutlineBlankRounded />
+                )}
+              </IconButton>
+            )}
             {batchMode && (
               <IconButton
                 size="small"
@@ -668,7 +697,15 @@ export const ProfileItem = (props: Props) => {
             </Box>
 
             <Typography
-              width={batchMode ? "calc(100% - 56px)" : "calc(100% - 36px)"}
+              width={
+                mergeIncludeEnabled
+                  ? batchMode
+                    ? "calc(100% - 80px)"
+                    : "calc(100% - 60px)"
+                  : batchMode
+                    ? "calc(100% - 56px)"
+                    : "calc(100% - 36px)"
+              }
               sx={{ fontSize: "18px", fontWeight: "600", lineHeight: "26px" }}
               variant="h6"
               component="h2"
