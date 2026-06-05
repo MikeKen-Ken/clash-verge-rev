@@ -81,7 +81,6 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         type: "remote",
         name: "",
         desc: "",
-        home: "",
         url: "",
         option: {
           with_proxy: false,
