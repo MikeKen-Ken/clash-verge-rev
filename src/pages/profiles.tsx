@@ -1275,7 +1275,7 @@ const ProfilePage = () => {
             size="small"
             color="inherit"
             title="Generate merged local profile with backup"
-            onClick={onGenerateMergedProfile}
+            onClick={() => void onGenerateMergedProfile()}
           >
             <DataObjectRounded />
           </IconButton>
