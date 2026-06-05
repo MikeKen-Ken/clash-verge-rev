@@ -62,15 +62,34 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
 
   useImperativeHandle(ref, () => ({
     create: () => {
+      reset({
+        type: "remote",
+        name: "",
+        desc: "",
+        home: "",
+        url: "",
+        option: {
+          with_proxy: false,
+          self_proxy: false,
+        },
+      });
       setOpenType("new");
       setOpen(true);
     },
     edit: (item: IProfileItem) => {
-      if (item) {
-        Object.entries(item).forEach(([key, value]) => {
-          setValue(key as any, value);
-        });
-      }
+      reset({
+        type: "remote",
+        name: "",
+        desc: "",
+        home: "",
+        url: "",
+        option: {
+          with_proxy: false,
+          self_proxy: false,
+        },
+        ...item,
+        home: item.home ?? "",
+      });
       setOpenType("edit");
       setOpen(true);
     },
@@ -111,7 +130,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         }
 
         const name = form.name || `${form.type} file`;
-        const home = form.home?.trim() || undefined;
+        const home = form.home?.trim() ?? "";
         const item = { ...form, name, home, option };
         const isRemote = form.type === "remote";
         const isUpdate = openType === "edit";

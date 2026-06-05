@@ -208,11 +208,14 @@ impl IProfiles {
                 patch!(each, item, extra);
                 patch!(each, item, updated);
                 patch!(each, item, option);
-                each.home = item
-                    .home
-                    .as_ref()
-                    .filter(|s| !s.is_empty())
-                    .cloned();
+                // 仅当请求显式携带 home 时才更新，避免部分 patch（如只改 option）清空已保存的面板链接
+                if item.home.is_some() {
+                    each.home = item
+                        .home
+                        .as_ref()
+                        .filter(|s| !s.is_empty())
+                        .cloned();
+                }
 
                 self.items = Some(items);
                 return self.save_file().await;
@@ -240,8 +243,9 @@ impl IProfiles {
                 if each.uid == some_uid {
                     each.extra = item.extra;
                     each.updated = item.updated;
-                    if item.home.is_some() {
-                        each.home = item.home.to_owned();
+                    // 订阅响应未携带面板链接时保留用户手动设置的 home
+                    if let Some(home) = item.home.as_ref().filter(|s| !s.is_empty()) {
+                        each.home = Some(home.clone());
                     }
                     each.option = PrfOption::merge(each.option.as_ref(), item.option.as_ref());
                     // save the file data
