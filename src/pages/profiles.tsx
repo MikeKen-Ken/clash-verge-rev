@@ -273,6 +273,20 @@ const GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY =
 const CUSTOM_PROXY_ORDER_STORAGE_KEY = "profiles.customProxyOrder";
 const MERGE_INCLUSION_STORAGE_KEY = "profiles.mergeInclusion";
 const DEFAULT_CUSTOM_PROXY_ORDER = ["🇭🇰", "🇯🇵", "🇸🇬", "🇹🇼", "🇺🇸"] as const;
+const LOCAL_BACKUP_DESC = "auto backup before merge";
+const LOCAL_BACKUP_NAME_PATTERN = /^Local-backup-\d+$/i;
+const LOCAL_BACKUP_KEEP = 2;
+
+const isLocalMergeBackup = (item: IProfileItem) =>
+  item.type === "local" &&
+  (LOCAL_BACKUP_NAME_PATTERN.test(item.name || "") ||
+    item.desc === LOCAL_BACKUP_DESC);
+
+const filterMergeProfileItems = (items: IProfileItem[] | undefined) =>
+  (items || []).filter(
+    (item): item is IProfileItem =>
+      !!item && (item.type === "local" || item.type === "remote"),
+  );
 
 const loadMergeInclusionMap = (): Record<string, boolean> => {
   try {
@@ -430,14 +444,20 @@ const ProfilePage = () => {
   });
 
   const rotateLocalBackups = async (targetRaw: string) => {
-    const localItems = profileItems.filter((item) => item.type === "local");
-    const backups = localItems.filter((item) => /^Local-backup-\d+$/.test(item.name || ""));
+    // 必须从后端拉取最新列表，避免 SWR/React 闭包中的 profileItems 过期导致重复创建备份
+    const freshProfiles = await getProfiles();
+    const localItems = filterMergeProfileItems(freshProfiles?.items).filter(
+      (item) => item.type === "local",
+    );
+    const backups = localItems.filter(isLocalMergeBackup);
     backups.sort((a, b) => (b.updated || 0) - (a.updated || 0));
 
     // 删除多余备份，仅保留最近两个（第三个将由本次新建）
-    const keep = backups.slice(0, 2);
-    const remove = backups.slice(2);
-    await Promise.allSettled(remove.map((item) => deleteProfile(item.uid)));
+    const keep = backups.slice(0, LOCAL_BACKUP_KEEP);
+    const remove = backups.slice(LOCAL_BACKUP_KEEP);
+    for (const item of remove) {
+      await deleteProfile(item.uid);
+    }
 
     const older = keep[1];
     const newer = keep[0];
@@ -453,7 +473,7 @@ const ProfilePage = () => {
       {
         type: "local",
         name: "Local-backup-2",
-        desc: "auto backup before merge",
+        desc: LOCAL_BACKUP_DESC,
         url: "",
         option: {
           with_proxy: false,
@@ -510,9 +530,12 @@ const ProfilePage = () => {
   const onGenerateMergedProfile = useLockFn(
     async (inclusionOverride?: Record<string, boolean>) => {
       showNotice.info("开始执行配置合并", 1500);
-      const items = profileItems;
+      const freshProfiles = await getProfiles();
+      const items = filterMergeProfileItems(freshProfiles?.items);
       const inclusion = inclusionOverride ?? mergeInclusion;
-      const targetIndex = items.findIndex((item) => item.type === "local");
+      const targetIndex = items.findIndex(
+        (item) => item.type === "local" && !isLocalMergeBackup(item),
+      );
       if (targetIndex === -1) {
         showNotice.error("No local target profile found");
         return;
@@ -685,16 +708,16 @@ const ProfilePage = () => {
   const configRef = useRef<DialogRef>(null);
 
   // distinguish type
-  const profileItems = useMemo(() => {
-    const items = profiles.items || [];
-
-    const type1 = ["local", "remote"];
-
-    return items.filter((i) => i && type1.includes(i.type!));
-  }, [profiles]);
+  const profileItems = useMemo(
+    () => filterMergeProfileItems(profiles.items),
+    [profiles],
+  );
 
   const mergeTargetIndex = useMemo(
-    () => profileItems.findIndex((item) => item.type === "local"),
+    () =>
+      profileItems.findIndex(
+        (item) => item.type === "local" && !isLocalMergeBackup(item),
+      ),
     [profileItems],
   );
 
