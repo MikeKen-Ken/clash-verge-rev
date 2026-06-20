@@ -16,7 +16,7 @@ use log::Level;
 use scopeguard::defer;
 use std::{
     collections::HashSet,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicI64, Ordering},
     time::Duration,
 };
 use tauri_plugin_shell::ShellExt as _;
@@ -101,6 +101,9 @@ impl CoreManager {
                     tauri_plugin_shell::process::CommandEvent::Stdout(line)
                     | tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
                         let message = CompactString::from(&*String::from_utf8_lossy(&line));
+                        if should_trigger_dns_restart(message.as_str()) {
+                            handle_dns_stall_restart();
+                        }
                         if let Some((group, proxy)) = parse_max_connect_times_test_log(message.as_str()) {
                             notify_event(NotificationEvent::MaxConnectTimesDelayTest {
                                 group: group.as_str(),
@@ -215,6 +218,10 @@ impl CoreManager {
                     Ok(logs) => {
                         let mut current_matches: HashSet<String> = HashSet::new();
                         for message in logs {
+                            // DNS 失效重启哨兵：服务模式下日志为快照轮询，依赖冷却避免重复触发
+                            if should_trigger_dns_restart(message.as_str()) {
+                                handle_dns_stall_restart();
+                            }
                             if parse_max_connect_times_test_log(message.as_str()).is_none() {
                                 continue;
                             }
@@ -249,6 +256,45 @@ impl CoreManager {
             SERVICE_MAX_CONNECT_TIMES_LOG_MONITOR_RUNNING.store(false, Ordering::Release);
         });
     }
+}
+
+/// 核心 DNS 自愈无效时打印的稳定哨兵（与核心 `dns/health.go` 中 `dnsRestartSentinel` 保持一致）。
+/// 识别到该行说明 DNS 已持续失效且软恢复无效，需重启核心进程兜底。
+const DNS_RESTART_SENTINEL: &str = "[APP] dns-stall-unrecoverable request-core-restart";
+
+/// 上次因 DNS 失效触发自动重启的时间戳（毫秒），用于冷却防止重启风暴。
+static LAST_DNS_RESTART_MS: AtomicI64 = AtomicI64::new(0);
+
+/// 两次 DNS 失效自动重启之间的最小间隔（毫秒）。
+const DNS_RESTART_MIN_INTERVAL_MS: i64 = 3 * 60 * 1000;
+
+/// 判断日志行是否为 DNS 重启哨兵，并在通过冷却检查时占用本次重启名额（CAS 防并发重复触发）。
+fn should_trigger_dns_restart(message: &str) -> bool {
+    if !message.contains(DNS_RESTART_SENTINEL) {
+        return false;
+    }
+    let now = chrono::Local::now().timestamp_millis();
+    let last = LAST_DNS_RESTART_MS.load(Ordering::Acquire);
+    if last != 0 && now - last < DNS_RESTART_MIN_INTERVAL_MS {
+        return false;
+    }
+    LAST_DNS_RESTART_MS
+        .compare_exchange(last, now, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+/// 异步重启核心进程以从 DNS 持续失效中兜底恢复。
+fn handle_dns_stall_restart() {
+    AsyncHandler::spawn(|| async move {
+        logging!(
+            warn,
+            Type::Core,
+            "检测到 DNS 持续失效且核心自愈无效，正在重启核心进程兜底恢复"
+        );
+        if let Err(err) = CoreManager::global().restart_core().await {
+            logging!(error, Type::Core, "DNS 失效自动重启核心失败: {err}");
+        }
+    });
 }
 
 const MAX_CONNECT_TIMES_TEST_LOG_PREFIX: &str = "[APP] max-connect-times test triggered\t";
