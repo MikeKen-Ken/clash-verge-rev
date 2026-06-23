@@ -39,6 +39,10 @@ const HOT_RELOAD_PATCH_KEYS: &[&str] = &[
     "tun",
 ];
 
+/// 当前前端会通过 `patch_runtime_config({ tun: ... })` 修改的 TUN 子项。
+/// `tun.enable` 由 Verge 的 TUN 开关统一决定，不能从上一版运行时恢复。
+const RUNTIME_TUN_PATCH_KEYS: &[&str] = &["strict-route"];
+
 #[derive(Default, Clone)]
 pub struct IRuntime {
     pub config: Option<Mapping>,
@@ -126,7 +130,7 @@ impl IRuntime {
             config.insert(constants::proxy_ads::RULE_INDEX_KEY.into(), v.clone());
         }
 
-        // tun：与 `patch_config` 的 tun 分支一致；`enable` 以当前 config 为准（已由 `use_tun` 根据 verge 写入）
+        // tun：与 `patch_config` 的 tun 分支一致；`enable` 以当前 config 为准（enhance 末尾 `use_tun` 会按 verge 最终写入）
         if let Some(prev_tun) = prev_cfg.get("tun").and_then(|v| v.as_mapping()) {
             let mut tun = config
                 .get("tun")
@@ -150,6 +154,59 @@ impl IRuntime {
 
         // clash-for-android：全量 generate 后把上一版运行时的子表整表叠到新生成配置之上。
         // 若只合并少数键，而上一版 YAML 省略了空的 `lan-blocked-devices`，则无法覆盖订阅里自带的列表，会导致「移除禁用」仍走拦截。
+        if let Some(prev_cfa) = prev_cfg.get("clash-for-android").and_then(|v| v.as_mapping()) {
+            let mut cfa = config
+                .get("clash-for-android")
+                .and_then(|v| v.as_mapping())
+                .cloned()
+                .unwrap_or_default();
+            for key in use_keys(prev_cfa) {
+                if let Some(v) = prev_cfa.get(key.as_str()) {
+                    cfa.insert(Value::from(key.as_str()), v.clone());
+                }
+            }
+            if !cfa.is_empty() {
+                config.insert("clash-for-android".into(), Value::from(cfa));
+            }
+        }
+    }
+
+    /// `reapply_merge_layers` 之后恢复 UI 热更新字段，避免基础 Merge 中的默认值覆盖界面开关。
+    ///
+    /// 这一步只恢复明确可由 `patch_runtime_config` 修改的运行态字段；订阅/Merge 中的 DNS、Sniffer、TUN 路由等主体配置仍保持 Merge 优先。
+    #[inline]
+    pub fn restore_runtime_patch_after_merge(prev: Option<&Mapping>, config: &mut Mapping) {
+        let Some(prev_cfg) = prev else {
+            return;
+        };
+
+        for key in PATCH_CONFIG_INNER.iter() {
+            if let Some(v) = prev_cfg.get(*key) {
+                config.insert((*key).into(), v.clone());
+            }
+        }
+
+        if let Some(v) = prev_cfg.get("proxy-ads-block") {
+            config.insert("proxy-ads-block".into(), v.clone());
+        }
+        if let Some(v) = prev_cfg.get(constants::proxy_ads::RULE_INDEX_KEY) {
+            config.insert(constants::proxy_ads::RULE_INDEX_KEY.into(), v.clone());
+        }
+
+        if let Some(prev_tun) = prev_cfg.get("tun").and_then(|v| v.as_mapping()) {
+            let mut tun = config
+                .get("tun")
+                .and_then(|v| v.as_mapping())
+                .cloned()
+                .unwrap_or_default();
+            for key in RUNTIME_TUN_PATCH_KEYS {
+                if let Some(value) = prev_tun.get(*key) {
+                    tun.insert(Value::from(*key), value.clone());
+                }
+            }
+            config.insert("tun".into(), Value::from(tun));
+        }
+
         if let Some(prev_cfa) = prev_cfg.get("clash-for-android").and_then(|v| v.as_mapping()) {
             let mut cfa = config
                 .get("clash-for-android")

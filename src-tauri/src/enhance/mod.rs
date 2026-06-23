@@ -721,20 +721,11 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     // builtin scripts
     let mut config = apply_builtin_scripts(config, clash_core, enable_builtin);
 
-    config = cleanup_proxy_groups(config);
-
     {
         let verge = Config::verge().await;
         let verge_arc = verge.latest_arc();
         config = apply_health_check_defaults(config, &*verge_arc);
     }
-
-    // 只根据「TUN 模式」开关设置 tun.enable，不覆写订阅/配置里的 TUN 配置（stack、device 等）
-    config = use_tun(config, enable_tun);
-    config = use_sort(config);
-
-    // dns settings
-    config = apply_dns_settings(config, enable_dns_settings).await;
 
     // 直连/全局模式：仅覆盖 rules 和 dns，不切换代理组，界面 groups 保持不变
     let mode = clash_config
@@ -742,13 +733,11 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         .and_then(|v| v.as_str())
         .map(|s| s.to_lowercase())
         .unwrap_or_else(|| "rule".into());
-    if mode == "direct" || mode == "global" {
-        config = apply_direct_global_overrides(config, &mode);
-    }
+    let prev_runtime_config = Config::runtime().await.latest_arc().config.clone();
 
     // 保留用户经 patch_runtime_config 热改的顶层项（含「屏蔽广告」）；否则 generate 会按订阅默认值覆盖，磁盘运行配置与核心 PATCH 不一致
     IRuntime::merge_persistent_runtime_patch_from_prev(
-        Config::runtime().await.latest_arc().config.as_ref(),
+        prev_runtime_config.as_ref(),
         &mut config,
     );
 
@@ -757,13 +746,31 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         config,
         &[global_merge_snapshot, profile_merge_snapshot],
     );
+    IRuntime::restore_runtime_patch_after_merge(prev_runtime_config.as_ref(), &mut config);
 
-    config = apply_proxy_ads_block(config);
+    // dns settings
+    config = apply_dns_settings(config, enable_dns_settings).await;
+
+    config = finalize_runtime_config(config, enable_tun, &mode);
 
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
 
     (config, exists_keys_set, result_map)
+}
+
+fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) -> Mapping {
+    // Merge/订阅可能重新带回无效组成员；最终应用前再清理一次，避免核心加载失败或 UI 显示幽灵节点
+    config = cleanup_proxy_groups(config);
+
+    if mode == "direct" || mode == "global" {
+        config = apply_direct_global_overrides(config, mode);
+    }
+
+    // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
+    config = use_tun(config, enable_tun);
+    config = apply_proxy_ads_block(config);
+    use_sort(config)
 }
 
 /// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
@@ -935,6 +942,99 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
 #[cfg(test)]
 mod tests {
     use super::cleanup_proxy_groups;
+
+    #[test]
+    fn finalizers_reassert_runtime_state_after_merge_reapply() {
+        use crate::config::runtime::IRuntime;
+        use super::{finalize_runtime_config, reapply_merge_layers};
+
+        let base: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+allow-lan: true
+proxies:
+  - name: "alive-node"
+    type: ss
+proxy-groups:
+  - name: "manual"
+    type: select
+    proxies:
+      - "alive-node"
+      - "ghost-node"
+tun:
+  enable: false
+  stack: mixed
+rules:
+  - MATCH,DIRECT
+"#,
+        )
+        .expect("base yaml");
+        let merge: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+allow-lan: false
+mode: global
+rules:
+  - DOMAIN,example.com,PROXY
+tun:
+  enable: true
+  strict-route: true
+"#,
+        )
+        .expect("merge yaml");
+        let prev_runtime: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+allow-lan: true
+tun:
+  strict-route: false
+"#,
+        )
+        .expect("runtime yaml");
+
+        let mut merged = reapply_merge_layers(base, &[Some(merge)]);
+        let tun = merged
+            .get("tun")
+            .and_then(|v| v.as_mapping())
+            .expect("tun mapping");
+        assert_eq!(
+            tun.get("enable").and_then(|v| v.as_bool()),
+            Some(true),
+            "merge layer overwrites tun.enable before use_tun"
+        );
+        assert_eq!(merged.get("allow-lan").and_then(|v| v.as_bool()), Some(false));
+
+        IRuntime::restore_runtime_patch_after_merge(Some(&prev_runtime), &mut merged);
+        assert_eq!(merged.get("allow-lan").and_then(|v| v.as_bool()), Some(true));
+
+        let config = finalize_runtime_config(merged, false, "direct");
+        let tun = config
+            .get("tun")
+            .and_then(|v| v.as_mapping())
+            .expect("tun mapping");
+        assert_eq!(tun.get("enable").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(tun.get("strict-route").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(config.get("allow-lan").and_then(|v| v.as_bool()), Some(true));
+
+        assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
+        let rules = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rules");
+        assert!(!rules.iter().any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")));
+        assert!(rules.iter().any(|r| r.as_str() == Some("MATCH,⬆️")));
+
+        let manual_proxies = config
+            .get("proxy-groups")
+            .and_then(|v| v.as_sequence())
+            .and_then(|groups| {
+                groups
+                    .iter()
+                    .find(|group| group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("manual"))
+            })
+            .and_then(|group| group.get("proxies"))
+            .and_then(|v| v.as_sequence())
+            .expect("manual proxies");
+        assert!(manual_proxies.iter().any(|p| p.as_str() == Some("alive-node")));
+        assert!(!manual_proxies.iter().any(|p| p.as_str() == Some("ghost-node")));
+    }
 
     #[test]
     fn remove_missing_proxies_from_groups() {
