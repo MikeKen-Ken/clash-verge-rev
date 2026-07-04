@@ -648,27 +648,35 @@ const ProxyPage = () => {
               <Box
                 sx={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: 1.25,
+                  flexDirection: "column",
+                  gap: 0.25,
                   ml: 0.5,
                   px: 1,
-                  py: 0.25,
+                  py: 0.5,
                   borderRadius: 1,
                   bgcolor: (theme) => alpha(theme.palette.divider, 0.08),
                   border: (theme) =>
                     `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+                  minWidth: 120,
                 }}
               >
                 <Box
                   sx={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 0.5,
+                    gap: 0.75,
                     minWidth: 0,
                   }}
                 >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 44 }}
+                  >
+                    下载
+                  </Typography>
                   <ArrowDownwardRounded
-                    sx={{ fontSize: 16, color: "primary.main", flexShrink: 0 }}
+                    sx={{ fontSize: 14, color: "primary.main", flexShrink: 0 }}
                   />
                   <Typography
                     variant="body2"
@@ -686,13 +694,20 @@ const ProxyPage = () => {
                   sx={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 0.5,
+                    gap: 0.75,
                     minWidth: 0,
                   }}
                 >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 44 }}
+                  >
+                    上传
+                  </Typography>
                   <ArrowUpwardRounded
                     sx={{
-                      fontSize: 16,
+                      fontSize: 14,
                       color: "secondary.main",
                       flexShrink: 0,
                     }}
