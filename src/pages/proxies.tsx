@@ -61,10 +61,6 @@ const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
 
-/** fork 专属：离线模式文案（硬编码简体中文） */
-const getModeLabel = (mode: Mode) =>
-  mode === "offline" ? "离线" : t(`proxies.page.modes.${mode}`);
-
 const DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS = 5;
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 250;
@@ -83,6 +79,10 @@ const IS_WINDOWS = getSystem() === "windows";
 
 const ProxyPage = () => {
   const { t } = useTranslation();
+
+  /** fork 专属：离线模式文案（硬编码简体中文） */
+  const getModeLabel = (mode: Mode) =>
+    mode === "offline" ? "离线" : t(`proxies.page.modes.${mode}`);
 
   const location = useLocation();
 
