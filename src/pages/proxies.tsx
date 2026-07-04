@@ -3,6 +3,7 @@ import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import DnsRounded from "@mui/icons-material/DnsRounded";
+import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import {
   alpha,
   Box,
@@ -267,12 +268,14 @@ const ProxyPage = () => {
 
   const handleClearConnectivityStats = useLockFn(async () => {
     if (
-      !window.confirm("确定清空所有节点的测速成功/失败统计吗？此操作不可恢复。")
+      !window.confirm(
+        "确定清空各节点的测速成功/失败次数吗？仅清除本地统计，不影响当前代理连接。",
+      )
     ) {
       return;
     }
     clearConnectivityStats();
-    showNotice.success("已清空测速联通统计");
+    showNotice.success("已清空节点测速统计");
     await handleRefreshProxy();
   });
 
@@ -551,12 +554,7 @@ const ProxyPage = () => {
           >
             {IS_WINDOWS && (
               <>
-                <Tooltip
-                  title={t("proxies.page.labels.openWindowsFirewallAppsTooltip", {
-                    defaultValue:
-                      "Open Windows Security firewall settings (allow app through firewall)",
-                  })}
-                >
+                <Tooltip title="打开 Windows 防火墙设置（允许应用通过防火墙）">
                   <Button
                     size="small"
                     variant="outlined"
@@ -570,20 +568,10 @@ const ProxyPage = () => {
                       void openWindowsFirewallAllowedAppsSettings();
                     }}
                   >
-                    {t("proxies.page.labels.openWindowsFirewallApps", {
-                      defaultValue: "Firewall: allowed apps",
-                    })}
+                    设置防火墙
                   </Button>
                 </Tooltip>
-                <Tooltip
-                  title={t(
-                    "proxies.page.labels.openWindowsSystemProxySettingsTooltip",
-                    {
-                      defaultValue:
-                        "Open Windows Settings → Network & internet → Proxy (manual HTTP proxy, etc.)",
-                    },
-                  )}
-                >
+                <Tooltip title="打开 Windows 系统代理设置（手动配置 HTTP 代理等）">
                   <Button
                     size="small"
                     variant="outlined"
@@ -597,35 +585,27 @@ const ProxyPage = () => {
                       void openSystemNetworkProxySettings();
                     }}
                   >
-                    {t("proxies.page.labels.openWindowsSystemProxySettings", {
-                      defaultValue: "System proxy settings",
-                    })}
+                    设置代理
                   </Button>
                 </Tooltip>
               </>
             )}
-            <Tooltip title="清空测速联通统计（最近 3 天）">
-              <Button
+            <Tooltip title="清空节点测速统计">
+              <IconButton
                 size="small"
-                variant="outlined"
-                sx={{
-                  minWidth: "auto",
-                  px: 1,
-                  py: 0.25,
-                  whiteSpace: "nowrap",
-                }}
+                aria-label="清空节点测速统计"
                 onClick={() => {
                   void handleClearConnectivityStats();
                 }}
               >
-                清空统计
-              </Button>
+                <DeleteSweepRounded fontSize="small" />
+              </IconButton>
             </Tooltip>
-            <Tooltip title={t("shared.actions.refresh")}>
+            <Tooltip title="刷新 UI">
               <IconButton
                 size="small"
                 onClick={handleRefreshProxy}
-                aria-label={t("shared.actions.refresh")}
+                aria-label="刷新 UI"
               >
                 <RefreshRounded fontSize="small" />
               </IconButton>

@@ -57,18 +57,25 @@ const IpRow = ({
   label,
   value,
   loading,
+  error,
   onCopy,
 }: {
   label: string;
   value?: string | null;
   loading?: boolean;
+  error?: string;
   onCopy?: () => void;
 }) => {
-  const displayValue = value ?? "—";
+  const displayValue = loading ? null : value ?? (error ? "检测失败" : "—");
   const canCopy = Boolean(value && onCopy);
+  const tooltip = error
+    ? error
+    : canCopy
+      ? `点击复制${label}`
+      : label;
 
   return (
-    <Tooltip title={canCopy ? `点击复制${label}` : label}>
+    <Tooltip title={tooltip}>
       <Box
         role={canCopy ? "button" : undefined}
         tabIndex={canCopy ? 0 : undefined}
@@ -101,7 +108,7 @@ const IpRow = ({
         ) : (
           <Typography
             variant="body2"
-            color="text.primary"
+            color={error ? "error.main" : "text.primary"}
             sx={{
               fontFamily: "monospace",
               fontVariantNumeric: "tabular-nums",
@@ -118,14 +125,16 @@ const IpRow = ({
 };
 
 export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
-  const { clashConfig } = useAppData();
+  const { proxies } = useAppData();
   const [ipInfo, setIpInfo] = useState<IpInfoData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const fetchSeqRef = useRef(0);
 
   const fetchIpInfo = useCallback(
     async (force = false) => {
       const seq = ++fetchSeqRef.current;
+      setFetchError("");
 
       if (!force) {
         try {
@@ -158,7 +167,7 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         }
       }
 
-      if (!clashConfig) {
+      if (!proxies?.groups?.length) {
         setLoading(false);
         return;
       }
@@ -184,16 +193,21 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         } catch {
           // ignore
         }
-      } catch {
+      } catch (err) {
         if (seq !== fetchSeqRef.current) return;
         setIpInfo(null);
+        const message =
+          err instanceof Error ? err.message : "出口 IP 检测失败";
+        setFetchError(
+          `${message}。TUN 模式下经本地 mixed-port 检测，请确认核心已启动且 mixed-port 可用。`,
+        );
       } finally {
         if (seq === fetchSeqRef.current) {
           setLoading(false);
         }
       }
     },
-    [clashConfig],
+    [proxies?.groups?.length],
   );
 
   useEffect(() => {
@@ -224,6 +238,7 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         label="出口 IP"
         value={ipInfo?.ip}
         loading={loading}
+        error={fetchError}
         onCopy={ipInfo?.ip ? () => void handleCopy(ipInfo.ip) : undefined}
       />
       {!loading && ipInfo && (locationText || ipInfo.isp) && (

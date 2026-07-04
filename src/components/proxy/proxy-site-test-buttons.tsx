@@ -1,4 +1,11 @@
-import { Box, Button, CircularProgress, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  IconButton,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import { useLockFn } from "ahooks";
 import { useState } from "react";
 
@@ -45,8 +52,8 @@ const renderSiteIcon = (icon: string, name: string) => (
   <img
     src={`data:image/svg+xml;base64,${btoa(icon)}`}
     alt={name}
-    width={18}
-    height={18}
+    width={16}
+    height={16}
     style={{ display: "block", flexShrink: 0 }}
   />
 );
@@ -72,7 +79,7 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
 
   const runTest = useLockFn(async (id: SiteId, url: string) => {
     if (!selection || !canTest) {
-      showNotice.error("请先选择一个可用代理节点");
+      showNotice.error("当前没有可用节点，请等待 Fallback 测速完成或手动选择节点");
       return;
     }
 
@@ -93,69 +100,74 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
   });
 
   const selectionHint = selection
-    ? `${selection.groupName} → ${selection.proxyName}`
-    : "未选择节点";
+    ? `${selection.groupName} → ${selection.proxyName}${
+        selection.isManualSelection ? "（手动）" : "（自动）"
+      }`
+    : "暂无可用节点";
+
+  const buildTooltip = (siteName: string, url: string) => {
+    if (mode === "direct" || mode === "offline") {
+      return "直连/离线模式下不可用，请切换为规则或全局模式";
+    }
+    if (!canTest) {
+      return `当前无法测试：${selectionHint}。请等待 Fallback/URLTest 组测速完成，或手动选择节点。`;
+    }
+    return `经 ${selectionHint} 测试访问 ${siteName}\n${url}\n点击图标开始测速`;
+  };
 
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
       {SITE_TESTS.map(({ id, name, url, icon }) => {
         const delay = delays[id];
         const isTesting = delay === -2;
         const delayLabel =
           delay === -1
-            ? "测试"
+            ? null
             : isTesting
               ? null
               : delayManager.formatDelay(delay, timeout);
         const delayColor = delayManager.formatDelayColor(delay, timeout);
 
         return (
-          <Tooltip
-            key={id}
-            title={
-              canTest
-                ? `经当前节点 ${selectionHint} 测试 ${name}`
-                : mode === "direct" || mode === "offline"
-                  ? "直连/离线模式下请切换为规则或全局模式"
-                  : `当前无法测试（${selectionHint}）`
-            }
-          >
+          <Tooltip key={id} title={buildTooltip(name, url)}>
             <span>
-              <Button
+              <IconButton
                 size="small"
-                variant="outlined"
                 disabled={!canTest || testingId !== null}
                 onClick={() => runTest(id, url)}
+                aria-label={`测试 ${name}`}
                 sx={{
-                  minWidth: "auto",
-                  px: 1,
-                  py: 0.25,
-                  gap: 0.75,
-                  whiteSpace: "nowrap",
+                  border: 1,
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  width: 52,
+                  height: 28,
+                  gap: 0.25,
+                  flexShrink: 0,
                 }}
               >
                 {renderSiteIcon(icon, name)}
-                <Typography variant="body2" component="span">
-                  {name}
-                </Typography>
                 {isTesting ? (
-                  <CircularProgress size={14} />
+                  <CircularProgress size={12} />
+                ) : delay === -1 ? (
+                  <NetworkCheckRounded sx={{ fontSize: 14, color: "text.secondary" }} />
                 ) : (
                   <Typography
-                    variant="body2"
+                    variant="caption"
                     component="span"
                     sx={{
                       fontVariantNumeric: "tabular-nums",
                       fontWeight: 600,
+                      lineHeight: 1,
                       color: delayColor || "text.secondary",
-                      minWidth: 20,
-                      textAlign: "right",
+                      minWidth: 16,
+                      textAlign: "center",
                     }}
                   >
                     {delayLabel}
                   </Typography>
                 )}
-              </Button>
+              </IconButton>
             </span>
           </Tooltip>
         );

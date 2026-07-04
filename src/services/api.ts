@@ -26,6 +26,22 @@ interface ServiceConfig {
 // 可用的IP检测服务列表及字段映射
 const IP_CHECK_SERVICES: ServiceConfig[] = [
   {
+    url: "https://api.ipify.org?format=json",
+    mapping: (data) => ({
+      ip: data.ip || "",
+      country_code: "",
+      country: "",
+      region: "",
+      city: "",
+      organization: "",
+      asn: 0,
+      asn_organization: "",
+      longitude: 0,
+      latitude: 0,
+      timezone: "",
+    }),
+  },
+  {
     url: "https://api.ip.sb/geoip",
     mapping: (data) => ({
       ip: data.ip || "",

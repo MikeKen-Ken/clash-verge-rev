@@ -41,6 +41,7 @@ import { ProxyChain } from "./proxy-chain";
 import {
   buildGroupNowMap,
   resolveLeafProxyName,
+  resolvePrimaryGroupName,
 } from "./resolve-leaf-proxy";
 import {
   DEFAULT_HOVER_DELAY,
@@ -258,8 +259,12 @@ export const ProxyGroups = (props: Props) => {
   }, [groups, isChainMode]);
 
   const defaultRuleGroup = useMemo(() => {
-    if (isChainMode && mode === "rule" && availableGroups.length > 0) {
+    if (availableGroups.length === 0) return null;
+    if (isChainMode && mode === "rule") {
       return availableGroups[0].name;
+    }
+    if (mode === "rule") {
+      return resolvePrimaryGroupName(availableGroups);
     }
     return null;
   }, [availableGroups, isChainMode, mode]);
