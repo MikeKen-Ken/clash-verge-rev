@@ -46,6 +46,7 @@ import {
   getDelayCheckConcurrency,
   setDelayCheckConcurrency,
 } from "@/services/delay";
+import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
 import { useSystemState } from "@/hooks/use-system-state";
 import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
@@ -262,6 +263,17 @@ const ProxyPage = () => {
   const handleFlushFakeIp = useLockFn(async () => {
     await flushFakeIp();
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
+  });
+
+  const handleClearConnectivityStats = useLockFn(async () => {
+    if (
+      !window.confirm("确定清空所有节点的测速成功/失败统计吗？此操作不可恢复。")
+    ) {
+      return;
+    }
+    clearConnectivityStats();
+    showNotice.success("已清空测速联通统计");
+    await handleRefreshProxy();
   });
 
   const handleTunToggle = useLockFn(async (value: boolean) => {
@@ -592,6 +604,23 @@ const ProxyPage = () => {
                 </Tooltip>
               </>
             )}
+            <Tooltip title="清空测速联通统计（最近 3 天）">
+              <Button
+                size="small"
+                variant="outlined"
+                sx={{
+                  minWidth: "auto",
+                  px: 1,
+                  py: 0.25,
+                  whiteSpace: "nowrap",
+                }}
+                onClick={() => {
+                  void handleClearConnectivityStats();
+                }}
+              >
+                清空统计
+              </Button>
+            </Tooltip>
             <Tooltip title={t("shared.actions.refresh")}>
               <IconButton
                 size="small"

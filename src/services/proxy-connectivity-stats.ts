@@ -184,3 +184,14 @@ export function recordGroupDelayResults(
     recordDelayTestResult(name, value, timeout);
   }
 }
+
+/** 一键清空全部节点的测速联通统计 */
+export function clearConnectivityStats(): void {
+  cachedStore = {};
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore localStorage failure
+  }
+}

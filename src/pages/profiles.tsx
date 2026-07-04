@@ -78,6 +78,7 @@ import {
   resolveFlag,
   sortProxiesByRegionAndConnectivity,
 } from "@/services/proxy-region-sort";
+import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
 import { showNotice } from "@/services/notice-service";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
@@ -1189,6 +1190,25 @@ const ProfilePage = () => {
             placeholder="🇭🇰,🇯🇵,🇸🇬,🇹🇼,🇺🇸"
             sx={{ minWidth: 240 }}
           />
+
+          <Button
+            size="small"
+            variant="outlined"
+            sx={{ whiteSpace: "nowrap" }}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "确定清空所有节点的测速成功/失败统计吗？此操作不可恢复。",
+                )
+              ) {
+                return;
+              }
+              clearConnectivityStats();
+              showNotice.success("已清空测速联通统计");
+            }}
+          >
+            清空统计
+          </Button>
 
           {(error || isStale) && (
             <IconButton
