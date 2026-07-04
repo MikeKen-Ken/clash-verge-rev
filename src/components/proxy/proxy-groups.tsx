@@ -29,8 +29,7 @@ import delayManager, {
 } from "@/services/delay";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import {
-  buildProxySortContext,
-  compareProxySortKeys,
+  compareProxyNamesByRegionAndConnectivity,
   loadCustomProxyOrderFromStorage,
 } from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
@@ -641,14 +640,13 @@ export const ProxyGroups = (props: Props) => {
           });
         } else if (sortType === 0) {
           const customOrder = loadCustomProxyOrderFromStorage();
-          const sortCtx = buildProxySortContext(names, customOrder, (name) => name);
           successCandidates.sort((a, b) =>
-            compareProxySortKeys(
+            compareProxyNamesByRegionAndConnectivity(
               a.proxyName,
-              a.index,
               b.proxyName,
+              a.index,
               b.index,
-              sortCtx,
+              customOrder,
             ),
           );
         }

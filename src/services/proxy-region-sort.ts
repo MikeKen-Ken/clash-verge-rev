@@ -10,6 +10,8 @@ export const DEFAULT_CUSTOM_PROXY_ORDER = [
   "🇺🇸",
 ] as const;
 
+// 仅按节点名里的中文国家/地区关键字识别归属，避免英文缩写误命中（如 "in" 命中 "Origin"）。
+// 顺序敏感（first-match）：当一个关键字是另一个的子串时，长的必须放前面，否则会被错判。
 const COUNTRY_FLAG_KEYWORDS: Array<{ flag: string; keywords: string[] }> = [
   { flag: "🇭🇰", keywords: ["香港"] },
   { flag: "🇲🇴", keywords: ["澳门"] },
@@ -85,8 +87,6 @@ const COUNTRY_FLAG_KEYWORDS: Array<{ flag: string; keywords: string[] }> = [
   { flag: "🇳🇿", keywords: ["新西兰", "奥克兰"] },
 ];
 
-const ALL_REGION_FLAGS = COUNTRY_FLAG_KEYWORDS.map((rule) => rule.flag);
-
 /** 仅根据节点名里的中文关键字识别归属；未命中返回 null */
 export function resolveFlag(proxyName: string): string | null {
   for (const rule of COUNTRY_FLAG_KEYWORDS) {
@@ -95,28 +95,6 @@ export function resolveFlag(proxyName: string): string | null {
     }
   }
   return null;
-}
-
-/** 优先匹配节点名前缀的地区 emoji（如 🇭🇰 ✅ 01） */
-export function resolveRegionFlag(proxyName: string): string {
-  const trimmed = proxyName.trim();
-  for (const flag of ALL_REGION_FLAGS) {
-    if (trimmed.startsWith(flag)) return flag;
-  }
-  return resolveFlag(trimmed) ?? "";
-}
-
-/** 订阅组标识：节点名中地区 emoji 后的第一个 token（如 ✅、❤️、💸） */
-export function resolveSubscriptionGroup(proxyName: string): string {
-  let rest = proxyName.trim();
-  for (const flag of ALL_REGION_FLAGS) {
-    if (rest.startsWith(flag)) {
-      rest = rest.slice(flag.length).trim();
-      break;
-    }
-  }
-  if (!rest) return "";
-  return rest.split(/\s+/)[0] ?? "";
 }
 
 export function parseCustomProxyOrderText(text: string): string[] {
@@ -142,106 +120,87 @@ export function loadCustomProxyOrderFromStorage(): string[] {
   return [...DEFAULT_CUSTOM_PROXY_ORDER];
 }
 
-export interface ProxySortContext {
-  customOrder: string[];
-  subscriptionOrder: Map<string, number>;
-  regionFallbackOrder: Map<string, number>;
-}
-
-export function buildProxySortContext<T>(
-  items: T[],
+function resolveGroupOrder(
+  flag: string,
   customOrder: string[],
-  getName: (item: T) => string,
-): ProxySortContext {
-  const subscriptionOrder = new Map<string, number>();
-  const regionFallbackOrder = new Map<string, number>();
-  let nextSubscriptionOrder = 0;
-  let nextRegionFallback = customOrder.length;
-
-  for (const item of items) {
-    const name = getName(item);
-    const subscription = resolveSubscriptionGroup(name);
-    if (!subscriptionOrder.has(subscription)) {
-      subscriptionOrder.set(subscription, nextSubscriptionOrder);
-      nextSubscriptionOrder += 1;
-    }
-
-    const flag = resolveRegionFlag(name);
-    if (!flag) continue;
-    if (customOrder.includes(flag) || regionFallbackOrder.has(flag)) continue;
-    regionFallbackOrder.set(flag, nextRegionFallback);
-    nextRegionFallback += 1;
-  }
-
-  return { customOrder, subscriptionOrder, regionFallbackOrder };
-}
-
-function getRegionOrder(flag: string, ctx: ProxySortContext): number {
-  const customIndex = ctx.customOrder.indexOf(flag);
-  if (customIndex >= 0) return customIndex;
-  const fallback = ctx.regionFallbackOrder.get(flag);
-  if (fallback !== undefined) return fallback;
-  return ctx.customOrder.length + 9999;
-}
-
-export function compareProxySortKeys(
-  nameA: string,
-  indexA: number,
-  nameB: string,
-  indexB: number,
-  ctx: ProxySortContext,
+  fallbackOrderMap: Map<string, number>,
+  nextFallbackOrderRef: { value: number },
 ): number {
-  const subA = ctx.subscriptionOrder.get(resolveSubscriptionGroup(nameA)) ?? 9999;
-  const subB = ctx.subscriptionOrder.get(resolveSubscriptionGroup(nameB)) ?? 9999;
-  if (subA !== subB) return subA - subB;
+  const orderMap = new Map(customOrder.map((item, index) => [item, index]));
+  let groupOrder = orderMap.get(flag);
+  if (groupOrder !== undefined) return groupOrder;
 
-  const regionA = getRegionOrder(resolveRegionFlag(nameA), ctx);
-  const regionB = getRegionOrder(resolveRegionFlag(nameB), ctx);
-  if (regionA !== regionB) return regionA - regionB;
+  const cached = fallbackOrderMap.get(flag);
+  if (cached !== undefined) return cached;
 
-  const successA = getConnectivitySuccessCount(nameA);
-  const successB = getConnectivitySuccessCount(nameB);
-  if (successA !== successB) return successB - successA;
-
-  return indexA - indexB;
+  groupOrder = nextFallbackOrderRef.value;
+  fallbackOrderMap.set(flag, groupOrder);
+  nextFallbackOrderRef.value += 1;
+  return groupOrder;
 }
 
-/**
- * 订阅块顺序不变 → 同块内地区顺序不变 → 同地区内按成功次数降序 → 再保留原顺序
- */
+/** 地区顺序不变，同地区内按测速成功次数降序，再保留原顺序 */
 export function sortProxiesByRegionAndConnectivity<T>(
   items: T[],
   customOrder: string[],
   getName: (item: T) => string,
 ): T[] {
-  if (items.length <= 1) return items;
+  const fallbackOrderMap = new Map<string, number>();
+  const nextFallbackOrderRef = { value: customOrder.length };
 
-  const ctx = buildProxySortContext(items, customOrder, getName);
-  const decorated = items.map((item, originalIndex) => ({ item, originalIndex }));
+  const decorated = items.map((item, originalIndex) => {
+    const name = getName(item);
+    const flag = resolveFlag(name) ?? "";
+    const groupOrder = resolveGroupOrder(
+      flag,
+      customOrder,
+      fallbackOrderMap,
+      nextFallbackOrderRef,
+    );
+    const successCount = getConnectivitySuccessCount(name);
+    return { item, originalIndex, groupOrder, successCount };
+  });
 
-  decorated.sort((a, b) =>
-    compareProxySortKeys(
-      getName(a.item),
-      a.originalIndex,
-      getName(b.item),
-      b.originalIndex,
-      ctx,
-    ),
-  );
+  decorated.sort((a, b) => {
+    if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder;
+    if (a.successCount !== b.successCount) return b.successCount - a.successCount;
+    return a.originalIndex - b.originalIndex;
+  });
 
   return decorated.map((entry) => entry.item);
 }
 
-/** @deprecated 请使用 buildProxySortContext + compareProxySortKeys */
+/** 比较两个节点名：先地区顺序，再成功次数，再原索引 */
 export function compareProxyNamesByRegionAndConnectivity(
   nameA: string,
   nameB: string,
   originalIndexA: number,
   originalIndexB: number,
   customOrder: string[],
-  allNames?: string[],
 ): number {
-  const names = allNames ?? [nameA, nameB];
-  const ctx = buildProxySortContext(names, customOrder, (name) => name);
-  return compareProxySortKeys(nameA, originalIndexA, nameB, originalIndexB, ctx);
+  const fallbackOrderMap = new Map<string, number>();
+  const nextFallbackOrderRef = { value: customOrder.length };
+
+  const flagA = resolveFlag(nameA) ?? "";
+  const flagB = resolveFlag(nameB) ?? "";
+  const groupA = resolveGroupOrder(
+    flagA,
+    customOrder,
+    fallbackOrderMap,
+    nextFallbackOrderRef,
+  );
+  const groupB = resolveGroupOrder(
+    flagB,
+    customOrder,
+    fallbackOrderMap,
+    nextFallbackOrderRef,
+  );
+
+  if (groupA !== groupB) return groupA - groupB;
+
+  const successA = getConnectivitySuccessCount(nameA);
+  const successB = getConnectivitySuccessCount(nameB);
+  if (successA !== successB) return successB - successA;
+
+  return originalIndexA - originalIndexB;
 }
