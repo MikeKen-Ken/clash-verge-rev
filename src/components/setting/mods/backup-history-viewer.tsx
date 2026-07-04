@@ -35,6 +35,7 @@ import {
   restoreLocalBackup,
   restoreWebDavBackup,
 } from "@/services/cmds";
+import { getLocalBackupDisplayInfo } from "@/features/local-backup-display";
 import { showNotice } from "@/services/notice-service";
 import {
   buildWebdavSignature,
@@ -64,6 +65,8 @@ interface BackupRow {
   platform: string;
   backup_time: dayjs.Dayjs | null;
   display_time: string;
+  display_name: string;
+  display_description: string;
   sort_value: number;
 }
 
@@ -115,17 +118,24 @@ export const BackupHistoryViewer = ({
       const backupTime = parsedFromName?.isValid()
         ? parsedFromName
         : parsedFromModified;
+      const displayTime =
+        backupTime?.format("YYYY-MM-DD HH:mm") ??
+        parsedFromModified?.format("YYYY-MM-DD HH:mm") ??
+        t("settings.modals.backup.history.unknownTime", {
+          defaultValue: "Unknown time",
+        });
+      const displayInfo = getLocalBackupDisplayInfo(filename, {
+        contentLength: item.content_length,
+        displayTime,
+      });
 
       return {
         filename,
         platform,
         backup_time: backupTime ?? null,
-        display_time:
-          backupTime?.format("YYYY-MM-DD HH:mm") ??
-          parsedFromModified?.format("YYYY-MM-DD HH:mm") ??
-          t("settings.modals.backup.history.unknownTime", {
-            defaultValue: "Unknown time",
-          }),
+        display_time: displayTime,
+        display_name: displayInfo.displayName,
+        display_description: displayInfo.displayDescription,
         sort_value:
           backupTime?.valueOf() ??
           parsedFromModified?.valueOf() ??
@@ -335,11 +345,8 @@ export const BackupHistoryViewer = ({
                 <ListItem key={`${row.platform}-${row.filename}`} divider>
                   <ListItemText
                     primary={
-                      <Typography
-                        variant="body2"
-                        sx={{ wordBreak: "break-all", fontWeight: 500 }}
-                      >
-                        {row.filename}
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {isLocal ? row.display_name : row.filename}
                       </Typography>
                     }
                     secondary={
@@ -349,8 +356,17 @@ export const BackupHistoryViewer = ({
                         justifyContent="space-between"
                         spacing={1.5}
                       >
-                        <Typography variant="caption" color="text.secondary">
-                          {`${row.platform} · ${row.display_time}`}
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            wordBreak: "break-all",
+                            pr: 1,
+                          }}
+                        >
+                          {isLocal
+                            ? row.display_description
+                            : `${row.platform} · ${row.display_time}`}
                         </Typography>
                         <Stack
                           direction="row"
