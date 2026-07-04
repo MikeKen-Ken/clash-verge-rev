@@ -380,7 +380,8 @@ export const useRenderList = (
       mode === "rule" ||
       mode === "script" ||
       mode === "global" ||
-      mode === "direct";
+      mode === "direct" ||
+      mode === "offline";
     const renderGroups =
       useRule && proxiesData.groups.length
         ? proxiesData.groups

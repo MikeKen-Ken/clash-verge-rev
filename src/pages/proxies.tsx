@@ -55,11 +55,15 @@ import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
 import parseTraffic from "@/utils/parse-traffic";
 
-const MODES = ["rule", "global", "direct"] as const;
+const MODES = ["rule", "global", "direct", "offline"] as const;
 type Mode = (typeof MODES)[number];
 const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
+
+/** fork 专属：离线模式文案（硬编码简体中文） */
+const getModeLabel = (mode: Mode) =>
+  mode === "offline" ? "离线" : t(`proxies.page.modes.${mode}`);
 
 const DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS = 5;
 
@@ -620,7 +624,7 @@ const ProxyPage = () => {
                   onClick={() => onChangeMode(mode)}
                   sx={{ textTransform: "capitalize" }}
                 >
-                  {t(`proxies.page.modes.${mode}`)}
+                  {getModeLabel(mode)}
                 </Button>
               ))}
             </ButtonGroup>

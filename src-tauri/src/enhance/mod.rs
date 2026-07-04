@@ -765,12 +765,26 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) ->
 
     if mode == "direct" || mode == "global" {
         config = apply_direct_global_overrides(config, mode);
+    } else if mode == "offline" {
+        config = apply_offline_overrides(config);
     }
 
     // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
     config = use_tun(config, enable_tun);
     config = apply_proxy_ads_block(config);
     use_sort(config)
+}
+
+/// 离线模式：强制 rule + MATCH,REJECT，拒绝全部流量。
+fn apply_offline_overrides(mut config: Mapping) -> Mapping {
+    config.insert("mode".into(), Value::from("rule"));
+    config.insert(
+        "rules".into(),
+        Value::Sequence(vec![Value::from("MATCH,REJECT")]),
+    );
+    config.remove("nameserver-policy");
+    logging!(info, Type::Core, "applied offline mode overrides (all traffic REJECT)");
+    config
 }
 
 /// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
@@ -1034,6 +1048,27 @@ tun:
             .expect("manual proxies");
         assert!(manual_proxies.iter().any(|p| p.as_str() == Some("alive-node")));
         assert!(!manual_proxies.iter().any(|p| p.as_str() == Some("ghost-node")));
+    }
+
+    #[test]
+    fn offline_mode_overrides_rules_to_match_reject() {
+        let mut config: Mapping = serde_yaml_ng::from_str(
+            r#"
+mode: rule
+rules:
+  - DOMAIN,example.com,PROXY
+  - MATCH,PROXY
+"#,
+        )
+        .expect("yaml");
+        let config = finalize_runtime_config(config, false, "offline");
+        assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
+        let rules = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rules");
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].as_str(), Some("MATCH,REJECT"));
     }
 
     #[test]

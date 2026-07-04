@@ -756,12 +756,22 @@ async fn create_tray_menu(
         hotkeys.get("clash_mode_direct").map(|s| s.as_str()),
     )?;
 
+    let offline_mode = &CheckMenuItem::with_id(
+        app_handle,
+        MenuIds::OFFLINE_MODE,
+        "离线",
+        true,
+        current_proxy_mode == "offline",
+        None::<&str>,
+    )?;
+
     let outbound_modes = if show_outbound_modes_inline {
         None
     } else {
         let current_mode_text = match current_proxy_mode {
             "global" => clash_verge_i18n::t!("tray.global"),
             "direct" => clash_verge_i18n::t!("tray.direct"),
+            "offline" => "离线",
             _ => clash_verge_i18n::t!("tray.rule"),
         };
         let outbound_modes_label = format!("{} ({})", texts.outbound_modes, current_mode_text);
@@ -774,6 +784,7 @@ async fn create_tray_menu(
                 rule_mode as &dyn IsMenuItem<Wry>,
                 global_mode as &dyn IsMenuItem<Wry>,
                 direct_mode as &dyn IsMenuItem<Wry>,
+                offline_mode as &dyn IsMenuItem<Wry>,
             ],
         )?)
     };
@@ -894,6 +905,7 @@ async fn create_tray_menu(
             rule_mode as &dyn IsMenuItem<Wry>,
             global_mode as &dyn IsMenuItem<Wry>,
             direct_mode as &dyn IsMenuItem<Wry>,
+            offline_mode as &dyn IsMenuItem<Wry>,
         ]);
     } else if let Some(ref outbound_modes) = outbound_modes {
         menu_items.push(outbound_modes);
@@ -931,7 +943,7 @@ async fn create_tray_menu(
 fn on_menu_event(_: &AppHandle, event: MenuEvent) {
     AsyncHandler::spawn(|| async move {
         match event.id.as_ref() {
-            mode @ (MenuIds::RULE_MODE | MenuIds::GLOBAL_MODE | MenuIds::DIRECT_MODE) => {
+            mode @ (MenuIds::RULE_MODE | MenuIds::GLOBAL_MODE | MenuIds::DIRECT_MODE | MenuIds::OFFLINE_MODE) => {
                 // Removing the the "tray_" prefix and "_mode" suffix
                 let mode = &mode[5..mode.len() - 5];
                 logging!(info, Type::ProxyMode, "Switch Proxy Mode To: {}", mode);

@@ -2,10 +2,11 @@ import {
   DirectionsRounded,
   LanguageRounded,
   MultipleStopRounded,
+  WifiOffRounded,
 } from "@mui/icons-material";
 import { Box, Paper, Stack, Typography } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
 
@@ -13,8 +14,10 @@ import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { patchClashMode } from "@/services/cmds";
 
-const CLASH_MODES = ["rule", "global", "direct"] as const;
+const CLASH_MODES = ["rule", "global", "direct", "offline"] as const;
 type ClashMode = (typeof CLASH_MODES)[number];
+
+const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
 
 const isClashMode = (mode: string): mode is ClashMode =>
   (CLASH_MODES as readonly string[]).includes(mode);
@@ -35,57 +38,71 @@ const MODE_META: Record<
     label: "home.components.clashMode.labels.direct",
     description: "home.components.clashMode.descriptions.direct",
   },
+  offline: {
+    label: "离线",
+    description: "拒绝全部流量，等同断网。",
+  },
 };
 
 export const ClashModeCard = () => {
   const { t } = useTranslation();
   const { verge } = useVerge();
-  const { clashConfig, refreshClashConfig } = useAppData();
+  const { refreshClashConfig } = useAppData();
 
-  // 支持的模式列表
   const modeList = CLASH_MODES;
 
-  // 直接使用API返回的模式，不维护本地状态
-  const currentMode = clashConfig?.mode?.toLowerCase();
-  const currentModeKey =
-    typeof currentMode === "string" && isClashMode(currentMode)
-      ? currentMode
-      : undefined;
+  // 与代理页一致：前端记录 UI 模式，不依赖核心返回的 mode（直连/全局/离线时核心固定为 rule）
+  const [uiMode, setUiMode] = useState<ClashMode>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_UI_MODE);
+      if (stored && isClashMode(stored)) return stored;
+    } catch {
+      // ignore
+    }
+    return "rule";
+  });
 
   const modeDescription = useMemo(() => {
-    if (currentModeKey) {
-      return t(MODE_META[currentModeKey].description);
-    }
-    return t("home.components.clashMode.errors.communication");
-  }, [currentModeKey, t]);
+    const meta = MODE_META[uiMode];
+    if (uiMode === "offline") return meta.description;
+    return t(meta.description);
+  }, [uiMode, t]);
 
-  // 模式图标映射
   const modeIcons = useMemo(
     () => ({
       rule: <MultipleStopRounded fontSize="small" />,
       global: <LanguageRounded fontSize="small" />,
       direct: <DirectionsRounded fontSize="small" />,
+      offline: <WifiOffRounded fontSize="small" />,
     }),
     [],
   );
 
-  // 切换模式的处理函数
+  const getModeLabel = (mode: ClashMode) => {
+    const meta = MODE_META[mode];
+    return mode === "offline" ? meta.label : t(meta.label);
+  };
+
   const onChangeMode = useLockFn(async (mode: ClashMode) => {
-    if (mode === currentModeKey) return;
+    if (mode === uiMode) return;
     if (verge?.auto_close_connection) {
       closeAllConnections();
     }
 
     try {
+      setUiMode(mode);
+      try {
+        localStorage.setItem(STORAGE_KEY_UI_MODE, mode);
+      } catch {
+        // ignore
+      }
       await patchClashMode(mode);
-      // 使用共享的刷新方法
       refreshClashConfig();
     } catch (error) {
       console.error("Failed to change mode:", error);
     }
   });
 
-  // 按钮样式
   const buttonStyles = (mode: ClashMode) => ({
     cursor: "pointer",
     px: 2,
@@ -94,8 +111,8 @@ export const ClashModeCard = () => {
     alignItems: "center",
     justifyContent: "center",
     gap: 1,
-    bgcolor: mode === currentModeKey ? "primary.main" : "background.paper",
-    color: mode === currentModeKey ? "primary.contrastText" : "text.primary",
+    bgcolor: mode === uiMode ? "primary.main" : "background.paper",
+    color: mode === uiMode ? "primary.contrastText" : "text.primary",
     borderRadius: 1.5,
     transition: "all 0.2s ease-in-out",
     position: "relative",
@@ -108,7 +125,7 @@ export const ClashModeCard = () => {
       transform: "translateY(1px)",
     },
     "&::after":
-      mode === currentModeKey
+      mode === uiMode
         ? {
             content: '""',
             position: "absolute",
@@ -122,7 +139,6 @@ export const ClashModeCard = () => {
         : {},
   });
 
-  // 描述样式
   const descriptionStyles = {
     width: "95%",
     textAlign: "center",
@@ -139,7 +155,6 @@ export const ClashModeCard = () => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", width: "100%" }}>
-      {/* 模式选择按钮组 */}
       <Stack
         direction="row"
         spacing={1}
@@ -154,7 +169,7 @@ export const ClashModeCard = () => {
         {modeList.map((mode) => (
           <Paper
             key={mode}
-            elevation={mode === currentModeKey ? 2 : 0}
+            elevation={mode === uiMode ? 2 : 0}
             onClick={() => onChangeMode(mode)}
             sx={buttonStyles(mode)}
           >
@@ -163,16 +178,15 @@ export const ClashModeCard = () => {
               variant="body2"
               sx={{
                 textTransform: "capitalize",
-                fontWeight: mode === currentModeKey ? 600 : 400,
+                fontWeight: mode === uiMode ? 600 : 400,
               }}
             >
-              {t(MODE_META[mode].label)}
+              {getModeLabel(mode)}
             </Typography>
           </Paper>
         ))}
       </Stack>
 
-      {/* 说明文本区域 */}
       <Box
         sx={{
           width: "100%",
