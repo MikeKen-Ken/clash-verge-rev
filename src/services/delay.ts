@@ -732,4 +732,24 @@ class DelayManager {
   }
 }
 
+/** 经指定出站节点访问自定义 URL 的延迟（不走 Clash 规则路径，强制使用该节点） */
+export async function checkProxyDelayForUrl(
+  proxyName: string,
+  url: string,
+  timeout: number,
+): Promise<number> {
+  try {
+    const timeoutPromise = new Promise<ProxyDelay>((resolve) => {
+      setTimeout(() => resolve({ delay: 0 }), timeout);
+    });
+    const result = await Promise.race([
+      delayProxyByName(proxyName, url, timeout),
+      timeoutPromise,
+    ]);
+    return result.delay;
+  } catch {
+    return 1e6;
+  }
+}
+
 export default new DelayManager();

@@ -52,6 +52,8 @@ import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
 import { ProxyPageIpInfo } from "@/components/proxy/proxy-page-ip-info";
+import { ProxySiteTestButtons } from "@/components/proxy/proxy-site-test-buttons";
+import type { ProxySiteTestSelection } from "@/components/proxy/proxy-site-test-buttons";
 import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
 import parseTraffic from "@/utils/parse-traffic";
@@ -131,6 +133,8 @@ const ProxyPage = () => {
   const [healthCheckConcurrency, setHealthCheckConcurrencyState] =
     useState<number>(() => getDelayCheckConcurrency());
   const [ipRefreshToken, setIpRefreshToken] = useState(0);
+  const [siteTestSelection, setSiteTestSelection] =
+    useState<ProxySiteTestSelection | null>(null);
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
     if (mode !== uiMode && verge?.auto_close_connection) {
@@ -698,6 +702,7 @@ const ProxyPage = () => {
                 </Box>
               </Box>
             </Tooltip>
+            <ProxySiteTestButtons mode={uiMode} selection={siteTestSelection} />
             <ProxyPageIpInfo
               localIp={preferredLanIpv4}
               mode={uiMode}
@@ -714,6 +719,7 @@ const ProxyPage = () => {
         onRegisterCheckAll={(runner) => {
           checkAllDelayRunnerRef.current = runner;
         }}
+        onActiveSelectionChange={setSiteTestSelection}
       />
     </BasePage>
   );

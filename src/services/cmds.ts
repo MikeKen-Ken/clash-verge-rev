@@ -547,6 +547,11 @@ export async function cmdTestDelay(url: string) {
   return invoke<number>("test_delay", { url });
 }
 
+/** 经 Clash 本地 mixed-port 发起 GET（TUN 模式下出口 IP 检测等场景） */
+export async function fetchWithLocalProxy(url: string, timeoutSecs = 5) {
+  return invoke<string>("fetch_with_local_proxy", { url, timeoutSecs });
+}
+
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
     showNotice.error(err, 1500),

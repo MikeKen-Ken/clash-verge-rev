@@ -39,6 +39,10 @@ import { ScrollTopButton } from "../layout/scroll-top-button";
 
 import { ProxyChain } from "./proxy-chain";
 import {
+  buildGroupNowMap,
+  resolveLeafProxyName,
+} from "./resolve-leaf-proxy";
+import {
   DEFAULT_HOVER_DELAY,
   ProxyGroupNavigator,
 } from "./proxy-group-navigator";
@@ -50,6 +54,14 @@ interface Props {
   isChainMode?: boolean;
   chainConfigData?: string | null;
   onRegisterCheckAll?: ((runner: (() => void) | null) => void) | null;
+  onActiveSelectionChange?: (
+    selection: {
+      groupName: string;
+      proxyName: string;
+      isManualSelection?: boolean;
+      group?: { timeout?: number; selectedTimeout?: number } | null;
+    } | null,
+  ) => void;
 }
 
 interface ProxyChainItem {
@@ -76,7 +88,13 @@ const formatGroupNameWithConnectTimes = (group: {
 
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
-  const { mode, isChainMode = false, chainConfigData, onRegisterCheckAll } = props;
+  const {
+    mode,
+    isChainMode = false,
+    chainConfigData,
+    onRegisterCheckAll,
+    onActiveSelectionChange,
+  } = props;
   const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>(() => {
     try {
       const saved = localStorage.getItem("proxy-chain-items");
@@ -393,6 +411,55 @@ export const ProxyGroups = (props: Props) => {
       ) ?? null
     );
   }, [activeSelectedGroup, availableGroups]);
+
+  useEffect(() => {
+    if (!onActiveSelectionChange) return;
+
+    if (mode === "direct" || mode === "offline") {
+      onActiveSelectionChange(null);
+      return;
+    }
+
+    const groupNowMap = buildGroupNowMap(groups as Array<{ name?: string; now?: string | null }>);
+    const targetGroupName =
+      mode === "global"
+        ? "GLOBAL"
+        : activeSelectedGroup ?? defaultRuleGroup ?? null;
+
+    if (!targetGroupName) {
+      onActiveSelectionChange(null);
+      return;
+    }
+
+    const groupRecord = groups?.find(
+      (g: { name: string }) => g.name === targetGroupName,
+    );
+    const rawNow = groupRecord?.now;
+    if (!rawNow) {
+      onActiveSelectionChange(null);
+      return;
+    }
+
+    const proxyName = resolveLeafProxyName(rawNow, groupNowMap);
+    if (!proxyName || proxyName === "DIRECT" || proxyName === "REJECT") {
+      onActiveSelectionChange(null);
+      return;
+    }
+
+    onActiveSelectionChange({
+      groupName: targetGroupName,
+      proxyName,
+      isManualSelection: getManualSelectionForGroup(targetGroupName) != null,
+      group: groupRecord ?? null,
+    });
+  }, [
+    onActiveSelectionChange,
+    mode,
+    groups,
+    activeSelectedGroup,
+    defaultRuleGroup,
+    getManualSelectionForGroup,
+  ]);
 
   // 处理代理组选择菜单
   const handleGroupMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
