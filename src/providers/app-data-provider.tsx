@@ -22,6 +22,7 @@ import {
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import delayManager, { setDefaultHealthCheck } from "@/services/delay";
+import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
 import { recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
@@ -33,6 +34,10 @@ export const AppDataProvider = ({
   children: React.ReactNode;
 }) => {
   const { verge } = useVerge();
+
+  useEffect(() => {
+    void syncConnectivityPersistenceToDisk();
+  }, []);
 
   useEffect(() => {
     setDefaultHealthCheck({

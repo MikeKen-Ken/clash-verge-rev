@@ -9,6 +9,8 @@ import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAppData } from "@/providers/app-data-context";
+import { useClash } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
 import { getIpInfo } from "@/services/api";
 import { showNotice } from "@/services/notice-service";
 
@@ -156,6 +158,8 @@ const readCachedIpInfo = (): IpInfoData | null => {
 
 export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
   const { clashConfig } = useAppData();
+  const { clash } = useClash();
+  const { verge } = useVerge();
   const [ipInfo, setIpInfo] = useState<IpInfoData | null>(() =>
     readCachedIpInfo(),
   );
@@ -211,7 +215,11 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
       }, FETCH_SAFETY_TIMEOUT_MS);
 
       try {
-        const data = await getIpInfo();
+        const mixedPort =
+          clashConfig?.mixedPort ??
+          clash?.["mixed-port"] ??
+          verge?.verge_mixed_port;
+        const data = await getIpInfo(mixedPort);
         if (seq !== fetchSeqRef.current) return;
         const next: IpInfoData = {
           ip: data.ip || "",
@@ -243,7 +251,7 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         }
       }
     },
-    [clashConfig, localIp, mode],
+    [clashConfig, clash, verge?.verge_mixed_port, localIp, mode],
   );
 
   useEffect(() => {

@@ -657,26 +657,18 @@ const ProxyPage = () => {
                   bgcolor: (theme) => alpha(theme.palette.divider, 0.08),
                   border: (theme) =>
                     `1px solid ${alpha(theme.palette.divider, 0.2)}`,
-                  minWidth: 120,
                 }}
               >
                 <Box
                   sx={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 0.75,
+                    gap: 0.5,
                     minWidth: 0,
                   }}
                 >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 44 }}
-                  >
-                    下载
-                  </Typography>
                   <ArrowDownwardRounded
-                    sx={{ fontSize: 14, color: "primary.main", flexShrink: 0 }}
+                    sx={{ fontSize: 16, color: "primary.main", flexShrink: 0 }}
                   />
                   <Typography
                     variant="body2"
@@ -694,20 +686,13 @@ const ProxyPage = () => {
                   sx={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 0.75,
+                    gap: 0.5,
                     minWidth: 0,
                   }}
                 >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 44 }}
-                  >
-                    上传
-                  </Typography>
                   <ArrowUpwardRounded
                     sx={{
-                      fontSize: 14,
+                      fontSize: 16,
                       color: "secondary.main",
                       flexShrink: 0,
                     }}

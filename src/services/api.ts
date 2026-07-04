@@ -185,12 +185,15 @@ const withTimeout = <T>(
     );
   });
 
-const tryService = async (service: ServiceConfig): Promise<IpInfo> => {
+const tryService = async (
+  service: ServiceConfig,
+  mixedPort?: number,
+): Promise<IpInfo> => {
   const timeoutSecs = service.timeoutSecs ?? 5;
   debugLog(`尝试IP检测服务: ${service.url}`);
 
   const body = await withTimeout(
-    fetchWithLocalProxy(service.url, timeoutSecs),
+    fetchWithLocalProxy(service.url, timeoutSecs, mixedPort),
     timeoutSecs * 1000 + INVOKE_GRACE_MS,
     `请求超时 (${service.url})`,
   );
@@ -203,11 +206,11 @@ const tryService = async (service: ServiceConfig): Promise<IpInfo> => {
 };
 
 /** 并行竞速，任一成功即返回；全部失败则抛出最后一个错误 */
-export const getIpInfo = async (): Promise<IpInfo> => {
+export const getIpInfo = async (mixedPort?: number): Promise<IpInfo> => {
   const errors: Error[] = [];
 
   const tasks = IP_CHECK_SERVICES.map((service) =>
-    tryService(service).catch((error: unknown) => {
+    tryService(service, mixedPort).catch((error: unknown) => {
       const err = error instanceof Error ? error : new Error(String(error));
       errors.push(err);
       console.warn(`IP检测失败 (${service.url}):`, err.message);

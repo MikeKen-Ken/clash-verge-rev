@@ -548,8 +548,16 @@ export async function cmdTestDelay(url: string) {
 }
 
 /** 经 Clash 本地 mixed-port 发起 GET（TUN 模式下出口 IP 检测等场景） */
-export async function fetchWithLocalProxy(url: string, timeoutSecs = 5) {
-  return invoke<string>("fetch_with_local_proxy", { url, timeoutSecs });
+export async function fetchWithLocalProxy(
+  url: string,
+  timeoutSecs = 5,
+  mixedPort?: number,
+) {
+  return invoke<string>("fetch_with_local_proxy", {
+    url,
+    timeoutSecs,
+    mixedPort: mixedPort && mixedPort > 0 ? mixedPort : undefined,
+  });
 }
 
 export async function invoke_uwp_tool() {

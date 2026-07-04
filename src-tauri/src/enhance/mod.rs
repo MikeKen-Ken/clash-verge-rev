@@ -1,4 +1,5 @@
 mod chain;
+pub mod connectivity_order;
 pub mod field;
 mod merge;
 mod script;
@@ -7,6 +8,7 @@ mod tun;
 
 use self::{
     chain::{AsyncChainItemFrom as _, ChainItem, ChainType},
+    connectivity_order::apply_connectivity_proxy_order,
     field::{use_keys, use_lowercase, use_sort},
     merge::use_merge,
     script::use_script,
@@ -772,6 +774,7 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) ->
     // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
     config = use_tun(config, enable_tun);
     config = apply_proxy_ads_block(config);
+    config = apply_connectivity_proxy_order(config);
     use_sort(config)
 }
 

@@ -79,7 +79,7 @@ import {
   sortProxiesByRegionAndConnectivity,
 } from "@/services/proxy-region-sort";
 import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
-import { showNotice } from "@/services/notice-service";
+import { syncProxyRegionOrderToDisk } from "@/services/proxy-connectivity-sync";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
 
@@ -995,6 +995,7 @@ const ProfilePage = () => {
 
   useEffect(() => {
     localStorage.setItem(CUSTOM_PROXY_ORDER_STORAGE_KEY, customProxyOrderText);
+    void syncProxyRegionOrderToDisk(parseCustomProxyOrderText(customProxyOrderText));
   }, [customProxyOrderText]);
 
   useEffect(() => {

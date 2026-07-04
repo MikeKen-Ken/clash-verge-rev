@@ -5,7 +5,6 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import { useLockFn } from "ahooks";
 import { useState } from "react";
 
@@ -80,7 +79,6 @@ const initialDelays = (): Record<SiteId, DelayState> => ({
 export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
   const [delays, setDelays] = useState<Record<SiteId, DelayState>>(initialDelays);
   const [testing, setTesting] = useState(false);
-  const hasStarted = SITE_TESTS.some(({ id }) => delays[id] !== -1);
 
   const runAllTests = useLockFn(async () => {
     setTesting(true);
@@ -113,9 +111,8 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
   });
 
   const selectionHint = selection
-    ? `${selection.groupName} → ${selection.proxyName}${
-        selection.isManualSelection ? "（手动）" : "（自动）"
-      }`
+    ? `${selection.groupName} → ${selection.proxyName}${selection.isManualSelection ? "（手动）" : "（自动）"
+    }`
     : null;
 
   const buildTooltip = () => {
@@ -148,54 +145,52 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
             flexShrink: 0,
           }}
         >
-          {!hasStarted ? (
-            <NetworkCheckRounded sx={{ fontSize: 16, color: "text.secondary" }} />
-          ) : (
-            SITE_TESTS.map(({ id, name, icon }) => {
-              const delay = delays[id];
-              const isTesting = delay === -2;
-              const delayLabel = isTesting
+          {SITE_TESTS.map(({ id, name, icon }) => {
+            const delay = delays[id];
+            const isUntested = delay === -1;
+            const isTesting = delay === -2;
+            const delayLabel = isUntested
+              ? "0"
+              : isTesting
                 ? null
                 : delayManager.formatDelay(delay, SITE_TEST_TIMEOUT_MS);
-              const delayColor = delayManager.formatDelayColor(
-                delay,
-                SITE_TEST_TIMEOUT_MS,
-              );
+            const delayColor = isUntested
+              ? "text.secondary"
+              : delayManager.formatDelayColor(delay, SITE_TEST_TIMEOUT_MS);
 
-              return (
-                <Box
-                  key={id}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.25,
-                    minWidth: 0,
-                  }}
-                >
-                  {renderSiteIcon(icon, name)}
-                  {isTesting ? (
-                    <CircularProgress size={10} />
-                  ) : (
-                    <Typography
-                      variant="caption"
-                      component="span"
-                      sx={{
-                        fontVariantNumeric: "tabular-nums",
-                        fontWeight: 600,
-                        lineHeight: 1,
-                        fontSize: 10,
-                        color: delayColor || "text.secondary",
-                        minWidth: 14,
-                        textAlign: "center",
-                      }}
-                    >
-                      {delayLabel}
-                    </Typography>
-                  )}
-                </Box>
-              );
-            })
-          )}
+            return (
+              <Box
+                key={id}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.25,
+                  minWidth: 0,
+                }}
+              >
+                {renderSiteIcon(icon, name)}
+                {isTesting ? (
+                  <CircularProgress size={10} />
+                ) : (
+                  <Typography
+                    variant="caption"
+                    component="span"
+                    sx={{
+                      fontVariantNumeric: "tabular-nums",
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      fontSize: 10,
+                      color: delayColor || "text.secondary",
+                      minWidth: 14,
+                      textAlign: "center",
+                    }}
+                  >
+                    {delayLabel}
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
         </IconButton>
       </span>
     </Tooltip>

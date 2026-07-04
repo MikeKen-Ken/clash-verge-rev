@@ -108,7 +108,8 @@ export const IpInfoCard = () => {
 
       try {
         setLoading(true);
-        const data = await getIpInfo();
+        const mixedPort = clashConfig?.mixedPort;
+        const data = await getIpInfo(mixedPort);
         setIpInfo(data);
         const ts = Date.now();
         lastFetchRef.current = ts;

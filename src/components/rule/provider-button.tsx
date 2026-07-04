@@ -11,6 +11,7 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
+  Tooltip,
   Typography,
   alpha,
   styled,
@@ -205,14 +206,17 @@ export const ProviderButton = () => {
 
   return (
     <>
-      <Button
-        variant="outlined"
-        size="small"
-        startIcon={<StorageOutlined />}
-        onClick={() => setOpen(true)}
-      >
-        {t("rules.page.provider.trigger")}
-      </Button>
+      <Tooltip title={t("rules.page.provider.trigger")}>
+        <Button
+          variant="outlined"
+          size="small"
+          aria-label={t("rules.page.provider.trigger")}
+          onClick={() => setOpen(true)}
+          sx={{ minWidth: "auto", px: 1, py: 0.25 }}
+        >
+          <StorageOutlined fontSize="small" />
+        </Button>
+      </Tooltip>
 
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle>

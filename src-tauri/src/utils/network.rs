@@ -55,6 +55,20 @@ impl NetworkManager {
         Self
     }
 
+    /// 解析 mixed-port：前端传入 > Clash 运行配置 > verge 设置
+    async fn resolve_mixed_port(override_port: Option<u16>) -> u16 {
+        if let Some(port) = override_port.filter(|&p| p > 0) {
+            return port;
+        }
+        let clash_port = Config::clash().await.latest_arc().get_mixed_port();
+        let verge_port = Config::verge().await.data_arc().verge_mixed_port;
+        match verge_port {
+            Some(vp) if vp == clash_port => vp,
+            Some(_) => clash_port,
+            None => clash_port,
+        }
+    }
+
     fn build_client(
         &self,
         proxy_url: Option<std::string::String>,
@@ -102,17 +116,12 @@ impl NetworkManager {
         timeout_secs: Option<u64>,
         user_agent: Option<String>,
         accept_invalid_certs: bool,
+        mixed_port_override: Option<u16>,
     ) -> Result<Client> {
         let proxy_url: Option<std::string::String> = match proxy_type {
             ProxyType::None => None,
             ProxyType::Localhost => {
-                let port = {
-                    let verge_port = Config::verge().await.data_arc().verge_mixed_port;
-                    match verge_port {
-                        Some(port) => port,
-                        None => Config::clash().await.data_arc().get_mixed_port(),
-                    }
-                };
+                let port = Self::resolve_mixed_port(mixed_port_override).await;
                 Some(format!("http://127.0.0.1:{port}"))
             }
             ProxyType::System => {
@@ -148,6 +157,7 @@ impl NetworkManager {
         timeout_secs: Option<u64>,
         user_agent: Option<String>,
         accept_invalid_certs: bool,
+        mixed_port_override: Option<u16>,
     ) -> Result<HttpResponse> {
         let mut parsed = Url::parse(url)?;
         let mut extra_headers = HeaderMap::new();
@@ -165,7 +175,13 @@ impl NetworkManager {
 
         // 创建请求
         let client = self
-            .create_request(proxy_type, timeout_secs, user_agent, accept_invalid_certs)
+            .create_request(
+                proxy_type,
+                timeout_secs,
+                user_agent,
+                accept_invalid_certs,
+                mixed_port_override,
+            )
             .await?;
 
         let mut request_builder = client.get(parsed);
