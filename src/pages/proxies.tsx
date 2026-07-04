@@ -568,7 +568,7 @@ const ProxyPage = () => {
                       void openWindowsFirewallAllowedAppsSettings();
                     }}
                   >
-                    设置防火墙
+                    防火墙
                   </Button>
                 </Tooltip>
                 <Tooltip title="打开 Windows 系统代理设置（手动配置 HTTP 代理等）">
@@ -585,7 +585,7 @@ const ProxyPage = () => {
                       void openSystemNetworkProxySettings();
                     }}
                   >
-                    设置代理
+                    系统代理
                   </Button>
                 </Tooltip>
               </>

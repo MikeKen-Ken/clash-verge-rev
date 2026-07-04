@@ -10,13 +10,10 @@ import { useLockFn } from "ahooks";
 import { useState } from "react";
 
 import baiduIcon from "@/assets/image/test/baidu.svg?raw";
+import githubIcon from "@/assets/image/test/github.svg?raw";
 import googleIcon from "@/assets/image/test/google.svg?raw";
-import delayManager, {
-  checkProxyDelayForUrl,
-  DEFAULT_GROUP_TIMEOUT_MS,
-  getGroupDelayTimeout,
-} from "@/services/delay";
-import { showNotice } from "@/services/notice-service";
+import { cmdTestDelay } from "@/services/cmds";
+import delayManager from "@/services/delay";
 
 const SITE_TESTS = [
   {
@@ -26,12 +23,21 @@ const SITE_TESTS = [
     icon: baiduIcon,
   },
   {
+    id: "github",
+    name: "GitHub",
+    url: "https://www.github.com",
+    icon: githubIcon,
+  },
+  {
     id: "google",
     name: "Google",
     url: "https://www.google.com",
     icon: googleIcon,
   },
 ] as const;
+
+/** 与后端 test_delay 请求超时一致（秒） */
+const SITE_TEST_TIMEOUT_MS = 10_000;
 
 type SiteId = (typeof SITE_TESTS)[number]["id"];
 type DelayState = -1 | -2 | number;
@@ -48,130 +54,150 @@ interface Props {
   selection: ProxySiteTestSelection | null;
 }
 
+const MODE_HINT: Record<string, string> = {
+  rule: "规则模式：由配置规则决定出站（如国内站直连、国外站走代理）",
+  global: "全局模式：全部流量走当前全局节点",
+  direct: "直连模式：全部流量直连",
+  offline: "离线模式：规则为 MATCH,REJECT，测速结果预期失败",
+};
+
 const renderSiteIcon = (icon: string, name: string) => (
   <img
     src={`data:image/svg+xml;base64,${btoa(icon)}`}
     alt={name}
-    width={16}
-    height={16}
+    width={14}
+    height={14}
     style={{ display: "block", flexShrink: 0 }}
   />
 );
 
-const UNTESTABLE_MODES = new Set(["direct", "offline"]);
-const SKIP_PROXY_NAMES = new Set(["DIRECT", "REJECT"]);
+const initialDelays = (): Record<SiteId, DelayState> => ({
+  baidu: -1,
+  github: -1,
+  google: -1,
+});
 
 export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
-  const [delays, setDelays] = useState<Record<SiteId, DelayState>>({
-    baidu: -1,
-    google: -1,
-  });
-  const [testingId, setTestingId] = useState<SiteId | null>(null);
+  const [delays, setDelays] = useState<Record<SiteId, DelayState>>(initialDelays);
+  const [testing, setTesting] = useState(false);
+  const hasStarted = SITE_TESTS.some(({ id }) => delays[id] !== -1);
 
-  const canTest =
-    !UNTESTABLE_MODES.has(mode) &&
-    selection != null &&
-    !SKIP_PROXY_NAMES.has(selection.proxyName);
+  const runAllTests = useLockFn(async () => {
+    setTesting(true);
+    setDelays(
+      Object.fromEntries(SITE_TESTS.map(({ id }) => [id, -2])) as Record<
+        SiteId,
+        DelayState
+      >,
+    );
 
-  const timeout = selection
-    ? getGroupDelayTimeout(selection.group, selection.isManualSelection ?? false)
-    : DEFAULT_GROUP_TIMEOUT_MS;
+    const results = await Promise.all(
+      SITE_TESTS.map(async ({ id, url }) => {
+        try {
+          const delay = await cmdTestDelay(url);
+          return { id, delay };
+        } catch {
+          return { id, delay: 1e6 as DelayState };
+        }
+      }),
+    );
 
-  const runTest = useLockFn(async (id: SiteId, url: string) => {
-    if (!selection || !canTest) {
-      showNotice.error("当前没有可用节点，请等待 Fallback 测速完成或手动选择节点");
-      return;
-    }
-
-    setTestingId(id);
-    setDelays((prev) => ({ ...prev, [id]: -2 }));
-    try {
-      const delay = await checkProxyDelayForUrl(
-        selection.proxyName,
-        url,
-        timeout,
-      );
-      setDelays((prev) => ({ ...prev, [id]: delay }));
-    } catch {
-      setDelays((prev) => ({ ...prev, [id]: 1e6 }));
-    } finally {
-      setTestingId(null);
-    }
+    setDelays((prev) => {
+      const next = { ...prev };
+      for (const { id, delay } of results) {
+        next[id] = delay;
+      }
+      return next;
+    });
+    setTesting(false);
   });
 
   const selectionHint = selection
     ? `${selection.groupName} → ${selection.proxyName}${
         selection.isManualSelection ? "（手动）" : "（自动）"
       }`
-    : "暂无可用节点";
+    : null;
 
-  const buildTooltip = (siteName: string, url: string) => {
-    if (mode === "direct" || mode === "offline") {
-      return "直连/离线模式下不可用，请切换为规则或全局模式";
-    }
-    if (!canTest) {
-      return `当前无法测试：${selectionHint}。请等待 Fallback/URLTest 组测速完成，或手动选择节点。`;
-    }
-    return `经 ${selectionHint} 测试访问 ${siteName}\n${url}\n点击图标开始测速`;
+  const buildTooltip = () => {
+    const modeHint = MODE_HINT[mode] ?? `当前模式：${mode}`;
+    const globalNode =
+      mode === "global" && selectionHint
+        ? `\n当前全局节点：${selectionHint}`
+        : "";
+    const sites = SITE_TESTS.map(({ name, url }) => `${name}（${url}）`).join(
+      "\n",
+    );
+    return `${modeHint}\n同时测试：\n${sites}${globalNode}\n点击开始测速`;
   };
 
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-      {SITE_TESTS.map(({ id, name, url, icon }) => {
-        const delay = delays[id];
-        const isTesting = delay === -2;
-        const delayLabel =
-          delay === -1
-            ? null
-            : isTesting
-              ? null
-              : delayManager.formatDelay(delay, timeout);
-        const delayColor = delayManager.formatDelayColor(delay, timeout);
+    <Tooltip title={buildTooltip()}>
+      <span>
+        <IconButton
+          size="small"
+          disabled={testing}
+          onClick={runAllTests}
+          aria-label="站点连通性测速"
+          sx={{
+            border: 1,
+            borderColor: "divider",
+            borderRadius: 1,
+            height: 28,
+            px: 0.5,
+            gap: 0.75,
+            flexShrink: 0,
+          }}
+        >
+          {!hasStarted ? (
+            <NetworkCheckRounded sx={{ fontSize: 16, color: "text.secondary" }} />
+          ) : (
+            SITE_TESTS.map(({ id, name, icon }) => {
+              const delay = delays[id];
+              const isTesting = delay === -2;
+              const delayLabel = isTesting
+                ? null
+                : delayManager.formatDelay(delay, SITE_TEST_TIMEOUT_MS);
+              const delayColor = delayManager.formatDelayColor(
+                delay,
+                SITE_TEST_TIMEOUT_MS,
+              );
 
-        return (
-          <Tooltip key={id} title={buildTooltip(name, url)}>
-            <span>
-              <IconButton
-                size="small"
-                disabled={!canTest || testingId !== null}
-                onClick={() => runTest(id, url)}
-                aria-label={`测试 ${name}`}
-                sx={{
-                  border: 1,
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  width: 52,
-                  height: 28,
-                  gap: 0.25,
-                  flexShrink: 0,
-                }}
-              >
-                {renderSiteIcon(icon, name)}
-                {isTesting ? (
-                  <CircularProgress size={12} />
-                ) : delay === -1 ? (
-                  <NetworkCheckRounded sx={{ fontSize: 14, color: "text.secondary" }} />
-                ) : (
-                  <Typography
-                    variant="caption"
-                    component="span"
-                    sx={{
-                      fontVariantNumeric: "tabular-nums",
-                      fontWeight: 600,
-                      lineHeight: 1,
-                      color: delayColor || "text.secondary",
-                      minWidth: 16,
-                      textAlign: "center",
-                    }}
-                  >
-                    {delayLabel}
-                  </Typography>
-                )}
-              </IconButton>
-            </span>
-          </Tooltip>
-        );
-      })}
-    </Box>
+              return (
+                <Box
+                  key={id}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.25,
+                    minWidth: 0,
+                  }}
+                >
+                  {renderSiteIcon(icon, name)}
+                  {isTesting ? (
+                    <CircularProgress size={10} />
+                  ) : (
+                    <Typography
+                      variant="caption"
+                      component="span"
+                      sx={{
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: 600,
+                        lineHeight: 1,
+                        fontSize: 10,
+                        color: delayColor || "text.secondary",
+                        minWidth: 14,
+                        textAlign: "center",
+                      }}
+                    >
+                      {delayLabel}
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
   );
 };

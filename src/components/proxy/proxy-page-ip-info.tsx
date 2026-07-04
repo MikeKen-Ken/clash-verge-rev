@@ -14,6 +14,7 @@ import { showNotice } from "@/services/notice-service";
 
 const IP_INFO_CACHE_KEY = "cv_ip_info_cache";
 const IP_REFRESH_SECONDS = 300;
+const FETCH_SAFETY_TIMEOUT_MS = 18000;
 
 interface IpInfoData {
   ip: string;
@@ -124,55 +125,91 @@ const IpRow = ({
   );
 };
 
+const readCachedIpInfo = (): IpInfoData | null => {
+  try {
+    const raw = window.sessionStorage.getItem(IP_INFO_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      ts?: number;
+      data?: IpInfoData & { asn_organization?: string };
+    };
+    const now = Date.now();
+    if (
+      !parsed?.ts ||
+      !parsed?.data?.ip ||
+      now - parsed.ts >= IP_REFRESH_SECONDS * 1000
+    ) {
+      return null;
+    }
+    return {
+      ip: parsed.data.ip,
+      country_code: parsed.data.country_code || "",
+      country: parsed.data.country || "",
+      region: parsed.data.region || "",
+      city: parsed.data.city || "",
+      isp: parsed.data.isp || parsed.data.asn_organization || "",
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
-  const { proxies } = useAppData();
-  const [ipInfo, setIpInfo] = useState<IpInfoData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { clashConfig } = useAppData();
+  const [ipInfo, setIpInfo] = useState<IpInfoData | null>(() =>
+    readCachedIpInfo(),
+  );
+  const [loading, setLoading] = useState(() => !readCachedIpInfo());
   const [fetchError, setFetchError] = useState("");
   const fetchSeqRef = useRef(0);
+  const prevModeRef = useRef(mode);
+  const prevRefreshTokenRef = useRef(refreshToken);
 
   const fetchIpInfo = useCallback(
     async (force = false) => {
       const seq = ++fetchSeqRef.current;
       setFetchError("");
 
+      if (mode === "offline") {
+        setIpInfo(null);
+        setLoading(false);
+        return;
+      }
+
+      if (mode === "direct" && localIp) {
+        setIpInfo({
+          ip: localIp,
+          country_code: "",
+          country: "",
+          region: "",
+          city: "",
+          isp: "",
+        });
+        setLoading(false);
+        return;
+      }
+
       if (!force) {
-        try {
-          const raw = window.sessionStorage.getItem(IP_INFO_CACHE_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw) as {
-              ts?: number;
-              data?: IpInfoData & { asn_organization?: string };
-            };
-            const now = Date.now();
-            if (
-              parsed?.ts &&
-              parsed?.data?.ip &&
-              now - parsed.ts < IP_REFRESH_SECONDS * 1000
-            ) {
-              setIpInfo({
-                ip: parsed.data.ip,
-                country_code: parsed.data.country_code || "",
-                country: parsed.data.country || "",
-                region: parsed.data.region || "",
-                city: parsed.data.city || "",
-                isp: parsed.data.isp || parsed.data.asn_organization || "",
-              });
-              setLoading(false);
-              return;
-            }
-          }
-        } catch {
-          // ignore
+        const cached = readCachedIpInfo();
+        if (cached) {
+          setIpInfo(cached);
+          setLoading(false);
+          return;
         }
       }
 
-      if (!proxies?.groups?.length) {
+      if (!clashConfig) {
         setLoading(false);
         return;
       }
 
       setLoading(true);
+      const safetyTimer = window.setTimeout(() => {
+        if (seq !== fetchSeqRef.current) return;
+        setLoading(false);
+        setFetchError("出口 IP 检测超时，请确认核心已启动且代理可用");
+      }, FETCH_SAFETY_TIMEOUT_MS);
+
       try {
         const data = await getIpInfo();
         if (seq !== fetchSeqRef.current) return;
@@ -198,20 +235,24 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         setIpInfo(null);
         const message =
           err instanceof Error ? err.message : "出口 IP 检测失败";
-        setFetchError(
-          `${message}。TUN 模式下经本地 mixed-port 检测，请确认核心已启动且 mixed-port 可用。`,
-        );
+        setFetchError(`${message}。请确认核心已启动且当前模式可正常出站。`);
       } finally {
+        window.clearTimeout(safetyTimer);
         if (seq === fetchSeqRef.current) {
           setLoading(false);
         }
       }
     },
-    [proxies?.groups?.length],
+    [clashConfig, localIp, mode],
   );
 
   useEffect(() => {
-    void fetchIpInfo(true);
+    const force =
+      prevModeRef.current !== mode ||
+      prevRefreshTokenRef.current !== refreshToken;
+    prevModeRef.current = mode;
+    prevRefreshTokenRef.current = refreshToken;
+    void fetchIpInfo(force);
   }, [fetchIpInfo, mode, refreshToken]);
 
   const handleCopy = useLockFn(async (value: string) => {

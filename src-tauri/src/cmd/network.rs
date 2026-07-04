@@ -102,20 +102,32 @@ pub fn is_port_in_use(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
-/// 通过 Clash 本地 mixed-port 发起 GET 请求。
-/// TUN 模式下前端 plugin-http 不会走 Clash，出口 IP 检测需经此路径。
+/// 经 Clash 出口发起 GET 请求（出口 IP 检测等）。
+/// TUN 模式下流量由虚拟网卡接管，直连即可；非 TUN 经 mixed-port（与 test_delay 一致）。
 #[tauri::command]
 pub async fn fetch_with_local_proxy(url: String, timeout_secs: Option<u64>) -> CmdResult<String> {
+    use crate::config::Config;
     use crate::utils::network::{NetworkManager, ProxyType};
 
     let timeout = timeout_secs.unwrap_or(5);
+    let tun_mode = Config::verge()
+        .await
+        .latest_arc()
+        .enable_tun_mode
+        .unwrap_or(false);
+    let proxy_type = if tun_mode {
+        ProxyType::None
+    } else {
+        ProxyType::Localhost
+    };
+
     let user_agent = Some(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             .into(),
     );
 
     let response = NetworkManager::new()
-        .get_with_interrupt(&url, ProxyType::Localhost, Some(timeout), user_agent, false)
+        .get_with_interrupt(&url, proxy_type, Some(timeout), user_agent, false)
         .await
         .stringify_err()?;
 

@@ -1,7 +1,6 @@
 import { fetchWithLocalProxy } from "@/services/cmds";
 import { debugLog } from "@/utils/debug";
 
-// Get current IP and geolocation information （refactored IP detection with service-specific mappings）
 interface IpInfo {
   ip: string;
   country_code: string;
@@ -16,200 +15,220 @@ interface IpInfo {
   timezone: string;
 }
 
-// IP检测服务配置
 interface ServiceConfig {
   url: string;
-  mapping: (data: any) => IpInfo;
   timeoutSecs?: number;
+  /** 将响应体解析为 IpInfo；解析失败应 throw */
+  parse: (body: string) => IpInfo;
 }
 
-// 可用的IP检测服务列表及字段映射
+const EMPTY_GEO = {
+  country_code: "",
+  country: "",
+  region: "",
+  city: "",
+  organization: "",
+  asn: 0,
+  asn_organization: "",
+  longitude: 0,
+  latitude: 0,
+  timezone: "",
+};
+
+/** 解析 Cloudflare cdn-cgi/trace 纯文本响应 */
+const parseCloudflareTrace = (body: string): IpInfo => {
+  const ip =
+    body
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.startsWith("ip="))
+      ?.slice(3)
+      .trim() ?? "";
+  if (!ip) throw new Error("Cloudflare trace 响应无 ip 字段");
+  return { ip, ...EMPTY_GEO };
+};
+
+const parseJsonBody = (body: string): unknown => {
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error("响应非 JSON");
+  }
+};
+
+// 按可靠性排序；并行请求时优先命中快且稳定的服务
 const IP_CHECK_SERVICES: ServiceConfig[] = [
   {
+    url: "https://1.1.1.1/cdn-cgi/trace",
+    timeoutSecs: 5,
+    parse: parseCloudflareTrace,
+  },
+  {
     url: "https://api.ipify.org?format=json",
-    mapping: (data) => ({
-      ip: data.ip || "",
-      country_code: "",
-      country: "",
-      region: "",
-      city: "",
-      organization: "",
-      asn: 0,
-      asn_organization: "",
-      longitude: 0,
-      latitude: 0,
-      timezone: "",
-    }),
+    timeoutSecs: 5,
+    parse: (body) => {
+      const data = parseJsonBody(body) as { ip?: string };
+      if (!data?.ip) throw new Error("ipify 响应无 ip");
+      return { ip: data.ip, ...EMPTY_GEO };
+    },
   },
   {
     url: "https://api.ip.sb/geoip",
-    mapping: (data) => ({
-      ip: data.ip || "",
-      country_code: data.country_code || "",
-      country: data.country || "",
-      region: data.region || "",
-      city: data.city || "",
-      organization: data.organization || data.isp || "",
-      asn: data.asn || 0,
-      asn_organization: data.asn_organization || "",
-      longitude: data.longitude || 0,
-      latitude: data.latitude || 0,
-      timezone: data.timezone || "",
-    }),
-  },
-  {
-    url: "https://ipapi.co/json",
-    mapping: (data) => ({
-      ip: data.ip || "",
-      country_code: data.country_code || "",
-      country: data.country_name || "",
-      region: data.region || "",
-      city: data.city || "",
-      organization: data.org || "",
-      asn: data.asn ? parseInt(data.asn.replace("AS", "")) : 0,
-      asn_organization: data.org || "",
-      longitude: data.longitude || 0,
-      latitude: data.latitude || 0,
-      timezone: data.timezone || "",
-    }),
-  },
-  {
-    url: "https://api.ipapi.is/",
-    mapping: (data) => ({
-      ip: data.ip || "",
-      country_code: data.location?.country_code || "",
-      country: data.location?.country || "",
-      region: data.location?.state || "",
-      city: data.location?.city || "",
-      organization: data.asn?.org || data.company?.name || "",
-      asn: data.asn?.asn || 0,
-      asn_organization: data.asn?.org || "",
-      longitude: data.location?.longitude || 0,
-      latitude: data.location?.latitude || 0,
-      timezone: data.location?.timezone || "",
-    }),
+    timeoutSecs: 6,
+    parse: (body) => {
+      const data = parseJsonBody(body) as Record<string, unknown>;
+      if (!data?.ip) throw new Error("ip.sb 响应无 ip");
+      return {
+        ip: String(data.ip),
+        country_code: String(data.country_code ?? ""),
+        country: String(data.country ?? ""),
+        region: String(data.region ?? ""),
+        city: String(data.city ?? ""),
+        organization: String(data.organization ?? data.isp ?? ""),
+        asn: Number(data.asn) || 0,
+        asn_organization: String(data.asn_organization ?? ""),
+        longitude: Number(data.longitude) || 0,
+        latitude: Number(data.latitude) || 0,
+        timezone: String(data.timezone ?? ""),
+      };
+    },
   },
   {
     url: "https://ipwho.is/",
-    mapping: (data) => ({
-      ip: data.ip || "",
-      country_code: data.country_code || "",
-      country: data.country || "",
-      region: data.region || "",
-      city: data.city || "",
-      organization: data.connection?.org || data.connection?.isp || "",
-      asn: data.connection?.asn || 0,
-      asn_organization: data.connection?.isp || "",
-      longitude: data.longitude || 0,
-      latitude: data.latitude || 0,
-      timezone: data.timezone?.id || "",
-    }),
+    timeoutSecs: 6,
+    parse: (body) => {
+      const data = parseJsonBody(body) as {
+        success?: boolean;
+        ip?: string;
+        country_code?: string;
+        country?: string;
+        region?: string;
+        city?: string;
+        connection?: { org?: string; isp?: string; asn?: number };
+        timezone?: { id?: string };
+        longitude?: number;
+        latitude?: number;
+      };
+      if (data?.success === false || !data?.ip) {
+        throw new Error("ipwho.is 检测失败");
+      }
+      return {
+        ip: data.ip,
+        country_code: data.country_code || "",
+        country: data.country || "",
+        region: data.region || "",
+        city: data.city || "",
+        organization: data.connection?.org || data.connection?.isp || "",
+        asn: data.connection?.asn || 0,
+        asn_organization: data.connection?.isp || "",
+        longitude: data.longitude || 0,
+        latitude: data.latitude || 0,
+        timezone: data.timezone?.id || "",
+      };
+    },
+  },
+  {
+    url: "https://api.ipapi.is/",
+    timeoutSecs: 6,
+    parse: (body) => {
+      const data = parseJsonBody(body) as {
+        ip?: string;
+        location?: {
+          country_code?: string;
+          country?: string;
+          state?: string;
+          city?: string;
+          longitude?: number;
+          latitude?: number;
+          timezone?: string;
+        };
+        asn?: { org?: string; asn?: number };
+        company?: { name?: string };
+      };
+      if (!data?.ip) throw new Error("ipapi.is 响应无 ip");
+      return {
+        ip: data.ip,
+        country_code: data.location?.country_code || "",
+        country: data.location?.country || "",
+        region: data.location?.state || "",
+        city: data.location?.city || "",
+        organization: data.asn?.org || data.company?.name || "",
+        asn: data.asn?.asn || 0,
+        asn_organization: data.asn?.org || "",
+        longitude: data.location?.longitude || 0,
+        latitude: data.location?.latitude || 0,
+        timezone: data.location?.timezone || "",
+      };
+    },
   },
 ];
 
-// 随机性服务列表洗牌函数
-function shuffleServices() {
-  // 过滤无效服务并确保每个元素符合ServiceConfig接口
-  const validServices = IP_CHECK_SERVICES.filter(
-    (service): service is ServiceConfig =>
-      service !== null &&
-      service !== undefined &&
-      typeof service.url === "string" &&
-      typeof service.mapping === "function", // 添加对mapping属性的检查
+const OVERALL_TIMEOUT_MS = 15000;
+const INVOKE_GRACE_MS = 2000;
+
+const withTimeout = <T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
+const tryService = async (service: ServiceConfig): Promise<IpInfo> => {
+  const timeoutSecs = service.timeoutSecs ?? 5;
+  debugLog(`尝试IP检测服务: ${service.url}`);
+
+  const body = await withTimeout(
+    fetchWithLocalProxy(service.url, timeoutSecs),
+    timeoutSecs * 1000 + INVOKE_GRACE_MS,
+    `请求超时 (${service.url})`,
   );
 
-  if (validServices.length === 0) {
-    console.error("No valid services found in IP_CHECK_SERVICES");
-    return [];
-  }
+  const result = service.parse(body);
+  if (!result.ip) throw new Error(`无效 IP (${service.url})`);
 
-  // 使用单一Fisher-Yates洗牌算法，增强随机性
-  const shuffled = [...validServices];
-  const length = shuffled.length;
+  debugLog(`IP检测成功，使用服务: ${service.url}`);
+  return result;
+};
 
-  // 使用多个种子进行多次洗牌
-  const seeds = [Math.random(), Date.now() / 1000, performance.now() / 1000];
-
-  for (const seed of seeds) {
-    const prng = createPrng(seed);
-
-    // Fisher-Yates洗牌算法
-    for (let i = length - 1; i > 0; i--) {
-      const j = Math.floor(prng() * (i + 1));
-
-      // 使用临时变量进行交换，避免解构赋值可能的问题
-      const temp = shuffled[i];
-      shuffled[i] = shuffled[j];
-      shuffled[j] = temp;
-    }
-  }
-
-  return shuffled;
-}
-
-// 创建一个简单的随机数生成器
-function createPrng(seed: number): () => number {
-  // 使用xorshift32算法
-  let state = seed >>> 0;
-
-  // 如果种子为0，设置一个默认值
-  if (state === 0) state = 123456789;
-
-  return function () {
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    return (state >>> 0) / 4294967296;
-  };
-}
-
-// 获取当前IP和地理位置信息
+/** 并行竞速，任一成功即返回；全部失败则抛出最后一个错误 */
 export const getIpInfo = async (): Promise<IpInfo> => {
-  const maxRetries = 3;
-  const serviceTimeoutSecs = 5;
-  const overallTimeoutMs = 20000;
-  const deadline = Date.now() + overallTimeoutMs;
+  const errors: Error[] = [];
 
-  const shuffledServices = shuffleServices();
-  let lastError: Error | null = null;
+  const tasks = IP_CHECK_SERVICES.map((service) =>
+    tryService(service).catch((error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error));
+      errors.push(err);
+      console.warn(`IP检测失败 (${service.url}):`, err.message);
+      throw err;
+    }),
+  );
 
-  for (const service of shuffledServices) {
-    if (Date.now() > deadline) break;
-
-    debugLog(`尝试IP检测服务: ${service.url}`);
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      if (Date.now() > deadline) break;
-
-      try {
-        const timeoutSecs = service.timeoutSecs ?? serviceTimeoutSecs;
-        const body = await fetchWithLocalProxy(service.url, timeoutSecs);
-        const data = JSON.parse(body);
-
-        if (data && data.ip) {
-          debugLog(`IP检测成功，使用服务: ${service.url}`);
-          return service.mapping(data);
-        }
-
-        throw new Error(`无效的响应格式 from ${service.url}`);
-      } catch (error: unknown) {
-        lastError =
-          error instanceof Error ? error : new Error(String(error));
-        console.warn(
-          `尝试 ${attempt + 1}/${maxRetries} 失败 (${service.url}):`,
-          error,
-        );
-
-        if (attempt < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
+  try {
+    return await withTimeout(
+      Promise.any(tasks),
+      OVERALL_TIMEOUT_MS,
+      "出口 IP 检测超时，请确认核心已启动且网络可用",
+    );
+  } catch (aggregateError) {
+    if (errors.length > 0) {
+      throw new Error(
+        `所有IP检测服务都失败: ${errors[errors.length - 1]?.message ?? "未知错误"}`,
+      );
     }
+    throw aggregateError instanceof Error
+      ? aggregateError
+      : new Error("没有可用的IP检测服务");
   }
-
-  if (lastError) {
-    throw new Error(`所有IP检测服务都失败: ${lastError.message}`);
-  }
-
-  throw new Error("没有可用的IP检测服务");
 };
