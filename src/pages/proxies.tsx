@@ -51,6 +51,7 @@ import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
+import { ProxyPageIpInfo } from "@/components/proxy/proxy-page-ip-info";
 import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
 import parseTraffic from "@/utils/parse-traffic";
@@ -129,6 +130,7 @@ const ProxyPage = () => {
   const checkAllDelayRunnerRef = useRef<(() => void) | null>(null);
   const [healthCheckConcurrency, setHealthCheckConcurrencyState] =
     useState<number>(() => getDelayCheckConcurrency());
+  const [ipRefreshToken, setIpRefreshToken] = useState(0);
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
     if (mode !== uiMode && verge?.auto_close_connection) {
@@ -244,6 +246,7 @@ const ProxyPage = () => {
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
+    setIpRefreshToken((prev) => prev + 1);
   });
 
   // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
@@ -695,6 +698,11 @@ const ProxyPage = () => {
                 </Box>
               </Box>
             </Tooltip>
+            <ProxyPageIpInfo
+              localIp={preferredLanIpv4}
+              mode={uiMode}
+              refreshToken={ipRefreshToken}
+            />
           </Box>
         </Box>
       }
