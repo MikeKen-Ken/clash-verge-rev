@@ -174,6 +174,7 @@ export const useCloseAllWithDelayCheck = () => {
               const dm = await delayGroup(group.name, url, timeout);
               delayManager.applyGroupUrlTestDelays(group.name, groupProxyNames, dm, {
                 bulkReuseMap,
+                timeout,
               });
               debugLog(
                 `[CloseAll] delayGroup 完成 ${group.name}，返回 ${Object.keys(dm || {}).length} 条延迟`,

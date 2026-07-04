@@ -1,5 +1,6 @@
 import { delayProxyByName, ProxyDelay } from "tauri-plugin-mihomo-api";
 
+import { recordDelayTestResult } from "@/services/proxy-connectivity-stats";
 import { debugLog } from "@/utils/debug";
 
 /** 默认测速 URL（与 Android `tunnel/connectivity.go` 中空 testURL 一致） */
@@ -541,6 +542,9 @@ class DelayManager {
       elapsed,
       silentGlobal: silent,
     });
+    if (update.delay !== -2) {
+      recordDelayTestResult(name, update.delay, timeout);
+    }
     if (reuseMap != null && reuseKey !== undefined && update.delay !== -2) {
       reuseMap.set(reuseKey, { ...update });
     }
@@ -648,8 +652,12 @@ class DelayManager {
     groupName: string,
     memberNames: string[],
     delays: Record<string, number>,
-    opts?: { bulkReuseMap?: Map<string, DelayUpdate> },
+    opts?: { bulkReuseMap?: Map<string, DelayUpdate>; timeout?: number },
   ) {
+    const timeout =
+      opts?.timeout != null && opts.timeout > 0
+        ? opts.timeout
+        : DEFAULT_GROUP_TIMEOUT_MS;
     for (const name of memberNames) {
       if (!name || name === "DIRECT" || name === "REJECT") continue;
       const raw = delays[name];
@@ -658,6 +666,7 @@ class DelayManager {
       const update = this.setDelay(name, groupName, value, {
         silentGlobal: true,
       });
+      recordDelayTestResult(name, update.delay, timeout);
       opts?.bulkReuseMap?.set(name, { ...update });
     }
     this.flushAfterBulkSilentWrites();

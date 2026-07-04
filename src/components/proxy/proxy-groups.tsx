@@ -28,6 +28,10 @@ import delayManager, {
   type DelayUpdate,
 } from "@/services/delay";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
+import {
+  compareProxyNamesByRegionAndConnectivity,
+  loadCustomProxyOrderFromStorage,
+} from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -586,6 +590,7 @@ export const ProxyGroups = (props: Props) => {
             const dm = await delayGroup(groupName, url, timeout);
             delayManager.applyGroupUrlTestDelays(groupName, names, dm, {
               bulkReuseMap,
+              timeout,
             });
           } catch (err) {
             console.warn(
@@ -633,6 +638,17 @@ export const ProxyGroups = (props: Props) => {
             if (da !== db) return da - db;
             return a.index - b.index;
           });
+        } else if (sortType === 0) {
+          const customOrder = loadCustomProxyOrderFromStorage();
+          successCandidates.sort((a, b) =>
+            compareProxyNamesByRegionAndConnectivity(
+              a.proxyName,
+              b.proxyName,
+              a.index,
+              b.index,
+              customOrder,
+            ),
+          );
         }
 
         // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
