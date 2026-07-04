@@ -1,6 +1,6 @@
 import { delayProxyByName, ProxyDelay } from "tauri-plugin-mihomo-api";
 
-import { recordDelayTestResult } from "@/services/proxy-connectivity-stats";
+import { recordDelayTestResult, recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
 import { debugLog } from "@/utils/debug";
 
 /** 默认测速 URL（与 Android `tunnel/connectivity.go` 中空 testURL 一致） */
@@ -666,9 +666,9 @@ class DelayManager {
       const update = this.setDelay(name, groupName, value, {
         silentGlobal: true,
       });
-      recordDelayTestResult(name, update.delay, timeout);
       opts?.bulkReuseMap?.set(name, { ...update });
     }
+    recordGroupDelayResults(memberNames, delays, timeout);
     this.flushAfterBulkSilentWrites();
   }
 

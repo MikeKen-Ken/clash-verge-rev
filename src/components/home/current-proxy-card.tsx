@@ -49,6 +49,7 @@ import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
+import { recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
@@ -819,10 +820,22 @@ export const CurrentProxyCard = () => {
               fullBulkMaxConcurrency: true,
             });
           } else {
-            await Promise.race([
-              delayManager.checkListDelay(proxyNames, groupName, timeout),
-              delayGroup(groupName, url, timeout),
-            ]);
+            try {
+              const dm = await delayGroup(groupName, url, timeout);
+              recordGroupDelayResults(proxyNames, dm, timeout);
+              delayManager.applyGroupUrlTestDelays(
+                groupName,
+                proxyNames,
+                dm,
+                { timeout },
+              );
+            } catch (err) {
+              console.warn(
+                `[CurrentProxyCard] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
+                err,
+              );
+              await delayManager.checkListDelay(proxyNames, groupName, timeout);
+            }
           }
           debugLog(
             `[CurrentProxyCard] checkListDelay/delayGroup 耗时: ${Date.now() - tList}ms, 组: ${groupName}`,

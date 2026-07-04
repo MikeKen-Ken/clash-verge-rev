@@ -22,6 +22,7 @@ import {
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import delayManager, { setDefaultHealthCheck } from "@/services/delay";
+import { recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -168,10 +169,14 @@ export const AppDataProvider = ({
 
     const run = async () => {
       await Promise.allSettled(
-        urlTestOrFallback.map((g) => {
+        urlTestOrFallback.map(async (g) => {
           const url = delayManager.getUrl(g.name);
           const timeout = g.timeout ?? 5000;
-          return delayGroup(g.name, url, timeout);
+          const dm = await delayGroup(g.name, url, timeout);
+          const names = (g.all ?? [])
+            .map((p) => (typeof p === "string" ? p : p.name))
+            .filter((name): name is string => Boolean(name));
+          recordGroupDelayResults(names, dm, timeout);
         }),
       );
       await refreshProxy();
