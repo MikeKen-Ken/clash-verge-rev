@@ -75,7 +75,6 @@ import {
   resolveFlag,
   sortProxiesByConnectivity,
 } from "@/services/proxy-region-sort";
-import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
 import { showNotice } from "@/services/notice-service";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
@@ -1158,18 +1157,6 @@ const ProfilePage = () => {
               ))}
             </Select>
           </FormControl>
-
-          <Button
-            size="small"
-            variant="outlined"
-            sx={{ whiteSpace: "nowrap" }}
-            onClick={() => {
-              clearConnectivityStats();
-              showNotice.success("已清空测速联通统计");
-            }}
-          >
-            清空统计
-          </Button>
 
           {(error || isStale) && (
             <IconButton

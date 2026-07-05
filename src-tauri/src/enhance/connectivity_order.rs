@@ -12,6 +12,8 @@ const RETENTION_DAYS: i64 = 30;
 const DECAY_HALF_LIFE_DAYS: f64 = 3.0;
 const PRIOR_VIRTUAL_SAMPLES: f64 = 20.0;
 const FALLBACK_PRIOR_RATE: f64 = 0.75;
+const SPEED_REFERENCE_DELAY_MS: f64 = 400.0;
+const NEUTRAL_SPEED_SCORE: f64 = 0.5;
 
 #[derive(Debug, Deserialize)]
 struct DayCounts {
@@ -19,6 +21,8 @@ struct DayCounts {
     s: i64,
     #[serde(default)]
     f: i64,
+    #[serde(default)]
+    ds: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +57,7 @@ struct BayesianPrior {
 struct WeightedStats {
     success: f64,
     failure: f64,
+    delay_sum: f64,
 }
 
 fn cutoff_day(now: NaiveDate) -> NaiveDate {
@@ -85,6 +90,7 @@ fn sum_weighted_days(days: &HashMap<String, DayCounts>, today: NaiveDate) -> Wei
         }
         stats.success += counts.s as f64 * weight;
         stats.failure += counts.f as f64 * weight;
+        stats.delay_sum += counts.ds as f64 * weight;
     }
     stats
 }
@@ -167,6 +173,23 @@ fn bayesian_score(success: f64, failure: f64, prior: BayesianPrior) -> f64 {
     (success + prior.alpha) / denom
 }
 
+fn speed_score(success: f64, delay_sum: f64) -> f64 {
+    if success <= 0.0 {
+        return NEUTRAL_SPEED_SCORE;
+    }
+    let avg_delay = delay_sum / success;
+    if !avg_delay.is_finite() || avg_delay < 0.0 {
+        return NEUTRAL_SPEED_SCORE;
+    }
+    1.0 / (1.0 + avg_delay / SPEED_REFERENCE_DELAY_MS)
+}
+
+fn composite_score(stats: WeightedStats, prior: BayesianPrior) -> f64 {
+    let reliability = bayesian_score(stats.success, stats.failure, prior);
+    let speed = speed_score(stats.success, stats.delay_sum);
+    reliability * speed
+}
+
 fn sort_names_by_connectivity(
     names: &[String],
     stats: &HashMap<String, WeightedStats>,
@@ -181,7 +204,7 @@ fn sort_names_by_connectivity(
         .enumerate()
         .map(|(index, name)| {
             let entry = stats.get(name).copied().unwrap_or_default();
-            let score = bayesian_score(entry.success, entry.failure, prior);
+            let score = composite_score(entry, prior);
             (index, score, name.clone())
         })
         .collect();
@@ -305,6 +328,7 @@ mod tests {
             WeightedStats {
                 success: 1.0,
                 failure: 9.0,
+                delay_sum: 800.0,
             },
         );
         stats.insert(
@@ -312,6 +336,7 @@ mod tests {
             WeightedStats {
                 success: 45.0,
                 failure: 5.0,
+                delay_sum: 45.0 * 200.0,
             },
         );
         let prior = compute_bayesian_prior(&stats);
@@ -330,6 +355,31 @@ mod tests {
         let perfect_small = bayesian_score(1.0, 0.0, prior);
         let stable_large = bayesian_score(9.0, 1.0, prior);
         assert!(stable_large > perfect_small);
+    }
+
+    #[test]
+    fn composite_score_prefers_fast_and_stable() {
+        let prior = BayesianPrior {
+            alpha: 15.0,
+            beta: 5.0,
+        };
+        let stable_fast = composite_score(
+            WeightedStats {
+                success: 20.0,
+                failure: 2.0,
+                delay_sum: 20.0 * 200.0,
+            },
+            prior,
+        );
+        let stable_slow = composite_score(
+            WeightedStats {
+                success: 20.0,
+                failure: 2.0,
+                delay_sum: 20.0 * 800.0,
+            },
+            prior,
+        );
+        assert!(stable_fast > stable_slow);
     }
 
     #[test]

@@ -12,6 +12,10 @@ export const CONNECTIVITY_DECAY_HALF_LIFE_DAYS = 3;
 export const CONNECTIVITY_PRIOR_VIRTUAL_SAMPLES = 20;
 /** 全局尚无实测数据时的默认成功率先验 */
 export const CONNECTIVITY_FALLBACK_PRIOR_RATE = 0.75;
+/** 速度分参考延迟（ms）：avgDelay = D0 时 speedScore = 0.5 */
+export const CONNECTIVITY_SPEED_REFERENCE_DELAY_MS = 400;
+/** 无成功测速记录时的中性速度分 */
+export const CONNECTIVITY_NEUTRAL_SPEED_SCORE = 0.5;
 
 const RETENTION_DAYS = CONNECTIVITY_RETENTION_DAYS;
 const MS_PER_DAY = 86_400_000;
@@ -19,6 +23,7 @@ const MS_PER_DAY = 86_400_000;
 interface DayCounts {
   s: number;
   f: number;
+  ds?: number;
 }
 
 interface ProxyConnectivityEntry {
@@ -39,6 +44,7 @@ interface LegacyProxyConnectivityStats {
 export interface ProxyConnectivityStats {
   success: number;
   failure: number;
+  delaySum: number;
 }
 
 export interface ConnectivityBayesianPrior {
@@ -103,13 +109,15 @@ function sumWeightedDays(
 ): ProxyConnectivityStats {
   let success = 0;
   let failure = 0;
+  let delaySum = 0;
   for (const [day, counts] of Object.entries(days)) {
     const weight = connectivityDecayWeight(dayAgeInDays(day, now));
     if (weight <= 0) continue;
     success += (counts.s ?? 0) * weight;
     failure += (counts.f ?? 0) * weight;
+    delaySum += (counts.ds ?? 0) * weight;
   }
-  return { success, failure };
+  return { success, failure, delaySum };
 }
 
 function migrateLegacyStore(
@@ -170,17 +178,17 @@ function persistStore(store: Record<string, ProxyConnectivityEntry>) {
 }
 
 export function getConnectivityStats(proxyName: string): ProxyConnectivityStats {
-  if (!proxyName) return { success: 0, failure: 0 };
+  if (!proxyName) return { success: 0, failure: 0, delaySum: 0 };
   const store = loadStore();
   const entry = store[proxyName];
-  if (!entry?.days) return { success: 0, failure: 0 };
+  if (!entry?.days) return { success: 0, failure: 0, delaySum: 0 };
   const now = new Date();
   pruneDays(entry.days, now);
   if (Object.keys(entry.days).length === 0) {
     const next = { ...store };
     delete next[proxyName];
     persistStore(next);
-    return { success: 0, failure: 0 };
+    return { success: 0, failure: 0, delaySum: 0 };
   }
   return sumWeightedDays(entry.days, now);
 }
@@ -196,7 +204,7 @@ function collectWeightedStatsFromStore(
   global: ProxyConnectivityStats;
   byProxy: Record<string, ProxyConnectivityStats>;
 } {
-  const global = { success: 0, failure: 0 };
+  const global = { success: 0, failure: 0, delaySum: 0 };
   const byProxy: Record<string, ProxyConnectivityStats> = {};
 
   for (const [name, entry] of Object.entries(store)) {
@@ -206,13 +214,14 @@ function collectWeightedStatsFromStore(
     byProxy[name] = weighted;
     global.success += weighted.success;
     global.failure += weighted.failure;
+    global.delaySum += weighted.delaySum;
   }
 
   return { global, byProxy };
 }
 
 export function computeConnectivityBayesianPrior(
-  totals: ProxyConnectivityStats = { success: 0, failure: 0 },
+  totals: ProxyConnectivityStats = { success: 0, failure: 0, delaySum: 0 },
 ): ConnectivityBayesianPrior {
   const k = CONNECTIVITY_PRIOR_VIRTUAL_SAMPLES;
   const total = totals.success + totals.failure;
@@ -233,6 +242,35 @@ export function computeBayesianConnectivityScore(
   return (success + prior.alpha) / denom;
 }
 
+/** 路线 1：成功测速的加权平均延迟 → 速度分 */
+export function computeConnectivitySpeedScore(
+  weightedSuccess: number,
+  weightedDelaySum: number,
+): number {
+  if (weightedSuccess <= 0) {
+    return CONNECTIVITY_NEUTRAL_SPEED_SCORE;
+  }
+  const avgDelay = weightedDelaySum / weightedSuccess;
+  if (!Number.isFinite(avgDelay) || avgDelay < 0) {
+    return CONNECTIVITY_NEUTRAL_SPEED_SCORE;
+  }
+  return 1 / (1 + avgDelay / CONNECTIVITY_SPEED_REFERENCE_DELAY_MS);
+}
+
+/** 综合分 = 可靠分 × 速度分 */
+export function computeCompositeConnectivityScore(
+  stats: ProxyConnectivityStats,
+  prior: ConnectivityBayesianPrior,
+): number {
+  const reliability = computeBayesianConnectivityScore(
+    stats.success,
+    stats.failure,
+    prior,
+  );
+  const speed = computeConnectivitySpeedScore(stats.success, stats.delaySum);
+  return reliability * speed;
+}
+
 /** 一次性构建排序上下文，避免批量排序时重复扫描 store */
 export function buildConnectivityScoreContext(): ConnectivityScoreContext {
   const { global, byProxy } = collectWeightedStatsFromStore(loadStore());
@@ -241,12 +279,12 @@ export function buildConnectivityScoreContext(): ConnectivityScoreContext {
   return {
     prior,
     scoreFor: (proxyName: string) => {
-      const stats = byProxy[proxyName] ?? { success: 0, failure: 0 };
-      return computeBayesianConnectivityScore(
-        stats.success,
-        stats.failure,
-        prior,
-      );
+      const stats = byProxy[proxyName] ?? {
+        success: 0,
+        failure: 0,
+        delaySum: 0,
+      };
+      return computeCompositeConnectivityScore(stats, prior);
     },
   };
 }
@@ -273,10 +311,14 @@ export function recordDelayTestResult(
   const store = { ...loadStore() };
   const entry = store[proxyName] ?? { days: {} };
   if (!entry.days) entry.days = {};
-  const prev = entry.days[day] ?? { s: 0, f: 0 };
+  const prev = entry.days[day] ?? { s: 0, f: 0, ds: 0 };
   entry.days[day] = isSuccess
-    ? { s: prev.s + 1, f: prev.f }
-    : { s: prev.s, f: prev.f + 1 };
+    ? {
+        s: prev.s + 1,
+        f: prev.f,
+        ds: (prev.ds ?? 0) + delay,
+      }
+    : { s: prev.s, f: prev.f + 1, ds: prev.ds ?? 0 };
   pruneDays(entry.days, now);
   if (Object.keys(entry.days).length === 0) {
     delete store[proxyName];
