@@ -1,4 +1,4 @@
-//! 在 Config::generate 阶段按指数衰减 + 贝叶斯平滑成功率重排 proxies / proxy-groups.proxies。
+//! 在 Config::generate 阶段按惩罚有效延迟（含失败 timeout）重排 proxies / proxy-groups.proxies。
 
 use crate::utils::dirs;
 use chrono::{Duration, Local, NaiveDate};
@@ -11,9 +11,8 @@ const STATS_FILE: &str = "proxy-connectivity-stats.json";
 const RETENTION_DAYS: i64 = 30;
 const DECAY_HALF_LIFE_DAYS: f64 = 3.0;
 const PRIOR_VIRTUAL_SAMPLES: f64 = 20.0;
-const FALLBACK_PRIOR_RATE: f64 = 0.75;
-const SPEED_REFERENCE_DELAY_MS: f64 = 400.0;
-const NEUTRAL_SPEED_SCORE: f64 = 0.5;
+const FALLBACK_DELAY_MS: f64 = 400.0;
+const SCORE_REFERENCE_DELAY_MS: f64 = 400.0;
 
 #[derive(Debug, Deserialize)]
 struct DayCounts {
@@ -45,12 +44,6 @@ struct LegacyEntry {
     success: i64,
     #[serde(default)]
     failure: i64,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct BayesianPrior {
-    alpha: f64,
-    beta: f64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -95,6 +88,10 @@ fn sum_weighted_days(days: &HashMap<String, DayCounts>, today: NaiveDate) -> Wei
     stats
 }
 
+fn weighted_trial_count(stats: WeightedStats) -> f64 {
+    stats.success + stats.failure
+}
+
 fn load_weighted_connectivity_stats() -> HashMap<String, WeightedStats> {
     let Ok(home) = dirs::app_home_dir() else {
         return HashMap::new();
@@ -120,6 +117,7 @@ fn load_weighted_connectivity_stats_from_dir(home: &PathBuf) -> HashMap<String, 
                         WeightedStats {
                             success: entry.success as f64,
                             failure: entry.failure as f64,
+                            delay_sum: 0.0,
                         },
                     );
                 }
@@ -144,56 +142,50 @@ fn load_weighted_connectivity_stats_from_dir(home: &PathBuf) -> HashMap<String, 
     out
 }
 
-fn compute_bayesian_prior(stats: &HashMap<String, WeightedStats>) -> BayesianPrior {
-    let mut total_success = 0.0;
-    let mut total_failure = 0.0;
+fn compute_prior_effective_delay_ms(stats: &HashMap<String, WeightedStats>) -> f64 {
+    let mut total_delay = 0.0;
+    let mut total_trials = 0.0;
     for entry in stats.values() {
-        total_success += entry.success;
-        total_failure += entry.failure;
+        total_delay += entry.delay_sum;
+        total_trials += weighted_trial_count(*entry);
     }
-
-    let total = total_success + total_failure;
-    let rate = if total > 0.0 {
-        total_success / total
+    if total_trials <= 0.0 {
+        return FALLBACK_DELAY_MS;
+    }
+    let avg = total_delay / total_trials;
+    if !avg.is_finite() || avg < 0.0 {
+        FALLBACK_DELAY_MS
     } else {
-        FALLBACK_PRIOR_RATE
+        avg
+    }
+}
+
+fn smoothed_effective_avg_delay(stats: WeightedStats, prior_delay_ms: f64) -> f64 {
+    let trials = weighted_trial_count(stats);
+    let prior = if prior_delay_ms.is_finite() && prior_delay_ms > 0.0 {
+        prior_delay_ms
+    } else {
+        FALLBACK_DELAY_MS
     };
-
-    BayesianPrior {
-        alpha: rate * PRIOR_VIRTUAL_SAMPLES,
-        beta: (1.0 - rate) * PRIOR_VIRTUAL_SAMPLES,
-    }
+    (stats.delay_sum + PRIOR_VIRTUAL_SAMPLES * prior) / (trials + PRIOR_VIRTUAL_SAMPLES)
 }
 
-fn bayesian_score(success: f64, failure: f64, prior: BayesianPrior) -> f64 {
-    let denom = success + failure + prior.alpha + prior.beta;
-    if denom <= 0.0 {
-        return FALLBACK_PRIOR_RATE;
+fn connectivity_score_from_avg_delay(avg_delay_ms: f64) -> f64 {
+    if !avg_delay_ms.is_finite() || avg_delay_ms < 0.0 {
+        return 1.0 / (1.0 + FALLBACK_DELAY_MS / SCORE_REFERENCE_DELAY_MS);
     }
-    (success + prior.alpha) / denom
+    1.0 / (1.0 + avg_delay_ms / SCORE_REFERENCE_DELAY_MS)
 }
 
-fn speed_score(success: f64, delay_sum: f64) -> f64 {
-    if success <= 0.0 {
-        return NEUTRAL_SPEED_SCORE;
-    }
-    let avg_delay = delay_sum / success;
-    if !avg_delay.is_finite() || avg_delay < 0.0 {
-        return NEUTRAL_SPEED_SCORE;
-    }
-    1.0 / (1.0 + avg_delay / SPEED_REFERENCE_DELAY_MS)
-}
-
-fn composite_score(stats: WeightedStats, prior: BayesianPrior) -> f64 {
-    let reliability = bayesian_score(stats.success, stats.failure, prior);
-    let speed = speed_score(stats.success, stats.delay_sum);
-    reliability * speed
+fn penalized_delay_score(stats: WeightedStats, prior_delay_ms: f64) -> f64 {
+    let avg = smoothed_effective_avg_delay(stats, prior_delay_ms);
+    connectivity_score_from_avg_delay(avg)
 }
 
 fn sort_names_by_connectivity(
     names: &[String],
     stats: &HashMap<String, WeightedStats>,
-    prior: BayesianPrior,
+    prior_delay_ms: f64,
 ) -> Vec<String> {
     if names.len() <= 1 {
         return names.to_vec();
@@ -204,7 +196,7 @@ fn sort_names_by_connectivity(
         .enumerate()
         .map(|(index, name)| {
             let entry = stats.get(name).copied().unwrap_or_default();
-            let score = composite_score(entry, prior);
+            let score = penalized_delay_score(entry, prior_delay_ms);
             (index, score, name.clone())
         })
         .collect();
@@ -221,7 +213,7 @@ fn sort_names_by_connectivity(
 fn sort_proxy_mappings(
     proxies: &mut [Value],
     stats: &HashMap<String, WeightedStats>,
-    prior: BayesianPrior,
+    prior_delay_ms: f64,
 ) {
     if proxies.len() <= 1 {
         return;
@@ -233,7 +225,7 @@ fn sort_proxy_mappings(
     if names.len() != proxies.len() {
         return;
     }
-    let sorted = sort_names_by_connectivity(&names, stats, prior);
+    let sorted = sort_names_by_connectivity(&names, stats, prior_delay_ms);
     let index_by_name: HashMap<String, usize> = sorted
         .iter()
         .enumerate()
@@ -251,7 +243,7 @@ fn sort_proxy_mappings(
 fn sort_group_proxies_list(
     list: &mut [Value],
     stats: &HashMap<String, WeightedStats>,
-    prior: BayesianPrior,
+    prior_delay_ms: f64,
 ) {
     let names: Vec<String> = list
         .iter()
@@ -260,7 +252,7 @@ fn sort_group_proxies_list(
     if names.len() != list.len() || names.len() <= 1 {
         return;
     }
-    let sorted = sort_names_by_connectivity(&names, stats, prior);
+    let sorted = sort_names_by_connectivity(&names, stats, prior_delay_ms);
     let index_by_name: HashMap<String, usize> = sorted
         .iter()
         .enumerate()
@@ -276,10 +268,10 @@ fn sort_group_proxies_list(
 /// 在 finalize_runtime_config 末尾调用：重排运行时 YAML 中的节点顺序。
 pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
     let stats = load_weighted_connectivity_stats();
-    let prior = compute_bayesian_prior(&stats);
+    let prior_delay_ms = compute_prior_effective_delay_ms(&stats);
 
     if let Some(Value::Sequence(proxies)) = config.get_mut("proxies") {
-        sort_proxy_mappings(proxies, &stats, prior);
+        sort_proxy_mappings(proxies, &stats, prior_delay_ms);
     }
 
     if let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") {
@@ -288,7 +280,7 @@ pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
                 continue;
             };
             if let Some(Value::Sequence(list)) = group_map.get_mut("proxies") {
-                sort_group_proxies_list(list, &stats, prior);
+                sort_group_proxies_list(list, &stats, prior_delay_ms);
             }
         }
     }
@@ -316,7 +308,29 @@ mod tests {
     }
 
     #[test]
-    fn sort_names_by_bayesian_score_desc() {
+    fn failure_penalty_raises_avg_delay() {
+        let prior = 400.0;
+        let mostly_fast = penalized_delay_score(
+            WeightedStats {
+                success: 10.0,
+                failure: 0.0,
+                delay_sum: 10.0 * 200.0,
+            },
+            prior,
+        );
+        let with_failure = penalized_delay_score(
+            WeightedStats {
+                success: 10.0,
+                failure: 1.0,
+                delay_sum: 10.0 * 200.0 + 5000.0,
+            },
+            prior,
+        );
+        assert!(mostly_fast > with_failure);
+    }
+
+    #[test]
+    fn sort_names_by_penalized_delay_desc() {
         let names = vec![
             "node-low".into(),
             "node-high".into(),
@@ -326,20 +340,20 @@ mod tests {
         stats.insert(
             "node-low".into(),
             WeightedStats {
-                success: 1.0,
-                failure: 9.0,
-                delay_sum: 800.0,
+                success: 2.0,
+                failure: 8.0,
+                delay_sum: 2.0 * 200.0 + 8.0 * 5000.0,
             },
         );
         stats.insert(
             "node-high".into(),
             WeightedStats {
                 success: 45.0,
-                failure: 5.0,
-                delay_sum: 45.0 * 200.0,
+                failure: 2.0,
+                delay_sum: 45.0 * 200.0 + 2.0 * 5000.0,
             },
         );
-        let prior = compute_bayesian_prior(&stats);
+        let prior = compute_prior_effective_delay_ms(&stats);
         let sorted = sort_names_by_connectivity(&names, &stats, prior);
         assert_eq!(sorted[0], "node-high");
         assert_eq!(sorted[1], "node-untested");
@@ -347,39 +361,17 @@ mod tests {
     }
 
     #[test]
-    fn bayesian_score_shrinks_small_sample_with_k20() {
-        let prior = BayesianPrior {
-            alpha: 15.0,
-            beta: 5.0,
-        };
-        let perfect_small = bayesian_score(1.0, 0.0, prior);
-        let stable_large = bayesian_score(9.0, 1.0, prior);
-        assert!(stable_large > perfect_small);
-    }
-
-    #[test]
-    fn composite_score_prefers_fast_and_stable() {
-        let prior = BayesianPrior {
-            alpha: 15.0,
-            beta: 5.0,
-        };
-        let stable_fast = composite_score(
+    fn smoothed_avg_uses_prior_for_small_sample() {
+        let avg = smoothed_effective_avg_delay(
             WeightedStats {
-                success: 20.0,
-                failure: 2.0,
-                delay_sum: 20.0 * 200.0,
+                success: 1.0,
+                failure: 0.0,
+                delay_sum: 100.0,
             },
-            prior,
+            400.0,
         );
-        let stable_slow = composite_score(
-            WeightedStats {
-                success: 20.0,
-                failure: 2.0,
-                delay_sum: 20.0 * 800.0,
-            },
-            prior,
-        );
-        assert!(stable_fast > stable_slow);
+        assert!(avg > 100.0);
+        assert!(avg < 400.0);
     }
 
     #[test]
@@ -388,11 +380,19 @@ mod tests {
         let mut days = HashMap::new();
         days.insert(
             "2026-07-05".into(),
-            DayCounts { s: 10, f: 0 },
+            DayCounts {
+                s: 10,
+                f: 0,
+                ds: 3000,
+            },
         );
         days.insert(
             "2026-07-02".into(),
-            DayCounts { s: 10, f: 0 },
+            DayCounts {
+                s: 10,
+                f: 0,
+                ds: 3000,
+            },
         );
         let weighted = sum_weighted_days(&days, today);
         assert!(weighted.success > 10.0);
