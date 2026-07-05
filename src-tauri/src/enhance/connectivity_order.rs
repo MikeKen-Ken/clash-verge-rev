@@ -4,7 +4,6 @@ use crate::utils::dirs;
 use chrono::{Duration, Local, NaiveDate};
 use serde::Deserialize;
 use serde_yaml_ng::{Mapping, Value};
-use smartstring::alias::String;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -372,7 +371,10 @@ fn sort_group_proxies_list(
         return;
     }
     let sorted = sort_names_by_region_and_connectivity(&names, custom_order, success_counts);
-    *list = sorted.into_iter().map(Value::from).collect();
+    *list = sorted
+        .into_iter()
+        .map(|name| Value::from(name.as_str()))
+        .collect();
 }
 
 /// 在 finalize_runtime_config 末尾调用：重排运行时 YAML 中的节点顺序。
