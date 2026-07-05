@@ -80,6 +80,7 @@ import {
 } from "@/services/proxy-region-sort";
 import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
 import { syncProxyRegionOrderToDisk } from "@/services/proxy-connectivity-sync";
+import { showNotice } from "@/services/notice-service";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
 
