@@ -1,5 +1,5 @@
 /** 节点测速联通次数统计（localStorage 持久化，仅保留最近 3 天） */
-import { syncConnectivityStatsToDisk } from "@/services/proxy-connectivity-sync";
+import { scheduleConnectivityPersistenceSync } from "@/services/proxy-connectivity-sync";
 
 const STORAGE_KEY = "proxy.connectivityStats";
 const RETENTION_DAYS = 3;
@@ -116,7 +116,7 @@ function persistStore(store: Record<string, ProxyConnectivityEntry>) {
   try {
     const payload: StatsFileV2 = { v: STORE_VERSION, data: store };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    void syncConnectivityStatsToDisk();
+    scheduleConnectivityPersistenceSync();
   } catch {
     // ignore localStorage failure
   }
@@ -194,7 +194,7 @@ export function clearConnectivityStats(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-    void syncConnectivityStatsToDisk();
+    scheduleConnectivityPersistenceSync();
   } catch {
     // ignore localStorage failure
   }

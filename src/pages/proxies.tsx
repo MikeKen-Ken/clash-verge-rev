@@ -134,7 +134,6 @@ const ProxyPage = () => {
   const checkAllDelayRunnerRef = useRef<(() => void) | null>(null);
   const [healthCheckConcurrency, setHealthCheckConcurrencyState] =
     useState<number>(() => getDelayCheckConcurrency());
-  const [ipRefreshToken, setIpRefreshToken] = useState(0);
   const [siteTestSelection, setSiteTestSelection] =
     useState<ProxySiteTestSelection | null>(null);
 
@@ -252,7 +251,6 @@ const ProxyPage = () => {
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
-    setIpRefreshToken((prev) => prev + 1);
   });
 
   // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
@@ -267,13 +265,6 @@ const ProxyPage = () => {
   });
 
   const handleClearConnectivityStats = useLockFn(async () => {
-    if (
-      !window.confirm(
-        "确定清空各节点的测速成功/失败次数吗？仅清除本地统计，不影响当前代理连接。",
-      )
-    ) {
-      return;
-    }
     clearConnectivityStats();
     showNotice.success("已清空节点测速统计");
     await handleRefreshProxy();
@@ -712,11 +703,7 @@ const ProxyPage = () => {
               </Box>
             </Tooltip>
             <ProxySiteTestButtons mode={uiMode} selection={siteTestSelection} />
-            <ProxyPageIpInfo
-              localIp={preferredLanIpv4}
-              mode={uiMode}
-              refreshToken={ipRefreshToken}
-            />
+            <ProxyPageIpInfo localIp={preferredLanIpv4} />
           </Box>
         </Box>
       }

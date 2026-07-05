@@ -147,7 +147,6 @@ mod app_init {
             cmd::open_core_log,
             cmd::get_portable_flag,
             cmd::get_network_interfaces,
-            cmd::fetch_with_local_proxy,
             cmd::get_system_hostname,
             cmd::restart_app,
             cmd::start_core,

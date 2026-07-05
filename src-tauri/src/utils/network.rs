@@ -1,7 +1,6 @@
 use crate::config::Config;
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use clash_verge_logging::{Type, logging};
 use reqwest::{
     Client, Proxy, StatusCode,
     header::{HeaderMap, HeaderValue, USER_AGENT},
@@ -39,42 +38,8 @@ impl HttpResponse {
 #[derive(Debug, Clone, Copy)]
 pub enum ProxyType {
     None,
-    /// mixed-port HTTP 代理
     Localhost,
-    /// mixed-port SOCKS5（HTTP CONNECT 失败时的备用）
-    LocalhostSocks,
     System,
-}
-
-/// 按当前运行模式排列出站尝试顺序（与 `test_delay` 策略对齐）。
-pub async fn resolve_egress_routes() -> Vec<ProxyType> {
-    let verge = Config::verge().await.latest_arc();
-    let tun = verge.enable_tun_mode.unwrap_or(false);
-    let sys = verge.enable_system_proxy.unwrap_or(false);
-
-    if tun {
-        // TUN：进程流量由虚拟网卡接管，直连优先；mixed-port / 系统代理作备用
-        vec![
-            ProxyType::None,
-            ProxyType::Localhost,
-            ProxyType::LocalhostSocks,
-            ProxyType::System,
-        ]
-    } else if sys {
-        vec![
-            ProxyType::System,
-            ProxyType::Localhost,
-            ProxyType::LocalhostSocks,
-            ProxyType::None,
-        ]
-    } else {
-        vec![
-            ProxyType::Localhost,
-            ProxyType::LocalhostSocks,
-            ProxyType::System,
-            ProxyType::None,
-        ]
-    }
 }
 
 pub struct NetworkManager;
@@ -159,10 +124,6 @@ impl NetworkManager {
                 let port = Self::resolve_mixed_port(mixed_port_override).await;
                 Some(format!("http://127.0.0.1:{port}"))
             }
-            ProxyType::LocalhostSocks => {
-                let port = Self::resolve_mixed_port(mixed_port_override).await;
-                Some(format!("socks5://127.0.0.1:{port}"))
-            }
             ProxyType::System => {
                 if let Ok(p @ Sysproxy { enable: true, .. }) = Sysproxy::get_system_proxy() {
                     Some(format!("http://{}:{}", p.host, p.port))
@@ -246,51 +207,5 @@ impl NetworkManager {
         };
 
         Ok(HttpResponse::new(status, headers, body))
-    }
-
-    /// 按当前运行模式依次尝试多种出站路径，任一成功即返回。
-    pub async fn get_with_egress(
-        &self,
-        url: &str,
-        timeout_secs: Option<u64>,
-        user_agent: Option<String>,
-        accept_invalid_certs: bool,
-        mixed_port_override: Option<u16>,
-    ) -> Result<HttpResponse> {
-        let routes = resolve_egress_routes().await;
-        let mut last_err = String::from("请求失败");
-
-        for proxy_type in routes {
-            logging!(
-                debug,
-                Type::Network,
-                "get_with_egress: {:?} mixed_port={:?} url={}",
-                proxy_type,
-                mixed_port_override,
-                url
-            );
-
-            match self
-                .get_with_interrupt(
-                    url,
-                    proxy_type,
-                    timeout_secs,
-                    user_agent.clone(),
-                    accept_invalid_certs,
-                    mixed_port_override,
-                )
-                .await
-            {
-                Ok(response) if response.status().is_success() => return Ok(response),
-                Ok(response) => {
-                    last_err = format!("HTTP {}", response.status()).into();
-                }
-                Err(err) => {
-                    last_err = err.to_string().into();
-                }
-            }
-        }
-
-        Err(anyhow::anyhow!(last_err))
     }
 }

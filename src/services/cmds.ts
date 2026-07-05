@@ -9,6 +9,7 @@ import {
   DEFAULT_DELAY_TEST_URL,
 } from "@/services/delay";
 import { debugLog } from "@/utils/debug";
+import { flushConnectivityPersistenceSync } from "@/services/proxy-connectivity-sync";
 
 export async function copyClashEnv() {
   return invoke<void>("copy_clash_env");
@@ -19,6 +20,7 @@ export async function getProfiles() {
 }
 
 export async function enhanceProfiles() {
+  await flushConnectivityPersistenceSync();
   return invoke<void>("enhance_profiles");
 }
 
@@ -60,6 +62,7 @@ export async function reorderProfile(activeId: string, overId: string) {
 }
 
 export async function updateProfile(index: string, option?: IProfileOption) {
+  await flushConnectivityPersistenceSync();
   return invoke<void>("update_profile", { index, option });
 }
 
@@ -71,6 +74,7 @@ export async function patchProfile(
   index: string,
   profile: Partial<IProfileItem>,
 ) {
+  await flushConnectivityPersistenceSync();
   return invoke<void>("patch_profile", { index, profile });
 }
 
@@ -545,19 +549,6 @@ export async function cmdGetProxyDelay(
 
 export async function cmdTestDelay(url: string) {
   return invoke<number>("test_delay", { url });
-}
-
-/** 经 Clash 当前出站路径发起 GET（TUN / 系统代理 / mixed-port 自动选择） */
-export async function fetchWithLocalProxy(
-  url: string,
-  timeoutSecs = 5,
-  mixedPort?: number,
-) {
-  return invoke<string>("fetch_with_local_proxy", {
-    url,
-    timeoutSecs,
-    mixedPort: mixedPort && mixedPort > 0 ? mixedPort : undefined,
-  });
 }
 
 export async function invoke_uwp_tool() {

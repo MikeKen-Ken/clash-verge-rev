@@ -1198,13 +1198,6 @@ const ProfilePage = () => {
             variant="outlined"
             sx={{ whiteSpace: "nowrap" }}
             onClick={() => {
-              if (
-                !window.confirm(
-                  "确定清空所有节点的测速成功/失败统计吗？此操作不可恢复。",
-                )
-              ) {
-                return;
-              }
               clearConnectivityStats();
               showNotice.success("已清空测速联通统计");
             }}

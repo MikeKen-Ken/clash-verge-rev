@@ -1,5 +1,6 @@
 import { getVergeConfig } from "./cmds";
 import { applyConnectionTableUiFromBackupFile } from "./ui-preferences-backup";
+import { flushConnectivityPersistenceSync } from "./proxy-connectivity-sync";
 import {
   cacheLanguage,
   FALLBACK_LANGUAGE,
@@ -81,6 +82,7 @@ export const preloadAppData = async () => {
     configPromise,
     initializeLanguage(initialLanguage),
     preloadUiPreferences(),
+    flushConnectivityPersistenceSync(),
   ]);
   const initialThemeMode = resolveThemeMode(config);
   return { initialThemeMode };

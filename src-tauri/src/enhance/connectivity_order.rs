@@ -188,9 +188,15 @@ const COUNTRY_FLAG_KEYWORDS: &[FlagRule] = &[
 ];
 
 fn resolve_proxy_flag(name: &str) -> String {
+    let trimmed = name.trim();
+    for rule in COUNTRY_FLAG_KEYWORDS {
+        if trimmed.starts_with(rule.flag) {
+            return rule.flag.into();
+        }
+    }
     for rule in COUNTRY_FLAG_KEYWORDS {
         for keyword in rule.keywords {
-            if name.contains(keyword) {
+            if trimmed.contains(keyword) {
                 return rule.flag.into();
             }
         }

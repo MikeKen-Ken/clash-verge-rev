@@ -87,6 +87,8 @@ const COUNTRY_FLAG_KEYWORDS: Array<{ flag: string; keywords: string[] }> = [
   { flag: "🇳🇿", keywords: ["新西兰", "奥克兰"] },
 ];
 
+const ALL_REGION_FLAGS = COUNTRY_FLAG_KEYWORDS.map((rule) => rule.flag);
+
 /** 仅根据节点名里的中文关键字识别归属；未命中返回 null */
 export function resolveFlag(proxyName: string): string | null {
   for (const rule of COUNTRY_FLAG_KEYWORDS) {
@@ -95,6 +97,15 @@ export function resolveFlag(proxyName: string): string | null {
     }
   }
   return null;
+}
+
+/** 优先匹配节点名前缀的地区 emoji（如 🇭🇰 ✅ 01），再回退中文关键字 */
+export function resolveRegionFlag(proxyName: string): string {
+  const trimmed = proxyName.trim();
+  for (const flag of ALL_REGION_FLAGS) {
+    if (trimmed.startsWith(flag)) return flag;
+  }
+  return resolveFlag(trimmed) ?? "";
 }
 
 export function parseCustomProxyOrderText(text: string): string[] {
@@ -150,7 +161,7 @@ export function sortProxiesByRegionAndConnectivity<T>(
 
   const decorated = items.map((item, originalIndex) => {
     const name = getName(item);
-    const flag = resolveFlag(name) ?? "";
+    const flag = resolveRegionFlag(name);
     const groupOrder = resolveGroupOrder(
       flag,
       customOrder,
@@ -181,8 +192,8 @@ export function compareProxyNamesByRegionAndConnectivity(
   const fallbackOrderMap = new Map<string, number>();
   const nextFallbackOrderRef = { value: customOrder.length };
 
-  const flagA = resolveFlag(nameA) ?? "";
-  const flagB = resolveFlag(nameB) ?? "";
+  const flagA = resolveRegionFlag(nameA);
+  const flagB = resolveRegionFlag(nameB);
   const groupA = resolveGroupOrder(
     flagA,
     customOrder,

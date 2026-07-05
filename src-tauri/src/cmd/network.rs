@@ -101,33 +101,3 @@ pub fn get_network_interfaces_info() -> CmdResult<Vec<NetworkInterface>> {
 pub fn is_port_in_use(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_err()
 }
-
-/// 经 Clash 当前出站路径发起 GET（出口 IP 检测等）。
-/// 按 TUN / 系统代理 / mixed-port 自动选择出站，与 `test_delay` 策略一致。
-#[tauri::command]
-pub async fn fetch_with_local_proxy(
-    url: String,
-    timeout_secs: Option<u64>,
-    mixed_port: Option<u16>,
-) -> CmdResult<String> {
-    use crate::utils::network::NetworkManager;
-
-    let timeout = timeout_secs.unwrap_or(5);
-    let user_agent = Some(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            .into(),
-    );
-
-    let response = NetworkManager::new()
-        .get_with_egress(
-            &url,
-            Some(timeout),
-            user_agent,
-            false,
-            mixed_port,
-        )
-        .await
-        .stringify_err()?;
-
-    Ok(response.text_with_charset().stringify_err()?.to_string())
-}

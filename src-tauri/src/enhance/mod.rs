@@ -774,8 +774,8 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) ->
     // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
     config = use_tun(config, enable_tun);
     config = apply_proxy_ads_block(config);
-    config = apply_connectivity_proxy_order(config);
-    use_sort(config)
+    // 联通排序须在最终阶段最后写入，避免后续步骤覆盖 proxy-groups 顺序
+    apply_connectivity_proxy_order(use_sort(config))
 }
 
 /// 离线模式：强制 rule + MATCH,REJECT，拒绝全部流量。
