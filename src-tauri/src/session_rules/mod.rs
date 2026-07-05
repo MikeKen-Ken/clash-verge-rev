@@ -51,7 +51,7 @@ impl SessionRule {
 fn storage_path() -> Result<PathBuf, String> {
     dirs::app_home_dir()
         .map(|dir| dir.join(RULES_FILE))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string().into())
 }
 
 fn load_from_disk() -> Vec<SessionRule> {
@@ -116,7 +116,7 @@ fn persist_rules(rules: &[SessionRule]) {
     }
 }
 
-fn with_store<R>(mut f: impl FnMut(&mut StoreState) -> R) -> R {
+fn with_store<R>(f: impl FnOnce(&mut StoreState) -> R) -> R {
     let mut store = STORE.lock();
     if !store.loaded {
         store.rules = load_from_disk();
