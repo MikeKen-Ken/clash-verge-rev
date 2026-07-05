@@ -22,6 +22,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -108,6 +109,7 @@ const getConnectionCellValue = (field: ColumnField, each: IConnectionsItem) => {
 interface Props {
   connections: IConnectionsItem[];
   onShowDetail: (data: IConnectionsItem) => void;
+  onContextMenu?: (event: MouseEvent, connection: IConnectionsItem) => void;
   columnManagerOpen: boolean;
   onOpenColumnManager: () => void;
   onCloseColumnManager: () => void;
@@ -117,6 +119,7 @@ export const ConnectionTable = (props: Props) => {
   const {
     connections,
     onShowDetail,
+    onContextMenu,
     columnManagerOpen,
     onOpenColumnManager,
     onCloseColumnManager,
@@ -635,6 +638,11 @@ export const ConnectionTable = (props: Props) => {
                   <Box
                     key={row.id}
                     onClick={() => onShowDetail(row.original)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onContextMenu?.(event, row.original);
+                    }}
                     sx={{
                       display: "flex",
                       position: "absolute",

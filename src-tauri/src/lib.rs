@@ -9,6 +9,7 @@ mod enhance;
 mod feat;
 mod module;
 mod process;
+mod session_rules;
 pub mod utils;
 use crate::constants::files;
 use crate::{
@@ -229,6 +230,10 @@ mod app_init {
             cmd::restore_webdav_backup,
             cmd::save_connection_table_ui,
             cmd::get_connection_table_ui,
+            cmd::get_session_rules,
+            cmd::add_session_rule,
+            cmd::remove_session_rule,
+            cmd::clear_session_rules,
         ]
     }
 }

@@ -262,6 +262,15 @@ interface IConnectionsItem {
   closedAt?: number;
 }
 
+interface ISessionRule {
+  id: string;
+  ruleType: string;
+  payload: string;
+  target: string;
+  label: string;
+  createdAt: number;
+}
+
 interface IConnections {
   downloadTotal: number;
   uploadTotal: number;

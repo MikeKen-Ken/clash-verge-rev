@@ -18,6 +18,7 @@ use self::{
 use crate::{
     config::{runtime::IRuntime, Config, IVerge},
     constants,
+    session_rules,
     utils::{dirs, tmpl},
 };
 use clash_verge_logging::{Type, logging};
@@ -764,6 +765,10 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
 fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) -> Mapping {
     // Merge/订阅可能重新带回无效组成员；最终应用前再清理一次，避免核心加载失败或 UI 显示幽灵节点
     config = cleanup_proxy_groups(config);
+
+    if mode == "rule" {
+        config = session_rules::apply_to_config(config);
+    }
 
     if mode == "direct" || mode == "global" {
         config = apply_direct_global_overrides(config, mode);

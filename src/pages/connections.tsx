@@ -2,6 +2,7 @@ import {
   ArrowDropDown,
   DeleteForeverRounded,
   MergeTypeRounded,
+  RuleRounded,
   TableChartRounded,
   TableRowsRounded,
 } from "@mui/icons-material";
@@ -15,7 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
@@ -60,6 +61,9 @@ import {
   closeConnectionsExcludingDirect,
 } from "@/utils/close-connections";
 import { patchRuntimeConfig } from "@/services/cmds";
+import { ConnectionRuleMenu } from "@/features/session-rules/connection-rule-menu";
+import { SessionRulesPanel } from "@/features/session-rules/session-rules-panel";
+import { useSessionRules } from "@/features/session-rules/use-session-rules";
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
 
@@ -175,6 +179,22 @@ const ConnectionsPage = () => {
   );
 
   const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+  const [sessionRulesOpen, setSessionRulesOpen] = useState(false);
+  const [ruleMenuState, setRuleMenuState] = useState<{
+    connection: IConnectionsItem;
+    position: { top: number; left: number };
+  } | null>(null);
+  const { data: sessionRules = [] } = useSessionRules();
+
+  const handleConnectionContextMenu = useCallback(
+    (event: MouseEvent, connection: IConnectionsItem) => {
+      setRuleMenuState({
+        connection,
+        position: { top: event.clientY, left: event.clientX },
+      });
+    },
+    [],
+  );
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
@@ -533,6 +553,15 @@ const ConnectionsPage = () => {
               {t("shared.actions.clear")}
             </Button>
           )}
+          <Button
+            size="small"
+            variant={sessionRules.length > 0 ? "contained" : "outlined"}
+            color={sessionRules.length > 0 ? "secondary" : "primary"}
+            startIcon={<RuleRounded />}
+            onClick={() => setSessionRulesOpen(true)}
+          >
+            临时规则 {sessionRules.length}
+          </Button>
           <IconButton
             color="inherit"
             size="small"
@@ -912,6 +941,7 @@ const ConnectionsPage = () => {
           onShowDetail={(detail) =>
             detailRef.current?.open(detail, connectionsType === "closed")
           }
+          onContextMenu={handleConnectionContextMenu}
           columnManagerOpen={isTableLayout && isColumnManagerOpen}
           onOpenColumnManager={() => setIsColumnManagerOpen(true)}
           onCloseColumnManager={() => setIsColumnManagerOpen(false)}
@@ -932,11 +962,21 @@ const ConnectionsPage = () => {
               onShowDetail={() =>
                 detailRef.current?.open(item, connectionsType === "closed")
               }
+              onContextMenu={handleConnectionContextMenu}
             />
           )}
         />
       )}
       <ConnectionDetail ref={detailRef} />
+      <ConnectionRuleMenu
+        connection={ruleMenuState?.connection ?? null}
+        position={ruleMenuState?.position ?? null}
+        onClose={() => setRuleMenuState(null)}
+      />
+      <SessionRulesPanel
+        open={sessionRulesOpen}
+        onClose={() => setSessionRulesOpen(false)}
+      />
     </BasePage>
   );
 };
