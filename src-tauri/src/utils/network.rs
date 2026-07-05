@@ -283,10 +283,10 @@ impl NetworkManager {
             {
                 Ok(response) if response.status().is_success() => return Ok(response),
                 Ok(response) => {
-                    last_err = format!("HTTP {}", response.status());
+                    last_err = format!("HTTP {}", response.status()).into();
                 }
                 Err(err) => {
-                    last_err = err.to_string();
+                    last_err = err.to_string().into();
                 }
             }
         }
