@@ -39,7 +39,7 @@ pub fn add_rule(
     });
 
     let rule = SessionRule {
-        id: nanoid::nanoid!(8),
+        id: nanoid::nanoid!(8).into(),
         rule_type,
         payload,
         target,
@@ -70,7 +70,7 @@ pub fn apply_to_config(mut config: Mapping) -> Mapping {
 
     let mut new_seq = Sequence::new();
     for rule in rules.iter() {
-        new_seq.push(Value::String(rule.to_rule_string()));
+        new_seq.push(Value::String(rule.to_rule_string().to_string()));
     }
 
     if let Some(Value::Sequence(origin)) = config.get("rules") {

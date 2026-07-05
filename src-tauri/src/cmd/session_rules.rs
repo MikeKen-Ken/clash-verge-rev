@@ -1,5 +1,6 @@
 use super::CmdResult;
 use crate::{feat, session_rules::{self, SessionRule}};
+use smartstring::alias::String;
 
 #[tauri::command]
 pub fn get_session_rules() -> Vec<SessionRule> {
