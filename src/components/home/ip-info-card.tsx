@@ -8,7 +8,6 @@ import { Box, Button, IconButton, Skeleton, Typography } from "@mui/material";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useAppData } from "@/providers/app-data-context";
 import { getIpInfo } from "@/services/api";
 
 import { EnhancedCard } from "./enhanced-card";
@@ -56,7 +55,6 @@ const getCountryFlag = (countryCode: string) => {
 // IP信息卡片组件
 export const IpInfoCard = () => {
   const { t } = useTranslation();
-  const { clashConfig } = useAppData();
   const [ipInfo, setIpInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -99,17 +97,9 @@ export const IpInfoCard = () => {
         return;
       }
 
-      if (!clashConfig) {
-        setLoading(false);
-        lastFetchRef.current = Date.now();
-        setCountdown(IP_REFRESH_SECONDS);
-        return;
-      }
-
       try {
         setLoading(true);
-        const mixedPort = clashConfig?.mixedPort;
-        const data = await getIpInfo(mixedPort);
+        const data = await getIpInfo();
         setIpInfo(data);
         const ts = Date.now();
         lastFetchRef.current = ts;
@@ -136,7 +126,7 @@ export const IpInfoCard = () => {
         setLoading(false);
       }
     },
-    [t, clashConfig],
+    [t],
   );
 
   // 组件加载时获取IP信息并启动基于上次请求时间的倒计时

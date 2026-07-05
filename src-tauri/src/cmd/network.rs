@@ -102,69 +102,32 @@ pub fn is_port_in_use(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
-/// 经 Clash mixed-port 发起 GET（出口 IP 检测等）。
-/// TUN 模式下桌面进程直连可能绕过虚拟网卡，优先走 mixed-port；失败时再尝试直连。
+/// 经 Clash 当前出站路径发起 GET（出口 IP 检测等）。
+/// 按 TUN / 系统代理 / mixed-port 自动选择出站，与 `test_delay` 策略一致。
 #[tauri::command]
 pub async fn fetch_with_local_proxy(
     url: String,
     timeout_secs: Option<u64>,
     mixed_port: Option<u16>,
 ) -> CmdResult<String> {
-    use crate::config::Config;
-    use crate::utils::network::{NetworkManager, ProxyType};
+    use crate::utils::network::NetworkManager;
 
     let timeout = timeout_secs.unwrap_or(5);
-    let tun_mode = Config::verge()
-        .await
-        .latest_arc()
-        .enable_tun_mode
-        .unwrap_or(false);
-
     let user_agent = Some(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             .into(),
     );
 
-    let proxy_types: &[ProxyType] = if tun_mode {
-        &[ProxyType::Localhost, ProxyType::None]
-    } else {
-        &[ProxyType::Localhost]
-    };
-
-    let mut last_err = String::from("请求失败");
-
-    for proxy_type in proxy_types {
-        logging!(
-            debug,
-            Type::Network,
-            "fetch_with_local_proxy: {:?} mixed_port={:?} url={}",
-            proxy_type,
+    let response = NetworkManager::new()
+        .get_with_egress(
+            &url,
+            Some(timeout),
+            user_agent,
+            false,
             mixed_port,
-            url
-        );
+        )
+        .await
+        .stringify_err()?;
 
-        match NetworkManager::new()
-            .get_with_interrupt(
-                &url,
-                *proxy_type,
-                Some(timeout),
-                user_agent.clone(),
-                false,
-                mixed_port,
-            )
-            .await
-        {
-            Ok(response) if response.status().is_success() => {
-                return Ok(response.text_with_charset().stringify_err()?.to_string());
-            }
-            Ok(response) => {
-                last_err = format!("HTTP {}", response.status());
-            }
-            Err(err) => {
-                last_err = err.to_string();
-            }
-        }
-    }
-
-    Err(last_err.into())
+    Ok(response.text_with_charset().stringify_err()?.to_string())
 }

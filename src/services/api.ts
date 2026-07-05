@@ -1,4 +1,5 @@
-import { fetchWithLocalProxy } from "@/services/cmds";
+import { fetch } from "@tauri-apps/plugin-http";
+
 import { debugLog } from "@/utils/debug";
 
 interface IpInfo {
@@ -35,6 +36,9 @@ const EMPTY_GEO = {
   timezone: "",
 };
 
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 /** 解析 Cloudflare cdn-cgi/trace 纯文本响应 */
 const parseCloudflareTrace = (body: string): IpInfo => {
   const ip =
@@ -56,12 +60,36 @@ const parseJsonBody = (body: string): unknown => {
   }
 };
 
-// 按可靠性排序；并行请求时优先命中快且稳定的服务
+/** 解析 ipip.net 纯文本响应 */
+const parseIpipNet = (body: string): IpInfo => {
+  const match =
+    body.match(/当前\s*IP[：:]\s*([\d.]+)/i) ??
+    body.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+  const ip = match?.[1]?.trim() ?? "";
+  if (!ip) throw new Error("ipip.net 响应无 ip");
+  return { ip, ...EMPTY_GEO };
+};
+
+/** 解析纯文本 IP 响应 */
+const parsePlainIp = (body: string): IpInfo => {
+  const ip = body.trim().split(/\s+/)[0] ?? "";
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) {
+    throw new Error("纯文本响应无有效 ip");
+  }
+  return { ip, ...EMPTY_GEO };
+};
+
+// 与常见「查 IP」网站相同：直接请求第三方接口，由系统/TUN/系统代理决定出站
 const IP_CHECK_SERVICES: ServiceConfig[] = [
   {
-    url: "https://1.1.1.1/cdn-cgi/trace",
-    timeoutSecs: 5,
-    parse: parseCloudflareTrace,
+    url: "https://myip.ipip.net",
+    timeoutSecs: 4,
+    parse: parseIpipNet,
+  },
+  {
+    url: "https://api-ipv4.ip.sb/ip",
+    timeoutSecs: 4,
+    parse: parsePlainIp,
   },
   {
     url: "https://api.ipify.org?format=json",
@@ -71,6 +99,11 @@ const IP_CHECK_SERVICES: ServiceConfig[] = [
       if (!data?.ip) throw new Error("ipify 响应无 ip");
       return { ip: data.ip, ...EMPTY_GEO };
     },
+  },
+  {
+    url: "https://1.1.1.1/cdn-cgi/trace",
+    timeoutSecs: 5,
+    parse: parseCloudflareTrace,
   },
   {
     url: "https://api.ip.sb/geoip",
@@ -93,78 +126,9 @@ const IP_CHECK_SERVICES: ServiceConfig[] = [
       };
     },
   },
-  {
-    url: "https://ipwho.is/",
-    timeoutSecs: 6,
-    parse: (body) => {
-      const data = parseJsonBody(body) as {
-        success?: boolean;
-        ip?: string;
-        country_code?: string;
-        country?: string;
-        region?: string;
-        city?: string;
-        connection?: { org?: string; isp?: string; asn?: number };
-        timezone?: { id?: string };
-        longitude?: number;
-        latitude?: number;
-      };
-      if (data?.success === false || !data?.ip) {
-        throw new Error("ipwho.is 检测失败");
-      }
-      return {
-        ip: data.ip,
-        country_code: data.country_code || "",
-        country: data.country || "",
-        region: data.region || "",
-        city: data.city || "",
-        organization: data.connection?.org || data.connection?.isp || "",
-        asn: data.connection?.asn || 0,
-        asn_organization: data.connection?.isp || "",
-        longitude: data.longitude || 0,
-        latitude: data.latitude || 0,
-        timezone: data.timezone?.id || "",
-      };
-    },
-  },
-  {
-    url: "https://api.ipapi.is/",
-    timeoutSecs: 6,
-    parse: (body) => {
-      const data = parseJsonBody(body) as {
-        ip?: string;
-        location?: {
-          country_code?: string;
-          country?: string;
-          state?: string;
-          city?: string;
-          longitude?: number;
-          latitude?: number;
-          timezone?: string;
-        };
-        asn?: { org?: string; asn?: number };
-        company?: { name?: string };
-      };
-      if (!data?.ip) throw new Error("ipapi.is 响应无 ip");
-      return {
-        ip: data.ip,
-        country_code: data.location?.country_code || "",
-        country: data.location?.country || "",
-        region: data.location?.state || "",
-        city: data.location?.city || "",
-        organization: data.asn?.org || data.company?.name || "",
-        asn: data.asn?.asn || 0,
-        asn_organization: data.asn?.org || "",
-        longitude: data.location?.longitude || 0,
-        latitude: data.location?.latitude || 0,
-        timezone: data.location?.timezone || "",
-      };
-    },
-  },
 ];
 
 const OVERALL_TIMEOUT_MS = 15000;
-const INVOKE_GRACE_MS = 2000;
 
 const withTimeout = <T>(
   promise: Promise<T>,
@@ -185,16 +149,29 @@ const withTimeout = <T>(
     );
   });
 
-const tryService = async (
-  service: ServiceConfig,
-  mixedPort?: number,
-): Promise<IpInfo> => {
-  const timeoutSecs = service.timeoutSecs ?? 5;
+/** 网站式查 IP：直接 HTTP 请求，出站由当前网络环境（TUN / 系统代理 / 直连）决定 */
+const fetchIpServiceBody = async (
+  url: string,
+  timeoutMs: number,
+): Promise<string> => {
+  const response = await fetch(url, {
+    method: "GET",
+    connectTimeout: timeoutMs,
+    headers: { "User-Agent": USER_AGENT },
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.text();
+};
+
+const tryService = async (service: ServiceConfig): Promise<IpInfo> => {
+  const timeoutMs = (service.timeoutSecs ?? 5) * 1000;
   debugLog(`尝试IP检测服务: ${service.url}`);
 
   const body = await withTimeout(
-    fetchWithLocalProxy(service.url, timeoutSecs, mixedPort),
-    timeoutSecs * 1000 + INVOKE_GRACE_MS,
+    fetchIpServiceBody(service.url, timeoutMs),
+    timeoutMs + 500,
     `请求超时 (${service.url})`,
   );
 
@@ -206,11 +183,11 @@ const tryService = async (
 };
 
 /** 并行竞速，任一成功即返回；全部失败则抛出最后一个错误 */
-export const getIpInfo = async (mixedPort?: number): Promise<IpInfo> => {
+export const getIpInfo = async (): Promise<IpInfo> => {
   const errors: Error[] = [];
 
   const tasks = IP_CHECK_SERVICES.map((service) =>
-    tryService(service, mixedPort).catch((error: unknown) => {
+    tryService(service).catch((error: unknown) => {
       const err = error instanceof Error ? error : new Error(String(error));
       errors.push(err);
       console.warn(`IP检测失败 (${service.url}):`, err.message);
@@ -222,7 +199,7 @@ export const getIpInfo = async (mixedPort?: number): Promise<IpInfo> => {
     return await withTimeout(
       Promise.any(tasks),
       OVERALL_TIMEOUT_MS,
-      "出口 IP 检测超时，请确认核心已启动且网络可用",
+      "出口 IP 检测超时，请确认网络可用",
     );
   } catch (aggregateError) {
     if (errors.length > 0) {

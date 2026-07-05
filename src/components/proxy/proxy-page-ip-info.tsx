@@ -8,9 +8,6 @@ import {
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useAppData } from "@/providers/app-data-context";
-import { useClash } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
 import { getIpInfo } from "@/services/api";
 import { showNotice } from "@/services/notice-service";
 
@@ -157,9 +154,6 @@ const readCachedIpInfo = (): IpInfoData | null => {
 };
 
 export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
-  const { clashConfig } = useAppData();
-  const { clash } = useClash();
-  const { verge } = useVerge();
   const [ipInfo, setIpInfo] = useState<IpInfoData | null>(() =>
     readCachedIpInfo(),
   );
@@ -180,19 +174,6 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         return;
       }
 
-      if (mode === "direct" && localIp) {
-        setIpInfo({
-          ip: localIp,
-          country_code: "",
-          country: "",
-          region: "",
-          city: "",
-          isp: "",
-        });
-        setLoading(false);
-        return;
-      }
-
       if (!force) {
         const cached = readCachedIpInfo();
         if (cached) {
@@ -202,24 +183,15 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         }
       }
 
-      if (!clashConfig) {
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       const safetyTimer = window.setTimeout(() => {
         if (seq !== fetchSeqRef.current) return;
         setLoading(false);
-        setFetchError("出口 IP 检测超时，请确认核心已启动且代理可用");
+        setFetchError("出口 IP 检测超时，请确认网络可用");
       }, FETCH_SAFETY_TIMEOUT_MS);
 
       try {
-        const mixedPort =
-          clashConfig?.mixedPort ??
-          clash?.["mixed-port"] ??
-          verge?.verge_mixed_port;
-        const data = await getIpInfo(mixedPort);
+        const data = await getIpInfo();
         if (seq !== fetchSeqRef.current) return;
         const next: IpInfoData = {
           ip: data.ip || "",
@@ -243,7 +215,7 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         setIpInfo(null);
         const message =
           err instanceof Error ? err.message : "出口 IP 检测失败";
-        setFetchError(`${message}。请确认核心已启动且当前模式可正常出站。`);
+        setFetchError(`${message}。请确认当前网络或代理可用。`);
       } finally {
         window.clearTimeout(safetyTimer);
         if (seq === fetchSeqRef.current) {
@@ -251,7 +223,7 @@ export const ProxyPageIpInfo = ({ localIp, mode, refreshToken }: Props) => {
         }
       }
     },
-    [clashConfig, clash, verge?.verge_mixed_port, localIp, mode],
+    [mode],
   );
 
   useEffect(() => {
