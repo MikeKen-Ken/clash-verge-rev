@@ -56,7 +56,7 @@ export function SessionRulesPanel({ open, onClose }: Props) {
       <DialogTitle sx={{ pb: 1 }}>
         临时规则
         <Typography variant="caption" display="block" color="text.secondary">
-          仅当前会话有效，重启软件后自动清除；仅在规则模式下生效
+          持久保存，需手动删除；仅在规则模式下生效
         </Typography>
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>

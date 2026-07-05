@@ -78,7 +78,7 @@ export function ConnectionRuleMenu({ connection, position, onClose }: Props) {
       <MenuItem disabled sx={{ opacity: 1 }}>
         <ListItemText
           primary="添加到临时规则"
-          secondary="重启软件后自动失效"
+          secondary="持久保存，需手动删除"
           primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }}
           secondaryTypographyProps={{ fontSize: 12 }}
         />
