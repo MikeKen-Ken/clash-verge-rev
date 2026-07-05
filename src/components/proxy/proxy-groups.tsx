@@ -28,10 +28,8 @@ import delayManager, {
   type DelayUpdate,
 } from "@/services/delay";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
-import {
-  compareProxyNamesByRegionAndConnectivity,
-  loadCustomProxyOrderFromStorage,
-} from "@/services/proxy-region-sort";
+import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
+import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -711,14 +709,14 @@ export const ProxyGroups = (props: Props) => {
             return a.index - b.index;
           });
         } else if (sortType === 0) {
-          const customOrder = loadCustomProxyOrderFromStorage();
+          const scoreContext = buildConnectivityScoreContext();
           successCandidates.sort((a, b) =>
-            compareProxyNamesByRegionAndConnectivity(
+            compareProxyNamesByConnectivity(
               a.proxyName,
               b.proxyName,
               a.index,
               b.index,
-              customOrder,
+              scoreContext,
             ),
           );
         }

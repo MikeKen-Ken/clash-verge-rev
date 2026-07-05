@@ -1,11 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import {
-  CUSTOM_PROXY_ORDER_STORAGE_KEY,
-  DEFAULT_CUSTOM_PROXY_ORDER,
-  parseCustomProxyOrderText,
-} from "@/services/proxy-region-sort";
-
 const STORAGE_KEY = "proxy.connectivityStats";
 
 /** 串行化磁盘同步，避免 reload 时读到未写完的统计文件 */
@@ -28,33 +22,9 @@ export async function syncConnectivityStatsToDisk(): Promise<void> {
   }
 }
 
-/** 将节点地区排序偏好同步到数据目录（不触发 reload）。 */
-export async function syncProxyRegionOrderToDisk(
-  customOrder?: string[],
-): Promise<void> {
-  if (typeof window === "undefined") return;
-  try {
-    let order = customOrder;
-    if (!order || order.length === 0) {
-      const saved = localStorage.getItem(CUSTOM_PROXY_ORDER_STORAGE_KEY);
-      order =
-        saved && saved.trim()
-          ? parseCustomProxyOrderText(saved)
-          : [...DEFAULT_CUSTOM_PROXY_ORDER];
-    }
-    if (order.length === 0) return;
-    await invoke<void>("sync_proxy_region_order", { customOrder: order });
-  } catch {
-    // ignore sync failure
-  }
-}
-
-/** 启动时一次性同步统计与地区顺序到磁盘。 */
+/** 启动时同步联通统计到磁盘。 */
 export async function syncConnectivityPersistenceToDisk(): Promise<void> {
-  await Promise.all([
-    syncConnectivityStatsToDisk(),
-    syncProxyRegionOrderToDisk(),
-  ]);
+  await syncConnectivityStatsToDisk();
 }
 
 /** 测速记统计后调度异步同步（不阻塞 UI）。 */

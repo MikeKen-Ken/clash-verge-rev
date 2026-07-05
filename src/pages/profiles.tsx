@@ -72,14 +72,10 @@ import {
   updateProfile,
 } from "@/services/cmds";
 import {
-  CUSTOM_PROXY_ORDER_STORAGE_KEY,
-  DEFAULT_CUSTOM_PROXY_ORDER,
-  parseCustomProxyOrderText,
   resolveFlag,
-  sortProxiesByRegionAndConnectivity,
+  sortProxiesByConnectivity,
 } from "@/services/proxy-region-sort";
 import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
-import { syncProxyRegionOrderToDisk } from "@/services/proxy-connectivity-sync";
 import { showNotice } from "@/services/notice-service";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
@@ -201,11 +197,6 @@ const ProfilePage = () => {
   const [globalUpdateHours, setGlobalUpdateHours] = useState<number>(() => {
     const saved = Number(localStorage.getItem(GLOBAL_UPDATE_INTERVAL_STORAGE_KEY) || 0);
     return GLOBAL_UPDATE_INTERVAL_OPTIONS.includes(saved as any) ? saved : 24;
-  });
-  const [customProxyOrderText, setCustomProxyOrderText] = useState<string>(() => {
-    const saved = localStorage.getItem(CUSTOM_PROXY_ORDER_STORAGE_KEY);
-    if (saved && saved.trim()) return saved;
-    return DEFAULT_CUSTOM_PROXY_ORDER.join(",");
   });
   const [mergeInclusion, setMergeInclusion] = useState<Record<string, boolean>>(
     loadMergeInclusionMap,
@@ -374,20 +365,9 @@ const ProfilePage = () => {
     );
   };
 
-  const parseCustomProxyOrder = useCallback(() => {
-    return parseCustomProxyOrderText(customProxyOrderText);
-  }, [customProxyOrderText]);
-
-  const sortProxiesByCustomOrder = useCallback(
-    (proxies: any[]) => {
-      return sortProxiesByRegionAndConnectivity(
-        proxies,
-        parseCustomProxyOrder(),
-        (proxy) => String(proxy?.name || ""),
-      );
-    },
-    [parseCustomProxyOrder],
-  );
+  const sortProxiesForMerge = useCallback((proxies: any[]) => {
+    return sortProxiesByConnectivity(proxies, (proxy) => String(proxy?.name || ""));
+  }, []);
 
   const onGenerateMergedProfile = useLockFn(
     async (inclusionOverride?: Record<string, boolean>) => {
@@ -432,7 +412,7 @@ const ProfilePage = () => {
           const sourceProxiesRaw = Array.isArray(sourceYaml?.proxies)
             ? sourceYaml.proxies.filter(isValidProxyNode)
             : [];
-          const sourceProxies = sortProxiesByCustomOrder(sourceProxiesRaw);
+          const sourceProxies = sortProxiesForMerge(sourceProxiesRaw);
 
           const sourceDisplayName = source.name || source.desc || source.uid;
           const localFlagCounters = new Map<string, number>();
@@ -995,11 +975,6 @@ const ProfilePage = () => {
   }, [globalUpdateHours]);
 
   useEffect(() => {
-    localStorage.setItem(CUSTOM_PROXY_ORDER_STORAGE_KEY, customProxyOrderText);
-    void syncProxyRegionOrderToDisk(parseCustomProxyOrderText(customProxyOrderText));
-  }, [customProxyOrderText]);
-
-  useEffect(() => {
     disablePerProfileAutoUpdate();
   }, [disablePerProfileAutoUpdate]);
 
@@ -1183,15 +1158,6 @@ const ProfilePage = () => {
               ))}
             </Select>
           </FormControl>
-
-          <TextField
-            size="small"
-            label="节点排序"
-            value={customProxyOrderText}
-            onChange={(event) => setCustomProxyOrderText(event.target.value)}
-            placeholder="🇭🇰,🇯🇵,🇸🇬,🇹🇼,🇺🇸"
-            sx={{ minWidth: 240 }}
-          />
 
           <Button
             size="small"

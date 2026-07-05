@@ -1,4 +1,7 @@
-import { getConnectivitySuccessCount } from "./proxy-connectivity-stats";
+import {
+  buildConnectivityScoreContext,
+  type ConnectivityScoreContext,
+} from "./proxy-connectivity-stats";
 
 export const CUSTOM_PROXY_ORDER_STORAGE_KEY = "profiles.customProxyOrder";
 
@@ -131,87 +134,65 @@ export function loadCustomProxyOrderFromStorage(): string[] {
   return [...DEFAULT_CUSTOM_PROXY_ORDER];
 }
 
-function resolveGroupOrder(
-  flag: string,
-  customOrder: string[],
-  fallbackOrderMap: Map<string, number>,
-  nextFallbackOrderRef: { value: number },
-): number {
-  const orderMap = new Map(customOrder.map((item, index) => [item, index]));
-  let groupOrder = orderMap.get(flag);
-  if (groupOrder !== undefined) return groupOrder;
-
-  const cached = fallbackOrderMap.get(flag);
-  if (cached !== undefined) return cached;
-
-  groupOrder = nextFallbackOrderRef.value;
-  fallbackOrderMap.set(flag, groupOrder);
-  nextFallbackOrderRef.value += 1;
-  return groupOrder;
-}
-
-/** 地区顺序不变，同地区内按测速成功次数降序，再保留原顺序 */
-export function sortProxiesByRegionAndConnectivity<T>(
+/** 全局按贝叶斯平滑成功率降序，相同时保留原顺序 */
+export function sortProxiesByConnectivity<T>(
   items: T[],
-  customOrder: string[],
   getName: (item: T) => string,
+  scoreContext?: ConnectivityScoreContext,
 ): T[] {
-  const fallbackOrderMap = new Map<string, number>();
-  const nextFallbackOrderRef = { value: customOrder.length };
+  if (items.length <= 1) return items;
 
-  const decorated = items.map((item, originalIndex) => {
-    const name = getName(item);
-    const flag = resolveRegionFlag(name);
-    const groupOrder = resolveGroupOrder(
-      flag,
-      customOrder,
-      fallbackOrderMap,
-      nextFallbackOrderRef,
-    );
-    const successCount = getConnectivitySuccessCount(name);
-    return { item, originalIndex, groupOrder, successCount };
-  });
+  const context = scoreContext ?? buildConnectivityScoreContext();
+  const decorated = items.map((item, originalIndex) => ({
+    item,
+    originalIndex,
+    score: context.scoreFor(getName(item)),
+  }));
 
   decorated.sort((a, b) => {
-    if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder;
-    if (a.successCount !== b.successCount) return b.successCount - a.successCount;
+    if (a.score !== b.score) return b.score - a.score;
     return a.originalIndex - b.originalIndex;
   });
 
   return decorated.map((entry) => entry.item);
 }
 
-/** 比较两个节点名：先地区顺序，再成功次数，再原索引 */
+/** 比较两个节点名：先贝叶斯成功率，再原索引 */
+export function compareProxyNamesByConnectivity(
+  nameA: string,
+  nameB: string,
+  originalIndexA: number,
+  originalIndexB: number,
+  scoreContext?: ConnectivityScoreContext,
+): number {
+  const context = scoreContext ?? buildConnectivityScoreContext();
+  const scoreA = context.scoreFor(nameA);
+  const scoreB = context.scoreFor(nameB);
+  if (scoreA !== scoreB) return scoreB - scoreA;
+  return originalIndexA - originalIndexB;
+}
+
+/** @deprecated 请改用 sortProxiesByConnectivity */
+export function sortProxiesByRegionAndConnectivity<T>(
+  items: T[],
+  _customOrder: string[],
+  getName: (item: T) => string,
+): T[] {
+  return sortProxiesByConnectivity(items, getName);
+}
+
+/** @deprecated 请改用 compareProxyNamesByConnectivity */
 export function compareProxyNamesByRegionAndConnectivity(
   nameA: string,
   nameB: string,
   originalIndexA: number,
   originalIndexB: number,
-  customOrder: string[],
+  _customOrder: string[],
 ): number {
-  const fallbackOrderMap = new Map<string, number>();
-  const nextFallbackOrderRef = { value: customOrder.length };
-
-  const flagA = resolveRegionFlag(nameA);
-  const flagB = resolveRegionFlag(nameB);
-  const groupA = resolveGroupOrder(
-    flagA,
-    customOrder,
-    fallbackOrderMap,
-    nextFallbackOrderRef,
+  return compareProxyNamesByConnectivity(
+    nameA,
+    nameB,
+    originalIndexA,
+    originalIndexB,
   );
-  const groupB = resolveGroupOrder(
-    flagB,
-    customOrder,
-    fallbackOrderMap,
-    nextFallbackOrderRef,
-  );
-
-  if (groupA !== groupB) return groupA - groupB;
-
-  const successA = getConnectivitySuccessCount(nameA);
-  const successB = getConnectivitySuccessCount(nameB);
-  if (successA !== successB) return successB - successA;
-
-  return originalIndexA - originalIndexB;
 }

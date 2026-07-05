@@ -3,10 +3,7 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
-import {
-  loadCustomProxyOrderFromStorage,
-  sortProxiesByRegionAndConnectivity,
-} from "@/services/proxy-region-sort";
+import { sortProxiesByConnectivity } from "@/services/proxy-region-sort";
 import { compileStringMatcher } from "@/utils/search-matcher";
 
 // default | delay | alphabet
@@ -187,11 +184,7 @@ function sortProxies(
 ) {
   if (!proxies) return [];
   if (sortType === 0) {
-    return sortProxiesByRegionAndConnectivity(
-      proxies,
-      loadCustomProxyOrderFromStorage(),
-      (proxy) => proxy.name,
-    );
+    return sortProxiesByConnectivity(proxies, (proxy) => proxy.name);
   }
 
   const list = proxies.slice();
