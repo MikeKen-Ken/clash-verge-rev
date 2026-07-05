@@ -48,6 +48,10 @@ import {
   setDelayCheckConcurrency,
 } from "@/services/delay";
 import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
+import {
+  listAvailableRegionsFromProxyGroups,
+  REGION_FLAG_LABELS,
+} from "@/services/proxy-region-sort";
 import { useSystemState } from "@/hooks/use-system-state";
 import { showNotice } from "@/services/notice-service";
 import { ProviderButton } from "@/components/proxy/provider-button";
@@ -91,7 +95,8 @@ const ProxyPage = () => {
 
   const location = useLocation();
 
-  const { clashConfig, refreshClashConfig, refreshProxy } = useAppData();
+  const { clashConfig, refreshClashConfig, refreshProxy, proxies: proxiesData } =
+    useAppData();
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { clash, mutateClash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
@@ -136,6 +141,19 @@ const ProxyPage = () => {
     useState<number>(() => getDelayCheckConcurrency());
   const [siteTestSelection, setSiteTestSelection] =
     useState<ProxySiteTestSelection | null>(null);
+  const [regionFilter, setRegionFilter] = useState("");
+
+  const availableRegions = useMemo(
+    () => listAvailableRegionsFromProxyGroups(proxiesData?.groups ?? []),
+    [proxiesData?.groups],
+  );
+
+  useEffect(() => {
+    if (!regionFilter) return;
+    if (!availableRegions.some((item) => item.flag === regionFilter)) {
+      setRegionFilter("");
+    }
+  }, [availableRegions, regionFilter]);
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
     if (mode !== uiMode && verge?.auto_close_connection) {
@@ -475,6 +493,32 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
+            <Tooltip title="按节点地区筛选（不含 Selector 组）">
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select
+                  value={regionFilter}
+                  displayEmpty
+                  onChange={(e) => {
+                    setRegionFilter(String(e.target.value));
+                  }}
+                  sx={{ height: 32 }}
+                  renderValue={(value) => {
+                    if (!value) return "地区筛选";
+                    const label = REGION_FLAG_LABELS[value];
+                    return label ? `${value} ${label}` : value;
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>全部地区</em>
+                  </MenuItem>
+                  {availableRegions.map(({ flag, label }) => (
+                    <MenuItem key={flag} value={flag}>
+                      {flag} {label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Tooltip>
             <Tooltip title={t("proxies.page.labels.healthCheckTimeout")}>
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
@@ -712,6 +756,7 @@ const ProxyPage = () => {
         mode={uiMode}
         isChainMode={false}
         chainConfigData={null}
+        regionFilter={regionFilter || undefined}
         onRegisterCheckAll={(runner) => {
           checkAllDelayRunnerRef.current = runner;
         }}

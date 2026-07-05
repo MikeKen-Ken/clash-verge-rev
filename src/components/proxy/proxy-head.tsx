@@ -1,9 +1,6 @@
 import {
-  AccessTimeRounded,
   VisibilityRounded,
   VisibilityOffRounded,
-  SortByAlphaRounded,
-  SortRounded,
 } from "@mui/icons-material";
 import { Box, IconButton, SxProps } from "@mui/material";
 import { useEffect } from "react";
@@ -11,7 +8,6 @@ import { useTranslation } from "react-i18next";
 
 import delayManager from "@/services/delay";
 
-import type { ProxySortType } from "./use-filter-sort";
 import type { HeadState } from "./use-head-state";
 
 interface Props {
@@ -31,7 +27,7 @@ export const ProxyHead = ({
   headState,
   onHeadState,
 }: Props) => {
-  const { showType, sortType, testUrl } = headState;
+  const { showType, testUrl } = headState;
 
   const { t } = useTranslation();
 
@@ -42,25 +38,6 @@ export const ProxyHead = ({
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, ...sx }}>
-      <IconButton
-        size="small"
-        color="inherit"
-        title={
-          [
-            t("proxies.page.tooltips.sortDefault"),
-            t("proxies.page.tooltips.sortDelay"),
-            t("proxies.page.tooltips.sortName"),
-          ][sortType]
-        }
-        onClick={() =>
-          onHeadState({ sortType: ((sortType + 1) % 3) as ProxySortType })
-        }
-      >
-        {sortType !== 1 && sortType !== 2 && <SortRounded />}
-        {sortType === 1 && <AccessTimeRounded />}
-        {sortType === 2 && <SortByAlphaRounded />}
-      </IconButton>
-
       <IconButton
         size="small"
         color="inherit"

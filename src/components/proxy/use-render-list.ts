@@ -107,6 +107,7 @@ export const useRenderList = (
   mode: string,
   isChainMode?: boolean,
   selectedGroup?: string | null,
+  regionFilter?: string,
 ) => {
   // 使用全局数据提供者
   const { proxies: proxiesData, refreshProxy } = useAppData();
@@ -405,13 +406,15 @@ export const useRenderList = (
           group.all,
           group.name,
           headState.filterText,
-          headState.sortType,
+          0,
           group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS,
           {
             matchCase: headState.filterMatchCase,
             matchWholeWord: headState.filterMatchWholeWord,
             useRegularExpression: headState.filterUseRegularExpression,
           },
+          group.type,
+          regionFilter,
         );
 
         ret.push({
@@ -466,6 +469,7 @@ export const useRenderList = (
     isChainMode,
     runtimeConfig,
     selectedGroup,
+    regionFilter,
   ]);
 
   return {

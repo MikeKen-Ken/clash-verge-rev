@@ -92,6 +92,48 @@ const COUNTRY_FLAG_KEYWORDS: Array<{ flag: string; keywords: string[] }> = [
 
 const ALL_REGION_FLAGS = COUNTRY_FLAG_KEYWORDS.map((rule) => rule.flag);
 
+export const REGION_FLAG_LABELS: Record<string, string> = Object.fromEntries(
+  COUNTRY_FLAG_KEYWORDS.map(({ flag, keywords }) => [flag, keywords[0]!]),
+);
+
+export interface RegionOption {
+  flag: string;
+  label: string;
+}
+
+/** 从非 Selector 组的所有节点名中收集可用地区（去重并保持常用地区优先） */
+export function listAvailableRegionsFromProxyGroups(
+  groups: Array<{ type?: string; all?: Array<{ name: string }> }>,
+): RegionOption[] {
+  const flagSet = new Set<string>();
+
+  for (const group of groups) {
+    if ((group.type ?? "").toLowerCase() === "selector") continue;
+    for (const proxy of group.all ?? []) {
+      const flag = resolveRegionFlag(proxy.name);
+      if (flag) flagSet.add(flag);
+    }
+  }
+
+  const priority = new Map(
+    DEFAULT_CUSTOM_PROXY_ORDER.map((flag, index) => [flag, index]),
+  );
+
+  return Array.from(flagSet)
+    .map((flag) => ({
+      flag,
+      label: REGION_FLAG_LABELS[flag] ?? flag,
+    }))
+    .sort((a, b) => {
+      const pa = priority.get(a.flag as (typeof DEFAULT_CUSTOM_PROXY_ORDER)[number]);
+      const pb = priority.get(b.flag as (typeof DEFAULT_CUSTOM_PROXY_ORDER)[number]);
+      if (pa != null && pb != null) return pa - pb;
+      if (pa != null) return -1;
+      if (pb != null) return 1;
+      return a.label.localeCompare(b.label, "zh-CN");
+    });
+}
+
 /** 仅根据节点名里的中文关键字识别归属；未命中返回 null */
 export function resolveFlag(proxyName: string): string | null {
   for (const rule of COUNTRY_FLAG_KEYWORDS) {

@@ -3,7 +3,10 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
-import { sortProxiesByConnectivity } from "@/services/proxy-region-sort";
+import {
+  resolveRegionFlag,
+  sortProxiesByConnectivity,
+} from "@/services/proxy-region-sort";
 import { compileStringMatcher } from "@/utils/search-matcher";
 
 // default | delay | alphabet
@@ -22,6 +25,8 @@ export default function useFilterSort(
   sortType: ProxySortType,
   searchState?: ProxySearchState,
   groupTimeout?: number,
+  groupType?: string,
+  regionFilter?: string,
 ) {
   const [_, bumpRefresh] = useReducer((count: number) => count + 1, 0);
   const lastInputRef = useRef<{ text: string; sort: ProxySortType } | null>(
@@ -47,7 +52,14 @@ export default function useFilterSort(
   }, [groupName]);
 
   const compute = useMemo(() => {
-    const fp = filterProxies(proxies, groupName, filterText, searchState);
+    const fp = filterProxies(
+      proxies,
+      groupName,
+      filterText,
+      searchState,
+      groupType,
+      regionFilter,
+    );
     const sp = sortProxies(
       fp,
       groupName,
@@ -62,6 +74,8 @@ export default function useFilterSort(
     sortType,
     searchState,
     groupTimeout,
+    groupType,
+    regionFilter,
   ]);
 
   const [result, setResult] = useReducer(
@@ -105,8 +119,17 @@ export function filterSort(
   sortType: ProxySortType,
   latencyTimeout?: number,
   searchState?: ProxySearchState,
+  groupType?: string,
+  regionFilter?: string,
 ) {
-  const fp = filterProxies(proxies, groupName, filterText, searchState);
+  const fp = filterProxies(
+    proxies,
+    groupName,
+    filterText,
+    searchState,
+    groupType,
+    regionFilter,
+  );
   const sp = sortProxies(fp, groupName, sortType, latencyTimeout);
   return sp;
 }
@@ -126,9 +149,22 @@ function filterProxies(
   groupName: string,
   filterText: string,
   searchState?: ProxySearchState,
+  groupType?: string,
+  regionFilter?: string,
 ) {
+  let list = proxies;
+
+  if (
+    regionFilter &&
+    (groupType ?? "").toLowerCase() !== "selector"
+  ) {
+    list = list.filter(
+      (proxy) => resolveRegionFlag(proxy.name) === regionFilter,
+    );
+  }
+
   const query = filterText.trim();
-  if (!query) return proxies;
+  if (!query) return list;
 
   const res1 = regex1.exec(query);
   if (res1) {
@@ -137,8 +173,8 @@ function filterProxies(
     const value =
       symbol2 === "error" ? 1e5 : symbol2 === "timeout" ? 3000 : +symbol2;
 
-    const delayMap = delayManager.getDelaysForGroupFix(groupName, proxies);
-    return proxies.filter((p) => {
+    const delayMap = delayManager.getDelaysForGroupFix(groupName, list);
+    return list.filter((p) => {
       const delay = delayMap.get(p.name) ?? -1;
 
       if (delay < 0) return false;
@@ -155,7 +191,7 @@ function filterProxies(
   const res2 = regex2.exec(query);
   if (res2) {
     const type = res2[1].toLowerCase();
-    return proxies.filter((p) => p.type.toLowerCase().includes(type));
+    return list.filter((p) => p.type.toLowerCase().includes(type));
   }
 
   const {
@@ -170,7 +206,7 @@ function filterProxies(
   });
 
   if (!compiled.isValid) return [];
-  return proxies.filter((p) => compiled.matcher(p.name));
+  return list.filter((p) => compiled.matcher(p.name));
 }
 
 /**

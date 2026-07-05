@@ -52,6 +52,7 @@ interface Props {
   mode: string;
   isChainMode?: boolean;
   chainConfigData?: string | null;
+  regionFilter?: string;
   onRegisterCheckAll?: ((runner: (() => void) | null) => void) | null;
   onActiveSelectionChange?: (
     selection: {
@@ -91,6 +92,7 @@ export const ProxyGroups = (props: Props) => {
     mode,
     isChainMode = false,
     chainConfigData,
+    regionFilter,
     onRegisterCheckAll,
     onActiveSelectionChange,
   } = props;
@@ -276,6 +278,7 @@ export const ProxyGroups = (props: Props) => {
     mode,
     isChainMode,
     activeSelectedGroup,
+    regionFilter,
   );
 
   const getGroupHeadState = useCallback(
@@ -700,26 +703,16 @@ export const ProxyGroups = (props: Props) => {
               delay <= timeout,
           );
 
-        const sortType = getGroupHeadState(groupName)?.sortType ?? 0;
-        if (sortType === 1) {
-          successCandidates.sort((a, b) => {
-            const da = a.delay as number;
-            const db = b.delay as number;
-            if (da !== db) return da - db;
-            return a.index - b.index;
-          });
-        } else if (sortType === 0) {
-          const scoreContext = buildConnectivityScoreContext();
-          successCandidates.sort((a, b) =>
-            compareProxyNamesByConnectivity(
-              a.proxyName,
-              b.proxyName,
-              a.index,
-              b.index,
-              scoreContext,
-            ),
-          );
-        }
+        const scoreContext = buildConnectivityScoreContext();
+        successCandidates.sort((a, b) =>
+          compareProxyNamesByConnectivity(
+            a.proxyName,
+            b.proxyName,
+            a.index,
+            b.index,
+            scoreContext,
+          ),
+        );
 
         // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
         const firstSuccessProxy = successCandidates[0]?.proxyName;
@@ -781,14 +774,6 @@ export const ProxyGroups = (props: Props) => {
             patchCurrent({ selected: next })
               .then(() => mutateProfiles())
               .catch(() => { });
-          }
-        }
-
-        // 对启用了延迟排序的分组触发重排
-        for (const group of availableGroups as IProxyGroupItem[]) {
-          const headState = getGroupHeadState(group.name);
-          if (headState?.sortType === 1) {
-            onHeadState(group.name, { sortType: headState.sortType });
           }
         }
 
