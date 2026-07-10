@@ -22,7 +22,11 @@ import { useLockFn } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
-import { closeAllConnections, flushFakeIp } from "tauri-plugin-mihomo-api";
+import {
+  closeAllConnections,
+  flushDNS,
+  flushFakeIp,
+} from "tauri-plugin-mihomo-api";
 
 import { BasePage } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
@@ -278,7 +282,10 @@ const ProxyPage = () => {
   }, [location.pathname, handleRefreshProxy]);
 
   const handleFlushFakeIp = useLockFn(async () => {
+    // flushFakeIp：整表清空 Fake-IP，并清 DNS 应答缓存；flushDNS：再清 DNS 并重置 DoH/DoT 连接
+    await closeAllConnections();
     await flushFakeIp();
+    await flushDNS();
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
   });
 
