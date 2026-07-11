@@ -71,7 +71,7 @@ interface ProxyChainItem {
   delay?: number;
 }
 
-const SKIP_DELAY_CHECK_GROUPS = new Set(["⬆️", "↩️"]);
+const SKIP_DELAY_CHECK_GROUPS = new Set(["Direct", "Final"]);
 
 const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 

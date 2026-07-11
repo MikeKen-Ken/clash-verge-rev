@@ -15,7 +15,7 @@ import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
 
-const SKIP_DELAY_CHECK_GROUPS = new Set(["⬆️", "↩️"]);
+const SKIP_DELAY_CHECK_GROUPS = new Set(["Direct", "Final"]);
 
 /**
  * Hook to handle close all connections with delay checks

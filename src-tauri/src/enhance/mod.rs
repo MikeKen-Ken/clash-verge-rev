@@ -796,16 +796,16 @@ fn apply_offline_overrides(mut config: Mapping) -> Mapping {
 }
 
 /// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
-/// 强制 mode: rule，使核心按规则选策略：全局走 MATCH,🔀（策略组 🔀），直连走 MATCH,⬆️（策略 ⬆️），而非核心内置的 GLOBAL/DIRECT。
+/// 强制 mode: rule，使核心按规则选策略：全局走 MATCH,Auto（策略组 Auto），直连走 MATCH,Direct（策略 Direct），而非核心内置的 GLOBAL/DIRECT。
 fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
     // 强制 rule 模式，否则核心会按 mode: global/direct 用内置 GLOBAL/DIRECT，忽略我们的 MATCH 规则
     config.insert("mode".into(), Value::from("rule"));
 
-    // rules: 直连只保留 MATCH,⬆️（走策略 ⬆️）；全局只保留 MATCH,🔀（走策略组 🔀 的当前节点）
+    // rules: 直连只保留 MATCH,Direct（走策略 Direct）；全局只保留 MATCH,Auto（走策略组 Auto 的当前节点）
     let match_rule = if mode == "direct" {
-        "MATCH,⬆️"
+        "MATCH,Direct"
     } else {
-        "MATCH,🔀"
+        "MATCH,Auto"
     };
     config.insert(
         "rules".into(),
@@ -1041,7 +1041,7 @@ tun:
             .and_then(|v| v.as_sequence())
             .expect("rules");
         assert!(!rules.iter().any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")));
-        assert!(rules.iter().any(|r| r.as_str() == Some("MATCH,⬆️")));
+        assert!(rules.iter().any(|r| r.as_str() == Some("MATCH,Direct")));
 
         let manual_proxies = config
             .get("proxy-groups")
