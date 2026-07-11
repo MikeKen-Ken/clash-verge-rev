@@ -211,8 +211,13 @@ function filterProxies(
 }
 
 /**
- * sort the proxy
+ * 默认联通排序仅作用于 url-test / fallback；select 等手动组保持配置顺序。
  */
+function shouldApplyConnectivitySort(groupType?: string): boolean {
+  const t = (groupType ?? "").toLowerCase();
+  return t === "url-test" || t === "urltest" || t === "fallback";
+}
+
 function isSelectorGroupType(groupType?: string): boolean {
   const t = (groupType ?? "").toLowerCase();
   return t === "select" || t === "selector";
@@ -227,8 +232,7 @@ function sortProxies(
 ) {
   if (!proxies) return [];
   if (sortType === 0) {
-    // Selector 组保持配置默认顺序，不按联通评分重排
-    if (isSelectorGroupType(groupType)) {
+    if (!shouldApplyConnectivitySort(groupType)) {
       return proxies;
     }
     return sortProxiesByConnectivity(proxies, (proxy) => proxy.name);

@@ -265,19 +265,20 @@ fn sort_group_proxies_list(
     });
 }
 
-fn is_selector_group(group_map: &Mapping) -> bool {
+fn should_apply_connectivity_order(group_map: &Mapping) -> bool {
     group_map
         .get("type")
         .and_then(Value::as_str)
         .map(|value| {
             let value = value.to_ascii_lowercase();
-            value == "select" || value == "selector"
+            // 仅自动测速/故障转移组参与联通重排；select 等手动组保持配置顺序
+            value == "url-test" || value == "fallback"
         })
         .unwrap_or(false)
 }
 
 /// 在 finalize_runtime_config 末尾调用：重排运行时 YAML 中的节点顺序。
-/// Selector 组保持配置默认顺序，不参与联通重排。
+/// 仅 url-test / fallback 参与联通重排；select 等手动组保持脚本/订阅默认顺序。
 pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
     let stats = load_weighted_connectivity_stats();
     let prior_delay_ms = compute_prior_effective_delay_ms(&stats);
@@ -291,7 +292,7 @@ pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
             let Some(group_map) = group.as_mapping_mut() else {
                 continue;
             };
-            if is_selector_group(group_map) {
+            if !should_apply_connectivity_order(group_map) {
                 continue;
             }
             if let Some(Value::Sequence(list)) = group_map.get_mut("proxies") {
@@ -415,17 +416,58 @@ mod tests {
     }
 
     #[test]
-    fn is_selector_group_detects_select_and_selector() {
+    fn should_apply_connectivity_order_only_url_test_fallback() {
         let mut select = Mapping::new();
         select.insert("type".into(), Value::String("select".into()));
-        assert!(is_selector_group(&select));
+        assert!(!should_apply_connectivity_order(&select));
 
         let mut selector = Mapping::new();
         selector.insert("type".into(), Value::String("Selector".into()));
-        assert!(is_selector_group(&selector));
+        assert!(!should_apply_connectivity_order(&selector));
 
         let mut url_test = Mapping::new();
         url_test.insert("type".into(), Value::String("url-test".into()));
-        assert!(!is_selector_group(&url_test));
+        assert!(should_apply_connectivity_order(&url_test));
+
+        let mut fallback = Mapping::new();
+        fallback.insert("type".into(), Value::String("fallback".into()));
+        assert!(should_apply_connectivity_order(&fallback));
+    }
+
+    #[test]
+    fn select_group_proxies_keep_script_order() {
+        let config_str = r#"
+proxies:
+  - name: "node-a"
+    type: ss
+  - name: "node-b"
+    type: ss
+proxy-groups:
+  - name: "Direct"
+    type: select
+    proxies:
+      - "DIRECT"
+      - "Auto"
+      - "NoHK"
+  - name: "Auto"
+    type: fallback
+    proxies:
+      - "node-a"
+      - "node-b"
+"#;
+        let config: Mapping = serde_yaml_ng::from_str(config_str).expect("yaml");
+        // 无统计文件时 fallback 也可能保持原序；关键是 select 绝不能被改写
+        let out = apply_connectivity_proxy_order(config);
+        let groups = out
+            .get("proxy-groups")
+            .and_then(Value::as_sequence)
+            .expect("proxy-groups");
+        let direct = groups[0].as_mapping().expect("Direct");
+        let proxies = direct
+            .get("proxies")
+            .and_then(Value::as_sequence)
+            .expect("proxies");
+        let names: Vec<&str> = proxies.iter().filter_map(Value::as_str).collect();
+        assert_eq!(names, vec!["DIRECT", "Auto", "NoHK"]);
     }
 }
