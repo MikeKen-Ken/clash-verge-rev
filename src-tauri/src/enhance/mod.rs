@@ -795,8 +795,9 @@ fn apply_offline_overrides(mut config: Mapping) -> Mapping {
     config
 }
 
-/// 直连/全局模式下覆盖运行配置的 rules 与顶层 nameserver，不改变 proxy-groups，界面不切换组。
+/// 直连/全局模式下覆盖运行配置的 rules，不改变 proxy-groups，界面不切换组。
 /// 强制 mode: rule，使核心按规则选策略：全局走 MATCH,Auto（策略组 Auto），直连走 MATCH,Direct（策略 Direct），而非核心内置的 GLOBAL/DIRECT。
+/// 不修改顶层 nameserver / dns.nameserver，保留配置原有 DNS。
 fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
     // 强制 rule 模式，否则核心会按 mode: global/direct 用内置 GLOBAL/DIRECT，忽略我们的 MATCH 规则
     config.insert("mode".into(), Value::from("rule"));
@@ -812,26 +813,10 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
         Value::Sequence(vec![Value::from(match_rule)]),
     );
 
-    // 顶层：删除 nameserver-policy，设置 nameserver（不修改 dns 块）
+    // 删除顶层 nameserver-policy；不改动 nameserver / dns 块
     config.remove("nameserver-policy");
 
-    let nameservers: Vec<Value> = if mode == "direct" {
-        vec![
-            Value::from("https://dns.alidns.com/dns-query"),
-            Value::from("https://120.53.53.53/dns-query"),
-            Value::from("tls://119.29.29.29:853"),
-        ]
-    } else {
-        vec![
-            Value::from("https://1.1.1.1/dns-query"),
-            Value::from("https://8.8.8.8/dns-query"),
-            Value::from("https://9.9.9.9/dns-query"),
-            Value::from("tls://1.0.0.1:853"),
-        ]
-    };
-    config.insert("nameserver".into(), Value::Sequence(nameservers));
-
-    logging!(info, Type::Core, "applied {mode} mode overrides (rules + top-level nameserver)");
+    logging!(info, Type::Core, "applied {mode} mode overrides (rules)");
     config
 }
 
