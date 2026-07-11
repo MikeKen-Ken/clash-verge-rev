@@ -108,7 +108,8 @@ export function listAvailableRegionsFromProxyGroups(
   const flagSet = new Set<string>();
 
   for (const group of groups) {
-    if ((group.type ?? "").toLowerCase() === "selector") continue;
+    const type = (group.type ?? "").toLowerCase();
+    if (type === "select" || type === "selector") continue;
     for (const proxy of group.all ?? []) {
       const flag = resolveRegionFlag(proxy.name);
       if (flag) flagSet.add(flag);

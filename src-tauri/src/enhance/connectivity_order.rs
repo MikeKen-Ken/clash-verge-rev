@@ -265,7 +265,19 @@ fn sort_group_proxies_list(
     });
 }
 
+fn is_selector_group(group_map: &Mapping) -> bool {
+    group_map
+        .get("type")
+        .and_then(Value::as_str)
+        .map(|value| {
+            let value = value.to_ascii_lowercase();
+            value == "select" || value == "selector"
+        })
+        .unwrap_or(false)
+}
+
 /// 在 finalize_runtime_config 末尾调用：重排运行时 YAML 中的节点顺序。
+/// Selector 组保持配置默认顺序，不参与联通重排。
 pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
     let stats = load_weighted_connectivity_stats();
     let prior_delay_ms = compute_prior_effective_delay_ms(&stats);
@@ -279,6 +291,9 @@ pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
             let Some(group_map) = group.as_mapping_mut() else {
                 continue;
             };
+            if is_selector_group(group_map) {
+                continue;
+            }
             if let Some(Value::Sequence(list)) = group_map.get_mut("proxies") {
                 sort_group_proxies_list(list, &stats, prior_delay_ms);
             }
@@ -397,5 +412,20 @@ mod tests {
         let weighted = sum_weighted_days(&days, today);
         assert!(weighted.success > 10.0);
         assert!(weighted.success < 20.0);
+    }
+
+    #[test]
+    fn is_selector_group_detects_select_and_selector() {
+        let mut select = Mapping::new();
+        select.insert("type".into(), Value::String("select".into()));
+        assert!(is_selector_group(&select));
+
+        let mut selector = Mapping::new();
+        selector.insert("type".into(), Value::String("Selector".into()));
+        assert!(is_selector_group(&selector));
+
+        let mut url_test = Mapping::new();
+        url_test.insert("type".into(), Value::String("url-test".into()));
+        assert!(!is_selector_group(&url_test));
     }
 }

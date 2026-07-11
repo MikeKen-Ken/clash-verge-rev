@@ -202,6 +202,8 @@ export const useRenderList = (
             "",
             0,
             targetGroup?.timeout ?? 5000,
+            undefined,
+            targetGroup.type,
           );
 
           if (col > 1) {
@@ -237,6 +239,8 @@ export const useRenderList = (
           "",
           0,
           firstGroup?.timeout ?? 5000,
+          undefined,
+          firstGroup.type,
         );
 
         if (col > 1) {

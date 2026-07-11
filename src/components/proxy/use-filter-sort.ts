@@ -65,6 +65,7 @@ export default function useFilterSort(
       groupName,
       sortType,
       groupTimeout ?? DEFAULT_GROUP_TIMEOUT_MS,
+      groupType,
     );
     return sp;
   }, [
@@ -130,7 +131,7 @@ export function filterSort(
     groupType,
     regionFilter,
   );
-  const sp = sortProxies(fp, groupName, sortType, latencyTimeout);
+  const sp = sortProxies(fp, groupName, sortType, latencyTimeout, groupType);
   return sp;
 }
 
@@ -156,7 +157,7 @@ function filterProxies(
 
   if (
     regionFilter &&
-    (groupType ?? "").toLowerCase() !== "selector"
+    !isSelectorGroupType(groupType)
   ) {
     list = list.filter(
       (proxy) => resolveRegionFlag(proxy.name) === regionFilter,
@@ -212,14 +213,24 @@ function filterProxies(
 /**
  * sort the proxy
  */
+function isSelectorGroupType(groupType?: string): boolean {
+  const t = (groupType ?? "").toLowerCase();
+  return t === "select" || t === "selector";
+}
+
 function sortProxies(
   proxies: IProxyItem[],
   groupName: string,
   sortType: ProxySortType,
   latencyTimeout?: number,
+  groupType?: string,
 ) {
   if (!proxies) return [];
   if (sortType === 0) {
+    // Selector 组保持配置默认顺序，不按联通评分重排
+    if (isSelectorGroupType(groupType)) {
+      return proxies;
+    }
     return sortProxiesByConnectivity(proxies, (proxy) => proxy.name);
   }
 
