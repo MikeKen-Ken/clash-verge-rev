@@ -306,15 +306,15 @@ export function recordDelayTestResult(
   const prev = entry.days[day] ?? { s: 0, f: 0, ds: 0 };
   entry.days[day] = isSuccess
     ? {
-        s: prev.s + 1,
-        f: prev.f,
-        ds: (prev.ds ?? 0) + delay,
-      }
+      s: prev.s + 1,
+      f: prev.f,
+      ds: (prev.ds ?? 0) + delay,
+    }
     : {
-        s: prev.s,
-        f: prev.f + 1,
-        ds: (prev.ds ?? 0) + effectiveTimeout,
-      };
+      s: prev.s,
+      f: prev.f + 1,
+      ds: (prev.ds ?? 0) + effectiveTimeout,
+    };
   pruneDays(entry.days, now);
   if (Object.keys(entry.days).length === 0) {
     delete store[proxyName];
@@ -349,4 +349,62 @@ export function clearConnectivityStats(): void {
   } catch {
     // ignore localStorage failure
   }
+}
+
+/** 清空单个节点的测速联通统计 */
+export function clearConnectivityStatsForProxy(proxyName: string): void {
+  if (!proxyName) return;
+  const store = { ...loadStore() };
+  if (!(proxyName in store)) return;
+  delete store[proxyName];
+  persistStore(store);
+}
+
+/** 面板列表行：分数 + 加权成功/失败 + 平滑有效延迟 */
+export interface ConnectivityScoreRow {
+  name: string;
+  score: number;
+  weightedSuccess: number;
+  weightedFailure: number;
+  effectiveAvgDelayMs: number;
+  hasStats: boolean;
+}
+
+/**
+ * 按联通分降序列出节点（同分保序）。
+ * hasStats=false 时仍给出先验平滑分数，有效延迟供展示用。
+ */
+export function listConnectivityScoreRows(
+  proxyNames: string[],
+): ConnectivityScoreRow[] {
+  if (proxyNames.length === 0) return [];
+
+  const { global, byProxy } = collectWeightedStatsFromStore(loadStore());
+  const priorDelayMs = computePriorEffectiveDelayMs(global);
+
+  const keyed = proxyNames.map((name, index) => {
+    const stats = byProxy[name] ?? { success: 0, failure: 0, delaySum: 0 };
+    const hasStats = stats.success > 0 || stats.failure > 0;
+    return {
+      index,
+      row: {
+        name,
+        score: computePenalizedDelayConnectivityScore(stats, priorDelayMs),
+        weightedSuccess: stats.success,
+        weightedFailure: stats.failure,
+        effectiveAvgDelayMs: computeSmoothedEffectiveAvgDelay(
+          stats,
+          priorDelayMs,
+        ),
+        hasStats,
+      } satisfies ConnectivityScoreRow,
+    };
+  });
+
+  keyed.sort((a, b) => {
+    if (a.row.score !== b.row.score) return b.row.score - a.row.score;
+    return a.index - b.index;
+  });
+
+  return keyed.map((k) => k.row);
 }

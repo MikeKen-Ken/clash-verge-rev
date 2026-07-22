@@ -51,13 +51,13 @@ import {
   getDelayCheckConcurrency,
   setDelayCheckConcurrency,
 } from "@/services/delay";
-import { clearConnectivityStats } from "@/services/proxy-connectivity-stats";
 import {
   listAvailableRegionsFromProxyGroups,
   REGION_FLAG_LABELS,
 } from "@/services/proxy-region-sort";
 import { useSystemState } from "@/hooks/use-system-state";
 import { showNotice } from "@/services/notice-service";
+import { ConnectivityStatsDialog } from "@/components/proxy/connectivity-stats-dialog";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
@@ -146,6 +146,7 @@ const ProxyPage = () => {
   const [siteTestSelection, setSiteTestSelection] =
     useState<ProxySiteTestSelection | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
+  const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
 
   const availableRegions = useMemo(
     () => listAvailableRegionsFromProxyGroups(proxiesData?.groups ?? []),
@@ -287,12 +288,6 @@ const ProxyPage = () => {
     await flushFakeIp();
     await flushDNS();
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
-  });
-
-  const handleClearConnectivityStats = useLockFn(async () => {
-    clearConnectivityStats();
-    showNotice.success("已清空节点测速统计");
-    await handleRefreshProxy();
   });
 
   const handleTunToggle = useLockFn(async (value: boolean) => {
@@ -632,12 +627,12 @@ const ProxyPage = () => {
                 </Tooltip>
               </>
             )}
-            <Tooltip title="清空节点测速统计">
+            <Tooltip title="节点测速统计">
               <IconButton
                 size="small"
-                aria-label="清空节点测速统计"
+                aria-label="节点测速统计"
                 onClick={() => {
-                  void handleClearConnectivityStats();
+                  setConnectivityStatsOpen(true);
                 }}
               >
                 <DeleteSweepRounded fontSize="small" />
@@ -768,6 +763,10 @@ const ProxyPage = () => {
           checkAllDelayRunnerRef.current = runner;
         }}
         onActiveSelectionChange={setSiteTestSelection}
+      />
+      <ConnectivityStatsDialog
+        open={connectivityStatsOpen}
+        onClose={() => setConnectivityStatsOpen(false)}
       />
     </BasePage>
   );
