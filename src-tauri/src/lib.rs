@@ -183,6 +183,7 @@ mod app_init {
             cmd::copy_clash_env,
             cmd::sync_tray_proxy_selection,
             cmd::sync_connectivity_stats_file,
+            cmd::read_connectivity_stats_file,
             cmd::clear_proxy_group_manual_selection,
             cmd::save_dns_config,
             cmd::apply_dns_config,

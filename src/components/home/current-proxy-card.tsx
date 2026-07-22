@@ -49,7 +49,7 @@ import delayManager, {
   getGroupDelayTimeout,
   DEFAULT_GROUP_TIMEOUT_MS,
 } from "@/services/delay";
-import { recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
+import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
@@ -822,19 +822,20 @@ export const CurrentProxyCard = () => {
           } else {
             try {
               const dm = await delayGroup(groupName, url, timeout);
-              recordGroupDelayResults(proxyNames, dm, timeout);
               delayManager.applyGroupUrlTestDelays(
                 groupName,
                 proxyNames,
                 dm,
                 { timeout },
               );
+              await hydrateConnectivityStatsFromDisk();
             } catch (err) {
               console.warn(
                 `[CurrentProxyCard] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
                 err,
               );
               await delayManager.checkListDelay(proxyNames, groupName, timeout);
+              await hydrateConnectivityStatsFromDisk();
             }
           }
           debugLog(

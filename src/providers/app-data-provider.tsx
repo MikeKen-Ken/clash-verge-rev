@@ -23,7 +23,7 @@ import {
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import delayManager, { setDefaultHealthCheck } from "@/services/delay";
 import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
-import { recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
+import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -36,7 +36,9 @@ export const AppDataProvider = ({
   const { verge } = useVerge();
 
   useEffect(() => {
-    void syncConnectivityPersistenceToDisk();
+    void hydrateConnectivityStatsFromDisk().finally(() => {
+      void syncConnectivityPersistenceToDisk();
+    });
   }, []);
 
   useEffect(() => {
@@ -99,7 +101,9 @@ export const AppDataProvider = ({
   // 任意节点延迟更新时触发一次刷新，使 UI 自动显示最新延迟（测速/健康检测完成后）
   useEffect(() => {
     const handler = () => {
-      refreshProxy().catch(() => { });
+      void hydrateConnectivityStatsFromDisk().finally(() => {
+        refreshProxy().catch(() => { });
+      });
     };
     delayManager.setGlobalListener(handler);
     return () => delayManager.removeGlobalListener();
@@ -181,7 +185,8 @@ export const AppDataProvider = ({
           const names = (g.all ?? [])
             .map((p) => (typeof p === "string" ? p : p.name))
             .filter((name): name is string => Boolean(name));
-          recordGroupDelayResults(names, dm, timeout);
+          delayManager.applyGroupUrlTestDelays(g.name, names, dm, { timeout });
+          await hydrateConnectivityStatsFromDisk();
         }),
       );
       await refreshProxy();

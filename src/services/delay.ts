@@ -1,6 +1,6 @@
 import { delayProxyByName, ProxyDelay } from "tauri-plugin-mihomo-api";
 
-import { recordDelayTestResult, recordGroupDelayResults } from "@/services/proxy-connectivity-stats";
+import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { debugLog } from "@/utils/debug";
 
 /** 默认测速 URL（与 Android `tunnel/connectivity.go` 中空 testURL 一致） */
@@ -542,8 +542,9 @@ class DelayManager {
       elapsed,
       silentGlobal: silent,
     });
+    // 联通统计由内核 Proxy.URLTest 写入磁盘；前端只刷新缓存，避免与安卓双通道不一致/双记
     if (update.delay !== -2) {
-      recordDelayTestResult(name, update.delay, timeout);
+      void hydrateConnectivityStatsFromDisk();
     }
     if (reuseMap != null && reuseKey !== undefined && update.delay !== -2) {
       reuseMap.set(reuseKey, { ...update });
@@ -654,10 +655,6 @@ class DelayManager {
     delays: Record<string, number>,
     opts?: { bulkReuseMap?: Map<string, DelayUpdate>; timeout?: number },
   ) {
-    const timeout =
-      opts?.timeout != null && opts.timeout > 0
-        ? opts.timeout
-        : DEFAULT_GROUP_TIMEOUT_MS;
     for (const name of memberNames) {
       if (!name || name === "DIRECT" || name === "REJECT") continue;
       const raw = delays[name];
@@ -668,7 +665,8 @@ class DelayManager {
       });
       opts?.bulkReuseMap?.set(name, { ...update });
     }
-    recordGroupDelayResults(memberNames, delays, timeout);
+    // 组级 URLTest 已由内核记账；此处只同步磁盘统计到前端缓存
+    void hydrateConnectivityStatsFromDisk();
     this.flushAfterBulkSilentWrites();
   }
 

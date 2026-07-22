@@ -23,6 +23,7 @@ import { showNotice } from "@/services/notice-service";
 import {
   clearConnectivityStats,
   clearConnectivityStatsForProxy,
+  hydrateConnectivityStatsFromDisk,
   listConnectivityScoreRows,
   type ConnectivityScoreRow,
 } from "@/services/proxy-connectivity-stats";
@@ -77,20 +78,23 @@ export const ConnectivityStatsDialog = ({
     });
   }, [proxies?.records]);
 
-  const reloadRows = () => {
+  const reloadRows = async () => {
+    await hydrateConnectivityStatsFromDisk();
     setRows(listConnectivityScoreRows(leafProxyNames));
   };
 
   useEffect(() => {
     if (open) {
-      reloadRows();
+      void reloadRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅打开时 / 节点名变化时刷新
   }, [open, leafProxyNames]);
 
   const handleClearOne = useLockFn(async (name: string) => {
-    clearConnectivityStatsForProxy(name);
-    reloadRows();
+    // 先拉最新盘数据再删，避免只清掉内存里过期副本
+    await hydrateConnectivityStatsFromDisk();
+    await clearConnectivityStatsForProxy(name);
+    await reloadRows();
     showNotice.success(`已清空「${name}」的测速统计`);
     await refreshProxy();
   });
@@ -103,8 +107,8 @@ export const ConnectivityStatsDialog = ({
     if (!ok) return;
     setClearing(true);
     try {
-      clearConnectivityStats();
-      reloadRows();
+      await clearConnectivityStats();
+      await reloadRows();
       showNotice.success("已清空节点测速统计");
       await refreshProxy();
     } finally {

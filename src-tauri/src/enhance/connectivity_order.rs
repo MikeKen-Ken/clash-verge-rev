@@ -100,9 +100,16 @@ fn load_weighted_connectivity_stats() -> HashMap<String, WeightedStats> {
 }
 
 fn load_weighted_connectivity_stats_from_dir(home: &PathBuf) -> HashMap<String, WeightedStats> {
-    let path = home.join(STATS_FILE);
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return HashMap::new();
+    let raw = match with_connectivity_stats_lock(home, || {
+        let path = home.join(STATS_FILE);
+        match std::fs::read_to_string(path) {
+            Ok(raw) => Ok(raw),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(err) => Err(err.to_string()),
+        }
+    }) {
+        Ok(raw) if !raw.is_empty() => raw,
+        _ => return HashMap::new(),
     };
 
     let today = Local::now().date_naive();
@@ -307,8 +314,61 @@ pub fn apply_connectivity_proxy_order(mut config: Mapping) -> Mapping {
 /// 前端同步联通统计 JSON 到数据目录（不触发 reload）。
 pub fn write_connectivity_stats_file(raw_json: &str) -> Result<(), String> {
     let home = dirs::app_home_dir().map_err(|e| e.to_string())?;
-    let path = home.join(STATS_FILE);
-    std::fs::write(path, raw_json).map_err(|e| e.to_string())
+    with_connectivity_stats_lock(&home, || {
+        let path = home.join(STATS_FILE);
+        let tmp = home.join(format!("{STATS_FILE}.tmp"));
+        std::fs::write(&tmp, raw_json).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    })
+}
+
+/// 读取数据目录中的联通统计 JSON（核心 URLTest 也会写入同一文件）。
+pub fn read_connectivity_stats_file() -> Result<String, String> {
+    let home = dirs::app_home_dir().map_err(|e| e.to_string())?;
+    with_connectivity_stats_lock(&home, || {
+        let path = home.join(STATS_FILE);
+        match std::fs::read_to_string(&path) {
+            Ok(raw) => Ok(raw),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Ok(r#"{"v":2,"data":{}}"#.to_string())
+            }
+            Err(err) => Err(err.to_string()),
+        }
+    })
+}
+
+fn with_connectivity_stats_lock<T>(
+    home: &PathBuf,
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    use fs2::FileExt;
+    use std::fs::OpenOptions;
+    use std::time::{Duration, Instant};
+
+    let lock_path = home.join(format!("{STATS_FILE}.lock"));
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .map_err(|e| e.to_string())?;
+        match file.try_lock_exclusive() {
+            Ok(()) => {
+                let result = f();
+                let _ = file.unlock();
+                return result;
+            }
+            Err(_) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(15));
+            }
+            Err(_) => {
+                // 超时降级：避免 UI 永久卡住
+                return f();
+            }
+        }
+    }
 }
 
 #[cfg(test)]

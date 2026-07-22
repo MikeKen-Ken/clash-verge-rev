@@ -1,5 +1,11 @@
-/** 节点测速联通统计（localStorage 持久化，最多保留 30 天，惩罚有效延迟 + 指数衰减） */
-import { scheduleConnectivityPersistenceSync } from "@/services/proxy-connectivity-sync";
+/** 节点测速联通统计（localStorage 持久化，最多保留 30 天，惩罚有效延迟 + 指数衰减）
+ * 记账以桌面内核 URLTest 写入的 proxy-connectivity-stats.json 为准；前端负责 hydrate 与清空。
+ */
+import { invoke } from "@tauri-apps/api/core";
+import {
+  flushConnectivityPersistenceSync,
+  scheduleConnectivityPersistenceSync,
+} from "@/services/proxy-connectivity-sync";
 
 const STORAGE_KEY = "proxy.connectivityStats";
 const STORE_VERSION = 2;
@@ -177,6 +183,48 @@ function persistStore(store: Record<string, ProxyConnectivityEntry>) {
   }
 }
 
+/**
+ * 从数据目录拉取内核写入的联通统计，覆盖 localStorage 缓存。
+ * 若磁盘尚无数据而 localStorage 仍有旧账，先把 LS 推到磁盘，避免升级后丢历史。
+ */
+export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = await invoke<string>("read_connectivity_stats_file");
+    const diskStore = parseStatsPayload(raw);
+    const diskHasData = Object.keys(diskStore).length > 0;
+
+    if (!diskHasData) {
+      const existing = loadStore();
+      if (Object.keys(existing).length > 0) {
+        persistStore(existing);
+        return;
+      }
+    }
+
+    cachedStore = diskStore;
+    const payload: StatsFileV2 = { v: STORE_VERSION, data: diskStore };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore hydrate failure
+  }
+}
+
+function parseStatsPayload(raw: string | null | undefined): Record<string, ProxyConnectivityEntry> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return {};
+    const maybeV2 = parsed as StatsFileV2;
+    if (maybeV2.v === STORE_VERSION && maybeV2.data && typeof maybeV2.data === "object") {
+      return maybeV2.data;
+    }
+    return migrateLegacyStore(parsed as Record<string, LegacyProxyConnectivityStats>);
+  } catch {
+    return {};
+  }
+}
+
 export function getConnectivityStats(proxyName: string): ProxyConnectivityStats {
   if (!proxyName) return { success: 0, failure: 0, delaySum: 0 };
   const store = loadStore();
@@ -283,81 +331,58 @@ export function getConnectivityBayesianScore(proxyName: string): number {
   return buildConnectivityScoreContext().scoreFor(proxyName);
 }
 
-/** 根据测速 delay 累加（成功=真实 delay，失败=timeout 惩罚延迟） */
+/** 根据测速 delay 累加（成功=真实 delay，失败=timeout 惩罚延迟）
+ * @deprecated 桌面记账改由内核 URLTest 写入磁盘；保留空实现以免旧调用报错。
+ */
 export function recordDelayTestResult(
-  proxyName: string,
-  delay: number,
-  timeout: number,
+  _proxyName: string,
+  _delay: number,
+  _timeout: number,
 ): void {
-  if (!proxyName || proxyName === "DIRECT" || proxyName === "REJECT") return;
-  if (delay === -2 || delay === -1) return;
-
-  const effectiveTimeout =
-    Number.isFinite(timeout) && timeout > 0
-      ? timeout
-      : CONNECTIVITY_DEFAULT_PENALTY_DELAY_MS;
-  const isSuccess = delay > 0 && delay <= effectiveTimeout;
-
-  const now = new Date();
-  const day = formatDayKey(now);
-  const store = { ...loadStore() };
-  const entry = store[proxyName] ?? { days: {} };
-  if (!entry.days) entry.days = {};
-  const prev = entry.days[day] ?? { s: 0, f: 0, ds: 0 };
-  entry.days[day] = isSuccess
-    ? {
-      s: prev.s + 1,
-      f: prev.f,
-      ds: (prev.ds ?? 0) + delay,
-    }
-    : {
-      s: prev.s,
-      f: prev.f + 1,
-      ds: (prev.ds ?? 0) + effectiveTimeout,
-    };
-  pruneDays(entry.days, now);
-  if (Object.keys(entry.days).length === 0) {
-    delete store[proxyName];
-  } else {
-    store[proxyName] = entry;
-  }
-  persistStore(store);
+  void hydrateConnectivityStatsFromDisk();
 }
 
-/** 批量写入组级 URLTest 结果（启动测速、delayGroup 等场景） */
+/** 批量写入组级 URLTest 结果（启动测速、delayGroup 等场景）
+ * @deprecated 同 recordDelayTestResult，改为 hydrate 磁盘统计。
+ */
 export function recordGroupDelayResults(
-  memberNames: string[],
-  delays: Record<string, number>,
-  timeout: number,
+  _memberNames: string[],
+  _delays: Record<string, number>,
+  _timeout: number,
 ): void {
-  for (const name of memberNames) {
-    if (!name || name === "DIRECT" || name === "REJECT") continue;
-    const raw = delays[name];
-    const value =
-      raw != null && Number.isFinite(raw) && raw > 0 ? raw : 0;
-    recordDelayTestResult(name, value, timeout);
-  }
+  void hydrateConnectivityStatsFromDisk();
 }
 
-/** 一键清空全部节点的测速联通统计 */
-export function clearConnectivityStats(): void {
+/** 一键清空全部节点的测速联通统计（写盘完成后再返回，避免随后 hydrate 读到旧数据） */
+export async function clearConnectivityStats(): Promise<void> {
   cachedStore = {};
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
-    scheduleConnectivityPersistenceSync();
+    const payload: StatsFileV2 = { v: STORE_VERSION, data: {} };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    await flushConnectivityPersistenceSync();
   } catch {
-    // ignore localStorage failure
+    // ignore localStorage / sync failure
   }
 }
 
-/** 清空单个节点的测速联通统计 */
-export function clearConnectivityStatsForProxy(proxyName: string): void {
+/** 清空单个节点的测速联通统计（写盘完成后再返回） */
+export async function clearConnectivityStatsForProxy(
+  proxyName: string,
+): Promise<void> {
   if (!proxyName) return;
   const store = { ...loadStore() };
   if (!(proxyName in store)) return;
   delete store[proxyName];
-  persistStore(store);
+  cachedStore = store;
+  if (typeof window === "undefined") return;
+  try {
+    const payload: StatsFileV2 = { v: STORE_VERSION, data: store };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    await flushConnectivityPersistenceSync();
+  } catch {
+    // ignore localStorage / sync failure
+  }
 }
 
 /** 面板列表行：分数 + 加权成功/失败 + 平滑有效延迟 */
