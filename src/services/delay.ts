@@ -83,6 +83,10 @@ export interface CheckListDelayOptions {
 }
 
 const CACHE_TTL = 30 * 60 * 1000;
+/** 延迟缓存条数上限：超出时按 updatedAt 淘汰最旧项（订阅节点数通常远小于此） */
+const CACHE_MAX_SIZE = 4096;
+/** 非超容量时，主动扫 TTL 的最小间隔，避免每次 setDelay 全表扫描 */
+const CACHE_PRUNE_INTERVAL_MS = 60_000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
 
@@ -139,6 +143,7 @@ class DelayManager {
   /** 延迟按出站名一条（对齐 mihomo 核心单登记表）；组参数仅用于测速 URL 与订阅 UI */
   private cache = new Map<string, DelayUpdate>();
   private urlMap = new Map<string, string>();
+  private lastCachePruneAt = 0;
 
   /** 来自 /proxies 快照，用于解析出站本体 test-url（对齐原生 Provider HealthCheckURL 语义） */
   private topoRecords: Record<string, IProxyItem> | undefined;
@@ -305,6 +310,48 @@ class DelayManager {
   ) {
     this.topoRecords = records;
     this.topoGroups = groups;
+    // 组测速 URL 仅保留当前拓扑中仍存在的组，避免换订阅后 urlMap 只增不减
+    if (groups) {
+      const alive = new Set(groups.map((g) => g.name));
+      for (const key of this.urlMap.keys()) {
+        if (!alive.has(key)) {
+          this.urlMap.delete(key);
+        }
+      }
+    }
+    this.maybePruneDelayCache(true);
+  }
+
+  /** 删除过期项；若仍超上限则按 updatedAt 淘汰最旧条目 */
+  private pruneDelayCache(now = Date.now()) {
+    for (const [name, entry] of this.cache) {
+      if (now - entry.updatedAt > CACHE_TTL) {
+        this.cache.delete(name);
+      }
+    }
+    if (this.cache.size <= CACHE_MAX_SIZE) return;
+
+    const ranked = Array.from(this.cache.entries()).sort(
+      (a, b) => a[1].updatedAt - b[1].updatedAt,
+    );
+    const removeCount = ranked.length - CACHE_MAX_SIZE;
+    for (let i = 0; i < removeCount; i++) {
+      this.cache.delete(ranked[i][0]);
+    }
+  }
+
+  private maybePruneDelayCache(force = false) {
+    const now = Date.now();
+    const overCapacity = this.cache.size > CACHE_MAX_SIZE;
+    if (
+      !force &&
+      !overCapacity &&
+      now - this.lastCachePruneAt < CACHE_PRUNE_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.lastCachePruneAt = now;
+    this.pruneDelayCache(now);
   }
 
   setUrl(group: string, url: string) {
@@ -408,6 +455,7 @@ class DelayManager {
     };
 
     this.cache.set(name, update);
+    this.maybePruneDelayCache();
 
     const subscribers = this.listenerKeysByName.get(name);
     if (subscribers) {

@@ -35,11 +35,11 @@ import {
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import {
-  filterClosedConnectionsByRetention,
   useConnectionData,
 } from "@/hooks/use-connection-data";
 import {
-  CLOSED_CONNECTIONS_RETENTION_HOURS,
+  CLOSED_CONNECTIONS_LIMITS,
+  DEFAULT_CLOSED_CONNECTIONS_LIMIT,
   useConnectionSetting,
 } from "@/hooks/use-connection-setting";
 import { useClash } from "@/hooks/use-clash";
@@ -198,11 +198,7 @@ const ConnectionsPage = () => {
 
   const [filterConn] = useMemo(() => {
     const orderFunc = orderFunctionMap[curOrderOpt];
-    const closedRaw = connections?.closedConnections ?? [];
-    const closedForDisplay = filterClosedConnectionsByRetention(
-      closedRaw,
-      setting?.closedConnectionsRetentionHours ?? 8,
-    );
+    const closedForDisplay = connections?.closedConnections ?? [];
     const conns =
       connectionsType === "active"
         ? (connections?.activeConnections ?? [])
@@ -227,7 +223,7 @@ const ConnectionsPage = () => {
     }
 
     return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, setting?.closedConnectionsRetentionHours, blockedLanIpSet]);
+  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, blockedLanIpSet]);
 
   const activeLanConnections = useMemo(() => {
     const active = connections?.activeConnections ?? [];
@@ -649,7 +645,7 @@ const ConnectionsPage = () => {
               setSetting((o) => ({
                 ...(o ?? {
                   layout: "table",
-                  closedConnectionsRetentionHours: 8,
+                  closedConnectionsLimit: DEFAULT_CLOSED_CONNECTIONS_LIMIT,
                   connectionsView: "connections",
                 }),
                 connectionsView: "connections",
@@ -668,7 +664,7 @@ const ConnectionsPage = () => {
               setSetting((o) => {
                 const base: IConnectionSetting = o ?? {
                   layout: "table",
-                  closedConnectionsRetentionHours: 8,
+                  closedConnectionsLimit: DEFAULT_CLOSED_CONNECTIONS_LIMIT,
                   connectionsView: "connections",
                 };
                 return {
@@ -735,27 +731,29 @@ const ConnectionsPage = () => {
             }}
           >
             <BaseStyledSelect
-              value={String(setting?.closedConnectionsRetentionHours ?? 8)}
+              value={String(
+                setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNECTIONS_LIMIT,
+              )}
               onChange={(e) =>
                 setSetting((o) => {
                   const base: IConnectionSetting = o ?? {
                     layout: "table",
-                    closedConnectionsRetentionHours: 8,
+                    closedConnectionsLimit: DEFAULT_CLOSED_CONNECTIONS_LIMIT,
                   };
                   return {
                     ...base,
-                    closedConnectionsRetentionHours: Number(e.target.value) as IConnectionSetting["closedConnectionsRetentionHours"],
+                    closedConnectionsLimit: Number(
+                      e.target.value,
+                    ) as IConnectionSetting["closedConnectionsLimit"],
                   };
                 })
               }
               sx={{ minWidth: 100, flexShrink: 0 }}
-              title={t("connections.components.closedRetention")}
+              title="已关闭保留条数"
             >
-              {CLOSED_CONNECTIONS_RETENTION_HOURS.map((h) => (
-                <MenuItem key={h} value={String(h)}>
-                  <span style={{ fontSize: 14 }}>
-                    {t(`connections.components.retentionHours${h}`)}
-                  </span>
+              {CLOSED_CONNECTIONS_LIMITS.map((n) => (
+                <MenuItem key={n} value={String(n)}>
+                  <span style={{ fontSize: 14 }}>{n} 条</span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>

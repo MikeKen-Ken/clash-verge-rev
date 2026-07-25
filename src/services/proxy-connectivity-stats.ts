@@ -140,6 +140,33 @@ function migrateLegacyStore(
   return next;
 }
 
+function pruneEmptyProxyEntries(
+  store: Record<string, ProxyConnectivityEntry>,
+  now = new Date(),
+): { store: Record<string, ProxyConnectivityEntry>; changed: boolean } {
+  let changed = false;
+  const next: Record<string, ProxyConnectivityEntry> = {};
+  for (const [name, entry] of Object.entries(store)) {
+    if (!entry?.days) {
+      changed = true;
+      continue;
+    }
+    const days = { ...entry.days };
+    pruneDays(days, now);
+    if (Object.keys(days).length === 0) {
+      changed = true;
+      continue;
+    }
+    if (Object.keys(days).length !== Object.keys(entry.days).length) {
+      changed = true;
+      next[name] = { days };
+    } else {
+      next[name] = entry;
+    }
+  }
+  return { store: next, changed };
+}
+
 function loadStore(): Record<string, ProxyConnectivityEntry> {
   if (cachedStore) return cachedStore;
   if (typeof window === "undefined") {
@@ -158,12 +185,15 @@ function loadStore(): Record<string, ProxyConnectivityEntry> {
       return cachedStore;
     }
     const maybeV2 = parsed as StatsFileV2;
-    if (maybeV2.v === STORE_VERSION && maybeV2.data && typeof maybeV2.data === "object") {
-      cachedStore = maybeV2.data;
-      return cachedStore;
+    const loaded =
+      maybeV2.v === STORE_VERSION && maybeV2.data && typeof maybeV2.data === "object"
+        ? maybeV2.data
+        : migrateLegacyStore(parsed as Record<string, LegacyProxyConnectivityStats>);
+    const { store, changed } = pruneEmptyProxyEntries(loaded);
+    cachedStore = store;
+    if (changed || maybeV2.v !== STORE_VERSION) {
+      persistStore(cachedStore);
     }
-    cachedStore = migrateLegacyStore(parsed as Record<string, LegacyProxyConnectivityStats>);
-    persistStore(cachedStore);
     return cachedStore;
   } catch {
     cachedStore = {};
@@ -191,7 +221,8 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     const raw = await invoke<string>("read_connectivity_stats_file");
-    const diskStore = parseStatsPayload(raw);
+    const diskStoreRaw = parseStatsPayload(raw);
+    const { store: diskStore, changed } = pruneEmptyProxyEntries(diskStoreRaw);
     const diskHasData = Object.keys(diskStore).length > 0;
 
     if (!diskHasData) {
@@ -205,6 +236,10 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
     cachedStore = diskStore;
     const payload: StatsFileV2 = { v: STORE_VERSION, data: diskStore };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    // 磁盘上若仍有过期空条目，写回裁剪后的结果，与内核 prune 行为对齐
+    if (changed) {
+      scheduleConnectivityPersistenceSync();
+    }
   } catch {
     // ignore hydrate failure
   }

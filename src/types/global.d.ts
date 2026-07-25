@@ -279,15 +279,14 @@ interface IConnections {
   recentClosed?: IConnectionsItem[];
 }
 
-/** 已关闭连接保留时间（小时） */
-const CLOSED_CONNECTIONS_RETENTION_HOURS = [1, 3, 8, 24] as const;
-type ClosedConnectionsRetentionHours =
-  (typeof CLOSED_CONNECTIONS_RETENTION_HOURS)[number];
+/** 已关闭连接保留条数可选值 */
+const CLOSED_CONNECTIONS_LIMITS = [1000, 5000, 10000, 20000] as const;
+type ClosedConnectionsLimit = (typeof CLOSED_CONNECTIONS_LIMITS)[number];
 
 interface IConnectionSetting {
   layout: "table" | "list";
-  /** 已关闭连接保留时长（小时），默认 8 */
-  closedConnectionsRetentionHours?: ClosedConnectionsRetentionHours;
+  /** 已关闭连接保留条数上限，默认 5000 */
+  closedConnectionsLimit?: ClosedConnectionsLimit;
   /** 活跃连接页视图模式，默认 connections */
   connectionsView?: "connections" | "devices";
 }

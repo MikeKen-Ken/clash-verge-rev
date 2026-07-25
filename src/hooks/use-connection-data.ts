@@ -16,12 +16,24 @@ import {
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 import { useVerge } from "./use-verge";
+import {
+  DEFAULT_CLOSED_CONNECTIONS_LIMIT,
+  type ClosedConnectionsLimit,
+  useConnectionSetting,
+} from "./use-connection-setting";
 
-const DEFAULT_CLOSED_RETENTION_HOURS = 8;
 const EMPTY_SNAPSHOT_GRACE_MS = 1200;
 
-/** 持久化保留时长（小时）：仅超过此时长或手动清除时才会从列表移除 */
-const PERSIST_RETENTION_HOURS = 24;
+/** 当前生效的已关闭条数上限（由设置同步，供 WS merge 路径使用） */
+let activeClosedConnectionsLimit: number = DEFAULT_CLOSED_CONNECTIONS_LIMIT;
+
+export const setActiveClosedConnectionsLimit = (limit: number) => {
+  activeClosedConnectionsLimit = limit;
+};
+
+export const getActiveClosedConnectionsLimit = () =>
+  activeClosedConnectionsLimit;
+
 let currentSessionStartMs = Date.now();
 let globalTrafficBaseline: {
   uploadTotal: number;
@@ -96,17 +108,19 @@ const normalizeRecentClosedFromPayload = (
     );
 };
 
-/** 按保留时间（小时）过滤已关闭连接：只保留关闭时间在 retentionHours 内的（供展示与持久化使用） */
-export const filterClosedConnectionsByRetention = (
+/** 超出条数上限时只保留 closedAt 最新的 max 条 */
+export const trimClosedConnectionsByMaxCount = (
   closedConnections: IConnectionsItem[],
-  retentionHours: number = DEFAULT_CLOSED_RETENTION_HOURS,
+  max: number = DEFAULT_CLOSED_CONNECTIONS_LIMIT,
 ): IConnectionsItem[] => {
-  const now = Date.now();
-  const maxAgeMs = retentionHours * 3600 * 1000;
-  return closedConnections.filter((conn) => {
-    const closedAt = conn.closedAt ?? new Date(conn.start || 0).getTime();
-    return now - closedAt <= maxAgeMs;
-  });
+  if (closedConnections.length <= max) return closedConnections;
+  return [...closedConnections]
+    .sort((a, b) => {
+      const aAt = a.closedAt ?? new Date(a.start || 0).getTime();
+      const bAt = b.closedAt ?? new Date(b.start || 0).getTime();
+      return bAt - aAt;
+    })
+    .slice(0, max);
 };
 
 const mergeConnectionSnapshot = (
@@ -173,14 +187,13 @@ const mergeConnectionSnapshot = (
     closedAcc = upsertRejectClosed(closedAcc, conn);
   }
 
-  // 持久化与内存中均按 24 小时保留；展示时由连接页按用户设置（1/3/8/24h）再过滤
-  const closedConnections = filterClosedConnectionsByRetention(
+  // 仅按条数上限裁剪（无时间限制）；上限由用户设置同步到 activeClosedConnectionsLimit
+  const closedConnections = trimClosedConnectionsByMaxCount(
     dedupeClosedConnectionsById(closedAcc),
-    PERSIST_RETENTION_HOURS,
+    activeClosedConnectionsLimit,
   );
+  // 仅当最终列表内容变化时才调度写盘（写盘侧另有节流）
   const closedChanged =
-    newlyClosed.length > 0 ||
-    fromRecentClosed.length > 0 ||
     closedConnections.length !== previousClosed.length ||
     closedConnections.some(
       (conn, index) =>
@@ -202,6 +215,9 @@ const mergeConnectionSnapshot = (
 export const useConnectionData = () => {
   const { verge } = useVerge();
   const tunEnabled = verge?.enable_tun_mode ?? false;
+  const [setting] = useConnectionSetting();
+  const closedLimit: ClosedConnectionsLimit =
+    setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNECTIONS_LIMIT;
 
   /**
    * sessionStartMs marks the beginning of the "current traffic session".
@@ -220,6 +236,10 @@ export const useConnectionData = () => {
       sessionListeners.delete(setSessionStartMs);
     };
   }, []);
+
+  useEffect(() => {
+    setActiveClosedConnectionsLimit(closedLimit);
+  }, [closedLimit]);
 
   useEffect(() => {
     if (prevTunEnabledRef.current !== tunEnabled) {
@@ -299,17 +319,22 @@ export const useConnectionData = () => {
     getConnectionSnapshot()
       .then((snapshot) => {
         if (snapshot && (snapshot.activeConnections?.length > 0 || snapshot.closedConnections?.length > 0)) {
-          latestStableConnData = snapshot;
-          mutate(subscriptionCacheKey, snapshot, { revalidate: false });
+          const closed = trimClosedConnectionsByMaxCount(
+            compactRejectClosed(snapshot.closedConnections ?? []),
+            activeClosedConnectionsLimit,
+          );
+          const next = { ...snapshot, closedConnections: closed };
+          latestStableConnData = next;
+          mutate(subscriptionCacheKey, next, { revalidate: false });
           return;
         }
         return getClosedConnectionsFromStorage();
       })
       .then((raw) => {
         if (!raw || !Array.isArray(raw)) return;
-        const closed = filterClosedConnectionsByRetention(
+        const closed = trimClosedConnectionsByMaxCount(
           compactRejectClosed(raw),
-          PERSIST_RETENTION_HOURS,
+          activeClosedConnectionsLimit,
         );
         if (closed.length === 0) return;
         mutate(
@@ -327,11 +352,39 @@ export const useConnectionData = () => {
       .catch(() => { });
   }, [subscriptionCacheKey]);
 
-  // 有连接数据时持久化完整快照，供重新进入连接页时恢复
+  // 用户调低条数上限时，立即裁剪内存与落盘
+  useEffect(() => {
+    if (!subscriptionCacheKey) return;
+    mutate(
+      subscriptionCacheKey,
+      (prev: ConnectionMonitorData | undefined) => {
+        const current = prev ?? latestStableConnData;
+        const closed = trimClosedConnectionsByMaxCount(
+          current.closedConnections ?? [],
+          closedLimit,
+        );
+        if (closed.length === (current.closedConnections?.length ?? 0)) {
+          return current;
+        }
+        const next = { ...current, closedConnections: closed };
+        latestStableConnData = next;
+        void setClosedConnectionsInStorage(closed);
+        setConnectionSnapshot(next);
+        return next;
+      },
+      { revalidate: false },
+    );
+  }, [closedLimit, subscriptionCacheKey]);
+
+  // 有连接数据时调度完整快照落盘（IndexedDB 侧节流，避免每秒写入数十 MB）
   useEffect(() => {
     const data = response.data;
-    if (data && (data.activeConnections?.length > 0 || data.closedConnections?.length > 0)) {
-      latestStableConnData = data;
+    if (!data) return;
+    latestStableConnData = data;
+    if (
+      data.activeConnections?.length > 0 ||
+      data.closedConnections?.length > 0
+    ) {
       setConnectionSnapshot(data);
     }
   }, [response.data]);
@@ -346,8 +399,8 @@ export const useConnectionData = () => {
     };
     latestStableConnData = next;
     mutate(subscriptionCacheKey, next);
-    void setClosedConnectionsInStorage([]);
-    setConnectionSnapshot(next);
+    void setClosedConnectionsInStorage([], { immediate: true });
+    setConnectionSnapshot(next, { immediate: true });
   };
 
   return {
