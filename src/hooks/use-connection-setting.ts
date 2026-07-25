@@ -46,14 +46,12 @@ const migrateSetting = (raw: unknown): IConnectionSetting => {
     else limit = 20000;
   }
 
-  const {
-    closedConnectionsRetentionHours: _hours,
-    ...rest
-  } = o as IConnectionSetting & { closedConnectionsRetentionHours?: number };
+  const rest = { ...o };
+  delete rest.closedConnectionsRetentionHours;
 
   return {
     ...defaultConnectionSetting,
-    ...rest,
+    ...(rest as Partial<IConnectionSetting>),
     closedConnectionsLimit: limit ?? DEFAULT_CLOSED_CONNECTIONS_LIMIT,
     connectionsView:
       (o.connectionsView as IConnectionSetting["connectionsView"]) ??
