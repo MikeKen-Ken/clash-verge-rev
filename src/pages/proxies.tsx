@@ -82,7 +82,6 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 250;
 const HEALTH_CHECK_PRESETS = [250, 300, 500, 1000, 3000, 5000] as const;
 
 const STORAGE_KEY_UI_MODE = "proxies_ui_mode";
-const LAN_ENDPOINT_OFFSET_X = -2;
 const WIFI_INTERFACE_NAME_RE = /wi-?fi|wlan|wireless/i;
 const ETHERNET_INTERFACE_NAME_RE = /ethernet|eth|en\d/i;
 const VIRTUAL_INTERFACE_NAME_RE =
@@ -205,19 +204,6 @@ const ProxyPage = () => {
   const httpPort = clash?.port;
   const socksPort = clash?.["socks-port"];
 
-  const lanIpv4List = useMemo(() => {
-    const ipv4Set = new Set<string>();
-    networkInterfaces.forEach((iface) => {
-      iface.addr.forEach((addr) => {
-        const ip = addr.V4?.ip;
-        if (!ip) return;
-        if (ip === "127.0.0.1" || ip.startsWith("169.254.")) return;
-        ipv4Set.add(ip);
-      });
-    });
-    return Array.from(ipv4Set);
-  }, [networkInterfaces]);
-
   const preferredLanIpv4 = useMemo(() => {
     const scoreInterface = (name: string) => {
       const lowered = name.toLowerCase();
@@ -245,32 +231,20 @@ const ProxyPage = () => {
     return undefined;
   }, [networkInterfaces]);
 
-  const lanEndpointItems = useMemo(() => {
-    if (!allowLan || lanIpv4List.length === 0) return [] as string[];
+  /** 局域网对外可连端口，供本机 IP 区在 allow-lan 开启时展示 */
+  const lanListenPorts = useMemo(() => {
     const ports: number[] = [];
     if (mixedPort) ports.push(mixedPort);
     if (verge?.verge_http_enabled && httpPort) ports.push(httpPort);
     if (verge?.verge_socks_enabled && socksPort) ports.push(socksPort);
-    const uniquePorts = Array.from(new Set(ports));
-    return lanIpv4List.flatMap((ip) => uniquePorts.map((port) => `${ip}:${port}`));
+    return Array.from(new Set(ports));
   }, [
-    allowLan,
-    lanIpv4List,
     mixedPort,
     httpPort,
     socksPort,
     verge?.verge_http_enabled,
     verge?.verge_socks_enabled,
   ]);
-
-  const handleCopyLanEndpoint = useLockFn(async (endpoint: string) => {
-    try {
-      await navigator.clipboard.writeText(endpoint);
-      showNotice.success("shared.feedback.notifications.common.copySuccess");
-    } catch (err) {
-      showNotice.error("settings.sections.externalController.messages.copyFailed", err);
-    }
-  });
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
@@ -433,40 +407,6 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
-            {allowLan &&
-              (lanEndpointItems.length > 0 ? (
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 0.75,
-                    ml: LAN_ENDPOINT_OFFSET_X,
-                  }}
-                >
-                  {lanEndpointItems.map((endpoint) => (
-                    <Button
-                      key={endpoint}
-                      size="small"
-                      variant="outlined"
-                      sx={{ minWidth: "auto", px: 1, py: 0.25 }}
-                      onClick={() => {
-                        void handleCopyLanEndpoint(endpoint);
-                      }}
-                    >
-                      {endpoint}
-                    </Button>
-                  ))}
-                </Box>
-              ) : (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ ml: LAN_ENDPOINT_OFFSET_X }}
-                >
-                  N/A
-                </Typography>
-              ))}
             <FormControlLabel
               control={
                 <GuardState
@@ -749,7 +689,11 @@ const ProxyPage = () => {
               </Box>
             </Tooltip>
             <ProxySiteTestButtons mode={uiMode} selection={siteTestSelection} />
-            <ProxyPageIpInfo localIp={preferredLanIpv4} />
+            <ProxyPageIpInfo
+              localIp={preferredLanIpv4}
+              allowLan={allowLan}
+              ports={lanListenPorts}
+            />
           </Box>
         </Box>
       }
