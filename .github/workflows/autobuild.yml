@@ -81,7 +81,7 @@ jobs:
       tag_name: autobuild
       dry_run: false
 
-  # 自用构建：不签名、不公证。Windows + macOS（Apple Silicon / Intel）
+  # 自用构建：不签名、不公证。Windows + macOS Apple Silicon（M1/M2 等）
   autobuild-windows-macos:
     name: Autobuild Windows / macOS
     needs: [check_commit, update_tag]
@@ -94,8 +94,6 @@ jobs:
             target: x86_64-pc-windows-msvc
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository

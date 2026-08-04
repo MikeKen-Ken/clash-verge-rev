@@ -270,18 +270,11 @@ async function downloadAlphaAssetViaApi(fileName, outPath, options) {
   log_success(`download finished via API: ${fileName}`);
 }
 
+// 资产名前缀须与 MikeKen-Ken/mihomo CI 产物一致：
+// mihomo-{goos}-{output}-{version}.{zip|gz}
 const META_CUSTOM_ASSET_MAP = {
   "win32-x64": "mihomo-windows-amd64",
-  "win32-ia32": "mihomo-windows-386",
-  "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64-v1-go122",
-  "darwin-arm64": "mihomo-darwin-arm64-go122",
-  "linux-x64": "mihomo-linux-amd64-v2",
-  "linux-ia32": "mihomo-linux-386",
-  "linux-arm64": "mihomo-linux-arm64",
-  "linux-arm": "mihomo-linux-armv7",
-  "linux-riscv64": "mihomo-linux-riscv64",
-  "linux-loong64": "mihomo-linux-loong64",
+  "darwin-arm64": "mihomo-darwin-arm64",
 };
 
 // =======================
