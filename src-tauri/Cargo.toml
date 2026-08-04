@@ -98,9 +98,11 @@ tauri-plugin-devtools = { version = "2.0.1" }
 tauri-plugin-mihomo = { path = "../vendor/tauri-plugin-mihomo" }
 clash_verge_logger = { git = "https://github.com/clash-verge-rev/clash-verge-logger" }
 async-trait = "0.1.89"
+# 与 prebuild 拉取的服务二进制成套对齐；不要单独漂依赖版本。
+# 完整升到上游 v2.6.x 需同步改写服务调用与打包脚本，另开任务。
 clash_verge_service_ipc = { version = "2.1.2", features = [
   "client",
-], git = "https://github.com/clash-verge-rev/clash-verge-service-ipc" }
+], git = "https://github.com/clash-verge-rev/clash-verge-service-ipc", rev = "dc7238ef3a8d8b6b87e5e140a008f2e2d66ef262" }
 arc-swap = "1.8.0"
 rust_iso3166 = "0.1.14"
 fs2 = "0.4.3"

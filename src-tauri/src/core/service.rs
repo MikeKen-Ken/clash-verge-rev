@@ -12,9 +12,17 @@ use std::{
     env::current_exe,
     path::{Path, PathBuf},
     process::Command as StdCommand,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 use tokio::sync::Mutex;
+
+/// 同一进程内自动重装最多一次，避免启动阶段连环弹管理员密码
+static AUTO_REINSTALL_ATTEMPTED: AtomicBool = AtomicBool::new(false);
+
+/// 服务刚拉起时 IPC 可能尚未就绪，先等待再决定是否重装
+const SERVICE_READY_ATTEMPTS: usize = 12;
+const SERVICE_READY_INTERVAL: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceStatus {
@@ -402,17 +410,70 @@ pub async fn is_service_available() -> Result<()> {
     Ok(())
 }
 
-/// 等待一会，再检查服务是否正在运行
-/// TODO 使用 tokio select 之类机制并结合 timeout 实现更优雅的等待机制，期望等待文件出现，再尝试连接
+/// 安装/重装后等待服务 IPC 真正可用
 pub async fn wait_and_check_service_available(status: &mut ServiceManager) -> Result<()> {
     status.0 = ServiceStatus::Unavailable("Waiting for service to be available".into());
-    clash_verge_service_ipc::connect().await?;
-    status.0 = ServiceStatus::Ready;
-    Ok(())
+    match wait_for_service_probe().await {
+        ServiceStatus::Ready => {
+            status.0 = ServiceStatus::Ready;
+            Ok(())
+        }
+        other => {
+            status.0 = other.clone();
+            bail!("服务安装后仍未就绪: {:?}", other)
+        }
+    }
 }
 
 pub fn is_service_ipc_path_exists() -> bool {
     Path::new(clash_verge_service_ipc::IPC_PATH).exists()
+}
+
+/// 探测服务版本：就绪 / 确认版本不匹配 / 暂时连不上
+async fn probe_service_version() -> std::result::Result<ServiceStatus, String> {
+    match clash_verge_service_ipc::get_version().await {
+        Ok(resp) => match resp.data {
+            Some(ver) if ver == clash_verge_service_ipc::VERSION => {
+                Ok(ServiceStatus::Ready)
+            }
+            Some(ver) => {
+                logging!(
+                    info,
+                    Type::Service,
+                    "服务版本不匹配: installed={} expected={}",
+                    ver,
+                    clash_verge_service_ipc::VERSION
+                );
+                Ok(ServiceStatus::NeedsReinstall)
+            }
+            None => Err("服务版本为空".into()),
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// 先等待服务就绪；只有确认版本不匹配才返回 NeedsReinstall。
+/// 连接失败不再自动当成「必须重装」，避免启动阶段连环弹密码。
+async fn wait_for_service_probe() -> ServiceStatus {
+    let mut last_err = String::from("unknown");
+    for attempt in 1..=SERVICE_READY_ATTEMPTS {
+        match probe_service_version().await {
+            Ok(status) => return status,
+            Err(err) => {
+                last_err = err;
+                logging!(
+                    info,
+                    Type::Service,
+                    "等待服务就绪 ({}/{}): {}",
+                    attempt,
+                    SERVICE_READY_ATTEMPTS,
+                    last_err
+                );
+                tokio::time::sleep(SERVICE_READY_INTERVAL).await;
+            }
+        }
+    }
+    ServiceStatus::Unavailable(format!("服务暂未就绪: {last_err}"))
 }
 
 impl ServiceManager {
@@ -430,7 +491,7 @@ impl ServiceManager {
 
     pub async fn init(&mut self) -> Result<()> {
         if let Err(e) = clash_verge_service_ipc::connect().await {
-            self.0 = ServiceStatus::Unavailable("服务连接失败: {e}".to_string());
+            self.0 = ServiceStatus::Unavailable(format!("服务连接失败: {e}"));
             return Err(e);
         }
         Ok(())
@@ -447,13 +508,12 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// 综合服务状态检查（一次性完成所有检查）
+    /// 综合服务状态检查：等待就绪；仅版本不匹配才要求重装
     pub async fn check_service_comprehensive(&self) -> ServiceStatus {
-        if clash_verge_service_ipc::is_reinstall_service_needed().await {
-            ServiceStatus::NeedsReinstall
-        } else {
-            ServiceStatus::Ready
+        if !clash_verge_service_ipc::is_ipc_path_exists() {
+            return ServiceStatus::Unavailable("服务未安装".into());
         }
+        wait_for_service_probe().await
     }
 
     /// 根据服务状态执行相应操作
@@ -464,7 +524,16 @@ impl ServiceManager {
                 self.0 = ServiceStatus::Ready;
             }
             ServiceStatus::NeedsReinstall | ServiceStatus::ReinstallRequired => {
-                logging!(info, Type::Service, "服务需要重装，执行重装流程");
+                if AUTO_REINSTALL_ATTEMPTED.swap(true, Ordering::SeqCst) {
+                    logging!(
+                        warn,
+                        Type::Service,
+                        "本会话已尝试过自动重装，跳过并回退 Sidecar，避免重复要管理员密码"
+                    );
+                    self.0 = ServiceStatus::Unavailable("服务需手动重装".into());
+                    return Err(anyhow::anyhow!("服务需手动重装"));
+                }
+                logging!(info, Type::Service, "服务版本不匹配，执行重装流程");
                 reinstall_service()?;
                 wait_and_check_service_available(self).await?;
             }
