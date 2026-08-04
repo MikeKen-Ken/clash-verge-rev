@@ -81,8 +81,9 @@ jobs:
       tag_name: autobuild
       dry_run: false
 
-  autobuild-x86-windows:
-    name: Autobuild Windows x64
+  # 自用构建：不签名、不公证。Windows + macOS（Apple Silicon / Intel）
+  autobuild-windows-macos:
+    name: Autobuild Windows / macOS
     needs: [check_commit, update_tag]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     strategy:
@@ -91,6 +92,10 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
@@ -177,12 +182,12 @@ jobs:
           "
           echo "Autobuild will check updates from autobuild release (unsigned)"
 
-      - name: Tauri build for Windows x64
+      - name: Tauri build for ${{ matrix.target }}
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing is disabled for autobuilds (personal testing)
+          # 自用构建：不配置签名密钥 / Apple 证书
           # No TAURI_SIGNING_PRIVATE_KEY = no updater signing
           # No APPLE_CERTIFICATE = no macOS code signing
         with:
@@ -195,13 +200,16 @@ jobs:
           args: --target ${{ matrix.target }}
           # includeUpdaterJson: true
 
+      # 多矩阵并行时只上传一份 version，避免 artifact 重名冲突
       - name: Save version for update-json job
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: bash
         run: |
           node -p "require('./package.json').version" > version.txt
           cat version.txt
 
       - name: Upload version artifact
+        if: matrix.target == 'x86_64-pc-windows-msvc'
         uses: actions/upload-artifact@v4
         with:
           name: autobuild-version
@@ -209,7 +217,7 @@ jobs:
 
   upload-autobuild-update-json:
     name: Upload autobuild update.json
-    needs: autobuild-x86-windows
+    needs: autobuild-windows-macos
     runs-on: ubuntu-latest
     permissions:
       contents: write
