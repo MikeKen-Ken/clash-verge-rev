@@ -7,6 +7,7 @@ import DnsRounded from "@mui/icons-material/DnsRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
+import SystemUpdateAltRounded from "@mui/icons-material/SystemUpdateAltRounded";
 import {
   alpha,
   Box,
@@ -48,6 +49,7 @@ import { useServiceInstaller } from "@/hooks/use-service-installer";
 import { useServiceReinstaller } from "@/hooks/use-service-reinstaller";
 import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
 import { useSystemState } from "@/hooks/use-system-state";
+import { useUpdate } from "@/hooks/use-update";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import {
@@ -277,6 +279,25 @@ const ProxyPage = () => {
     await flushFakeIp();
     await flushDNS();
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
+  });
+
+  const { checkUpdate: triggerCheckUpdate } = useUpdate(false);
+
+  const handleCheckUpdate = useLockFn(async () => {
+    try {
+      const info = await triggerCheckUpdate();
+      localStorage.setItem("last_check_update", Date.now().toString());
+      if (!info?.available) {
+        showNotice.success(
+          "settings.components.verge.advanced.notifications.latestVersion",
+        );
+        return;
+      }
+      showNotice.info("shared.feedback.notifications.updateAvailable", 2000);
+      await info.downloadAndInstall();
+    } catch (err) {
+      showNotice.error(err);
+    }
   });
 
   const handleTunToggle = useLockFn(async (value: boolean) => {
@@ -791,6 +812,17 @@ const ProxyPage = () => {
               allowLan={allowLan}
               ports={lanListenPorts}
             />
+            <Tooltip title="检查更新">
+              <IconButton
+                size="small"
+                aria-label="检查更新"
+                onClick={() => {
+                  void handleCheckUpdate();
+                }}
+              >
+                <SystemUpdateAltRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
       }
