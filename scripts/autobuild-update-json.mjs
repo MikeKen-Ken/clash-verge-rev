@@ -51,7 +51,12 @@ function makePlatforms() {
 
 function fillFromAsset(platforms, name, url) {
   const n = name.toLowerCase();
-  if ((n.includes("x64-setup") || n.endsWith("x64-setup.exe")) && n.endsWith(".exe")) {
+  // 短名优先：ClashVerge-Windows-x64-setup.exe
+  if (
+    n === "clashverge-windows-x64-setup.exe" ||
+    ((n.includes("x64-setup") || n.endsWith("x64-setup.exe")) &&
+      n.endsWith(".exe"))
+  ) {
     platforms.win64.url = url;
     platforms["windows-x86_64"].url = url;
   }
@@ -62,20 +67,7 @@ function fillFromAsset(platforms, name, url) {
   if ((n.includes("arm64-setup") || n.endsWith("arm64-setup.exe")) && n.endsWith(".exe")) {
     platforms["windows-aarch64"].url = url;
   }
-  if (n.endsWith(".app.tar.gz") && !n.includes("aarch")) {
-    platforms.darwin.url = url;
-    platforms["darwin-intel"].url = url;
-    platforms["darwin-x86_64"].url = url;
-  }
-  if (n.endsWith("aarch64.app.tar.gz")) {
-    platforms["darwin-aarch64"].url = url;
-    platforms.linux.url = url;
-    platforms["linux-x86_64"].url = url;
-    platforms["linux-x86"].url = url;
-    platforms["linux-i686"].url = url;
-    platforms["linux-aarch64"].url = url;
-    platforms["linux-armv7"].url = url;
-  }
+  // Mac 仅发布 dmg 安装包；Tauri updater 需要 .app.tar.gz，autobuild 不提供自动更新产物
 }
 
 async function main() {

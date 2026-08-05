@@ -68,6 +68,25 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
 
         // 当TUN启用时，将修改后的DNS配置写回
         revise!(config, "dns", dns_val);
+
+        // macOS：纠正易导致 DNS 回环的组合（gvisor / strict-route:false）
+        #[cfg(target_os = "macos")]
+        {
+            let stack = tun_val
+                .get(Value::from("stack"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if stack.is_empty() || stack.eq_ignore_ascii_case("gvisor") {
+                revise!(tun_val, "stack", "mixed");
+            }
+            let strict_route = tun_val
+                .get(Value::from("strict-route"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if !strict_route {
+                revise!(tun_val, "strict-route", true);
+            }
+        }
     } else {
         // TUN未启用时，仅恢复系统DNS，不修改配置文件中的DNS设置
         #[cfg(target_os = "macos")]
@@ -81,4 +100,55 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     revise!(config, "tun", tun_val);
 
     config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tun_of(config: &Mapping) -> &Mapping {
+        config
+            .get(Value::from("tun"))
+            .and_then(|v| v.as_mapping())
+            .expect("tun mapping")
+    }
+
+    #[test]
+    fn use_tun_preserves_existing_settings() {
+        let mut config = Mapping::new();
+        let mut tun = Mapping::new();
+        tun.insert("stack".into(), "system".into());
+        tun.insert("strict-route".into(), true.into());
+        tun.insert("device".into(), "utun9".into());
+        config.insert("tun".into(), tun.into());
+
+        let result = use_tun(config, true);
+        let tun = tun_of(&result);
+        assert_eq!(tun.get("enable").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(tun.get("stack").and_then(|v| v.as_str()), Some("system"));
+        assert_eq!(tun.get("strict-route").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(tun.get("device").and_then(|v| v.as_str()), Some("utun9"));
+    }
+
+    #[test]
+    fn use_tun_disable() {
+        let mut config = Mapping::new();
+        let mut tun = Mapping::new();
+        tun.insert("enable".into(), true.into());
+        tun.insert("stack".into(), "mixed".into());
+        config.insert("tun".into(), tun.into());
+
+        let result = use_tun(config, false);
+        let tun = tun_of(&result);
+        assert_eq!(tun.get("enable").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(tun.get("stack").and_then(|v| v.as_str()), Some("mixed"));
+    }
+
+    #[test]
+    fn use_tun_creates_tun_section_if_missing() {
+        let config = Mapping::new();
+        let result = use_tun(config, true);
+        let tun = tun_of(&result);
+        assert_eq!(tun.get("enable").and_then(|v| v.as_bool()), Some(true));
+    }
 }

@@ -74,6 +74,16 @@ const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
 
+/** 代理入口模式：关闭 / 系统代理 / TUN（互斥三选一） */
+const PROXY_ENTRY_MODES = ["off", "system", "tun"] as const;
+type ProxyEntryMode = (typeof PROXY_ENTRY_MODES)[number];
+
+const PROXY_ENTRY_LABELS: Record<ProxyEntryMode, string> = {
+  off: "关闭",
+  system: "系统",
+  tun: "TUN",
+};
+
 const DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS = 5;
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 250;
@@ -196,7 +206,13 @@ const ProxyPage = () => {
     };
   }, [refreshProxy]);
 
-  const { enable_tun_mode } = verge ?? {};
+  const { enable_tun_mode, enable_system_proxy } = verge ?? {};
+  /** TUN 优先于系统代理（两者同时为 true 的历史状态） */
+  const proxyEntryMode: ProxyEntryMode = enable_tun_mode
+    ? "tun"
+    : enable_system_proxy
+      ? "system"
+      : "off";
   const allowLan = clash?.["allow-lan"] ?? false;
   const strictRoute = clash?.tun?.["strict-route"] ?? true;
   const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
@@ -264,17 +280,53 @@ const ProxyPage = () => {
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
   });
 
-  const handleTunToggle = useLockFn(async (value: boolean) => {
-    if (!isTunModeAvailable) {
+  const onChangeProxyEntryMode = useLockFn(async (mode: ProxyEntryMode) => {
+    if (mode === proxyEntryMode) return;
+
+    if (mode === "tun" && !isTunModeAvailable) {
       showNotice.error(
         t("settings.sections.proxyControl.tooltips.tunUnavailable"),
       );
       return;
     }
-    if (value) markProxyModeChanged();
+
+    const nextTun = mode === "tun";
+    const nextSystem = mode === "system";
+
+    if (nextTun || nextSystem) {
+      markProxyModeChanged();
+    }
+    if (mode === "off" && verge?.auto_close_connection) {
+      await closeAllConnections();
+    }
+
     resetConnectionTrafficSession();
-    mutateVerge({ ...verge, enable_tun_mode: value }, false);
-    await patchVerge({ enable_tun_mode: value });
+    mutateVerge(
+      {
+        ...verge,
+        enable_tun_mode: nextTun,
+        enable_system_proxy: nextSystem,
+      },
+      false,
+    );
+
+    try {
+      await patchVerge({
+        enable_tun_mode: nextTun,
+        enable_system_proxy: nextSystem,
+      });
+    } catch (error) {
+      console.warn("[proxies] 切换代理入口模式失败:", error);
+      mutateVerge(
+        {
+          ...verge,
+          enable_tun_mode: enable_tun_mode ?? false,
+          enable_system_proxy: enable_system_proxy ?? false,
+        },
+        false,
+      );
+      throw error;
+    }
   });
 
   /** 只接受指定预设值或 undefined，避免写入异常大数或字符串 */
@@ -296,36 +348,20 @@ const ProxyPage = () => {
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
           <Box display="flex" alignItems="center" gap={1}>
-            <FormControlLabel
-              control={
-                <GuardState
-                  value={enable_tun_mode ?? false}
-                  valueProps="checked"
-                  onFormat={(_, v) => v}
-                  onGuard={handleTunToggle}
+            <ButtonGroup size="small">
+              {PROXY_ENTRY_MODES.map((mode) => (
+                <Button
+                  key={mode}
+                  variant={mode === proxyEntryMode ? "contained" : "outlined"}
+                  disabled={mode === "tun" && !isTunModeAvailable}
+                  onClick={() => onChangeProxyEntryMode(mode)}
+                  sx={{ textTransform: "none", whiteSpace: "nowrap" }}
                 >
-                  <Switch size="small" disabled={!isTunModeAvailable} />
-                </GuardState>
-              }
-              label={
-                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                  {t("settings.sections.system.toggles.tunMode")}
-                  {!isTunModeAvailable && (
-                    <>
-                      {" "}
-                      <Box
-                        component="span"
-                        sx={{ color: "error.main", fontSize: "inherit" }}
-                      >
-                        {t(
-                          "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
-                        )}
-                      </Box>
-                    </>
-                  )}
-                </Typography>
-              }
-            />
+                  {PROXY_ENTRY_LABELS[mode]}
+                  {mode === "tun" && !isTunModeAvailable ? "（需服务）" : ""}
+                </Button>
+              ))}
+            </ButtonGroup>
             <FormControlLabel
               control={
                 <GuardState

@@ -418,8 +418,11 @@ async fn merge_default_config(
                     val.as_mapping().cloned().unwrap_or_else(Mapping::new)
                 });
                 let patch_tun = value.as_mapping().cloned().unwrap_or_else(Mapping::new);
+                // 仅补齐缺失键，避免 config.yaml 默认值覆盖订阅/Merge 中的 stack、strict-route
                 for (key, value) in patch_tun.into_iter() {
-                    tun.insert(key, value);
+                    if !tun.contains_key(&key) {
+                        tun.insert(key, value);
+                    }
                 }
                 config.insert("tun".into(), tun.into());
             }

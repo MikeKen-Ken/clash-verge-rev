@@ -27,7 +27,33 @@ impl IClashTemp {
             Ok(mut map) => {
                 let template_map = Self::template().0;
                 for (key, value) in template_map.into_iter() {
-                    if !map.contains_key(&key) {
+                    if key.as_str() == Some("tun") {
+                        // 深度补齐 tun 缺失字段；macOS 纠正易断网的默认组合
+                        let mut tun = map.get("tun").map_or_else(Mapping::new, |val| {
+                            val.as_mapping().cloned().unwrap_or_else(Mapping::new)
+                        });
+                        if let Some(template_tun) = value.as_mapping() {
+                            for (tun_key, tun_value) in template_tun.iter() {
+                                if !tun.contains_key(tun_key) {
+                                    tun.insert(tun_key.clone(), tun_value.clone());
+                                }
+                            }
+                        }
+                        #[cfg(target_os = "macos")]
+                        {
+                            let stack = tun
+                                .get("stack")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if stack.is_empty() || stack.eq_ignore_ascii_case("gvisor") {
+                                tun.insert("stack".into(), "mixed".into());
+                            }
+                            if tun.get("strict-route").and_then(|v| v.as_bool()) != Some(true) {
+                                tun.insert("strict-route".into(), true.into());
+                            }
+                        }
+                        map.insert("tun".into(), tun.into());
+                    } else if !map.contains_key(&key) {
                         map.insert(key, value);
                     }
                 }
@@ -55,9 +81,19 @@ impl IClashTemp {
         let mut cors_map = Mapping::new();
 
         tun_config.insert("enable".into(), false.into());
-        tun_config.insert("stack".into(), tun_const::DEFAULT_STACK.into());
+        // macOS：mixed + strict-route 可避免 TUN 开启后 DNS 回环导致整机断网
+        // 参见 https://github.com/clash-verge-rev/clash-verge-rev/issues/6375
+        #[cfg(target_os = "macos")]
+        {
+            tun_config.insert("stack".into(), "mixed".into());
+            tun_config.insert("strict-route".into(), true.into());
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            tun_config.insert("stack".into(), tun_const::DEFAULT_STACK.into());
+            tun_config.insert("strict-route".into(), true.into());
+        }
         tun_config.insert("auto-route".into(), true.into());
-        tun_config.insert("strict-route".into(), true.into());
         tun_config.insert("auto-detect-interface".into(), true.into());
         tun_config.insert("dns-hijack".into(), tun_const::DNS_HIJACK.into());
 

@@ -3,6 +3,7 @@ import {
   DeleteForeverRounded,
   PauseCircleOutlineRounded,
   PlayCircleOutlineRounded,
+  ReplayRounded,
   SettingsRounded,
   WarningRounded,
 } from "@mui/icons-material";
@@ -17,6 +18,7 @@ import { SysproxyViewer } from "@/components/setting/mods/sysproxy-viewer";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import { resetConnectionTrafficSession } from "@/hooks/use-connection-data";
 import { useServiceInstaller } from "@/hooks/use-service-installer";
+import { useServiceReinstaller } from "@/hooks/use-service-reinstaller";
 import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
 import { useSystemProxyState } from "@/hooks/use-system-proxy-state";
 import { useSystemState } from "@/hooks/use-system-state";
@@ -114,6 +116,7 @@ const ProxyControlSwitches = ({
   const { t } = useTranslation();
   const { verge, mutateVerge, patchVerge } = useVerge();
   const { installServiceAndRestartCore } = useServiceInstaller();
+  const { reinstallServiceAndRestartCore } = useServiceReinstaller();
   const { uninstallServiceAndRestartCore } = useServiceUninstaller();
   const { configState: systemProxyConfigState, toggleSystemProxy } =
     useSystemProxyState();
@@ -147,6 +150,15 @@ const ProxyControlSwitches = ({
   const onInstallService = useLockFn(async () => {
     try {
       await installServiceAndRestartCore();
+      await mutateSystemState();
+    } catch (err) {
+      showNotice.error(err);
+    }
+  });
+
+  const onReinstallService = useLockFn(async () => {
+    try {
+      await reinstallServiceAndRestartCore();
       await mutateSystemState();
     } catch (err) {
       showNotice.error(err);
@@ -235,15 +247,24 @@ const ProxyControlSwitches = ({
                 </>
               )}
               {isServiceOk && (
-                <TooltipIcon
-                  title={t(
-                    "settings.sections.proxyControl.actions.uninstallService",
-                  )}
-                  icon={DeleteForeverRounded}
-                  color="secondary"
-                  onClick={onUninstallService}
-                  sx={{ ml: 1 }}
-                />
+                <>
+                  <TooltipIcon
+                    title="重新安装服务"
+                    icon={ReplayRounded}
+                    color="primary"
+                    onClick={onReinstallService}
+                    sx={{ ml: 1 }}
+                  />
+                  <TooltipIcon
+                    title={t(
+                      "settings.sections.proxyControl.actions.uninstallService",
+                    )}
+                    icon={DeleteForeverRounded}
+                    color="secondary"
+                    onClick={onUninstallService}
+                    sx={{ ml: 1 }}
+                  />
+                </>
               )}
             </>
           }

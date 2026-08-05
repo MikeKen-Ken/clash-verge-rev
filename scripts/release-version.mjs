@@ -8,8 +8,8 @@
  *   - A full semver version (e.g., 1.2.3, v1.2.3, 1.2.3-beta, v1.2.3+build)
  *   - A tag: "alpha", "beta", "rc", "autobuild", "autobuild-latest", or "deploytest"
  *     - "alpha", "beta", "rc": Appends the tag to the current base version (e.g., 1.2.3-beta)
- *     - "autobuild": Appends a timestamped autobuild tag (e.g., 1.2.3+autobuild.2406101530)
- *     - "autobuild-latest": Appends an autobuild tag with latest Tauri commit (e.g., 1.2.3+autobuild.0614.a1b2c3d)
+ *     - "autobuild": Appends a short autobuild tag (e.g., 1.2.3+ab.0610.cc39b27)
+ *     - "autobuild-latest": Appends a short autobuild tag (e.g., 1.2.3+ab.0614.a1b2c3d)
  *     - "deploytest": Appends a timestamped deploytest tag (e.g., 1.2.3+deploytest.2406101530)
  *
  * Examples:
@@ -285,13 +285,13 @@ async function main(versionArg) {
       const baseVersion = getBaseVersion(currentVersion);
 
       if (versionArg.toLowerCase() === "autobuild") {
-        // 格式: 2.3.0+autobuild.1004.cc39b27
+        // 格式: 2.3.0+ab.1004.cc39b27（缩短包名）
         // 使用 Tauri 相关的最新 commit hash
-        newVersion = `${baseVersion}+autobuild.${generateShortTimestamp(true, true)}`;
+        newVersion = `${baseVersion}+ab.${generateShortTimestamp(true, true)}`;
       } else if (versionArg.toLowerCase() === "autobuild-latest") {
-        // 格式: 2.3.0+autobuild.20250125.a1b2c3d（含构建日期 YYYYMMDD + 最新 Tauri 提交）
+        // 格式: 2.3.0+ab.1004.a1b2c3d（MMDD + 最新 Tauri 提交，缩短 release 文件名）
         const latestTauriCommit = getLatestTauriCommit();
-        newVersion = `${baseVersion}+autobuild.${generateShortTimestamp(false, false, true)}.${latestTauriCommit}`;
+        newVersion = `${baseVersion}+ab.${generateShortTimestamp(false, false, false)}.${latestTauriCommit}`;
       } else if (versionArg.toLowerCase() === "deploytest") {
         // 格式: 2.3.0+deploytest.1004.cc39b27
         // 使用 Tauri 相关的最新 commit hash
