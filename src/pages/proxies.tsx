@@ -1,9 +1,12 @@
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
-import RefreshRounded from "@mui/icons-material/RefreshRounded";
-import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
-import DnsRounded from "@mui/icons-material/DnsRounded";
+import BuildRounded from "@mui/icons-material/BuildRounded";
+import DeleteForeverRounded from "@mui/icons-material/DeleteForeverRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
+import DnsRounded from "@mui/icons-material/DnsRounded";
+import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
+import RefreshRounded from "@mui/icons-material/RefreshRounded";
+import ReplayRounded from "@mui/icons-material/ReplayRounded";
 import {
   alpha,
   Box,
@@ -12,6 +15,9 @@ import {
   FormControl,
   FormControlLabel,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
   MenuItem,
   Select,
   Switch,
@@ -38,6 +44,10 @@ import {
 } from "@/hooks/use-connection-data";
 import { useClash } from "@/hooks/use-clash";
 import { useNetworkInterfaces } from "@/hooks/use-network";
+import { useServiceInstaller } from "@/hooks/use-service-installer";
+import { useServiceReinstaller } from "@/hooks/use-service-reinstaller";
+import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
+import { useSystemState } from "@/hooks/use-system-state";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import {
@@ -51,12 +61,11 @@ import {
   getDelayCheckConcurrency,
   setDelayCheckConcurrency,
 } from "@/services/delay";
+import { showNotice } from "@/services/notice-service";
 import {
   listAvailableRegionsFromProxyGroups,
   REGION_FLAG_LABELS,
 } from "@/services/proxy-region-sort";
-import { useSystemState } from "@/hooks/use-system-state";
-import { showNotice } from "@/services/notice-service";
 import { ConnectivityStatsDialog } from "@/components/proxy/connectivity-stats-dialog";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
@@ -73,16 +82,6 @@ type Mode = (typeof MODES)[number];
 const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
-
-/** 代理入口模式：关闭 / 系统代理 / TUN（互斥三选一） */
-const PROXY_ENTRY_MODES = ["off", "system", "tun"] as const;
-type ProxyEntryMode = (typeof PROXY_ENTRY_MODES)[number];
-
-const PROXY_ENTRY_LABELS: Record<ProxyEntryMode, string> = {
-  off: "关闭",
-  system: "系统",
-  tun: "TUN",
-};
 
 const DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS = 5;
 
@@ -113,7 +112,11 @@ const ProxyPage = () => {
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { clash, mutateClash } = useClash();
   const { networkInterfaces } = useNetworkInterfaces();
-  const { isTunModeAvailable } = useSystemState();
+  const { isServiceOk, isTunModeAvailable, mutateSystemState } =
+    useSystemState();
+  const { installServiceAndRestartCore } = useServiceInstaller();
+  const { reinstallServiceAndRestartCore } = useServiceReinstaller();
+  const { uninstallServiceAndRestartCore } = useServiceUninstaller();
   const {
     response: { data: connections },
     sessionStartMs,
@@ -156,6 +159,8 @@ const ProxyPage = () => {
     useState<ProxySiteTestSelection | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
   const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
+  const [serviceMenuAnchor, setServiceMenuAnchor] =
+    useState<null | HTMLElement>(null);
 
   const availableRegions = useMemo(
     () => listAvailableRegionsFromProxyGroups(proxiesData?.groups ?? []),
@@ -206,13 +211,7 @@ const ProxyPage = () => {
     };
   }, [refreshProxy]);
 
-  const { enable_tun_mode, enable_system_proxy } = verge ?? {};
-  /** TUN 优先于系统代理（两者同时为 true 的历史状态） */
-  const proxyEntryMode: ProxyEntryMode = enable_tun_mode
-    ? "tun"
-    : enable_system_proxy
-      ? "system"
-      : "off";
+  const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;
   const strictRoute = clash?.tun?.["strict-route"] ?? true;
   const proxyAdsBlockEnabled = clash?.["proxy-ads-block"] ?? true;
@@ -280,52 +279,51 @@ const ProxyPage = () => {
     showNotice.success(t("proxies.page.tooltips.flushFakeIp"));
   });
 
-  const onChangeProxyEntryMode = useLockFn(async (mode: ProxyEntryMode) => {
-    if (mode === proxyEntryMode) return;
-
-    if (mode === "tun" && !isTunModeAvailable) {
+  const handleTunToggle = useLockFn(async (value: boolean) => {
+    if (!isTunModeAvailable) {
       showNotice.error(
         t("settings.sections.proxyControl.tooltips.tunUnavailable"),
       );
       return;
     }
-
-    const nextTun = mode === "tun";
-    const nextSystem = mode === "system";
-
-    if (nextTun || nextSystem) {
-      markProxyModeChanged();
-    }
-    if (mode === "off" && verge?.auto_close_connection) {
-      await closeAllConnections();
-    }
-
+    if (value) markProxyModeChanged();
     resetConnectionTrafficSession();
-    mutateVerge(
-      {
-        ...verge,
-        enable_tun_mode: nextTun,
-        enable_system_proxy: nextSystem,
-      },
-      false,
-    );
+    mutateVerge({ ...verge, enable_tun_mode: value }, false);
+    await patchVerge({ enable_tun_mode: value });
+  });
 
+  const closeServiceMenu = () => setServiceMenuAnchor(null);
+
+  const onInstallService = useLockFn(async () => {
+    closeServiceMenu();
     try {
-      await patchVerge({
-        enable_tun_mode: nextTun,
-        enable_system_proxy: nextSystem,
-      });
-    } catch (error) {
-      console.warn("[proxies] 切换代理入口模式失败:", error);
-      mutateVerge(
-        {
-          ...verge,
-          enable_tun_mode: enable_tun_mode ?? false,
-          enable_system_proxy: enable_system_proxy ?? false,
-        },
-        false,
-      );
-      throw error;
+      await installServiceAndRestartCore();
+      await mutateSystemState();
+    } catch (err) {
+      showNotice.error(err);
+    }
+  });
+
+  const onReinstallService = useLockFn(async () => {
+    closeServiceMenu();
+    try {
+      await reinstallServiceAndRestartCore();
+      await mutateSystemState();
+    } catch (err) {
+      showNotice.error(err);
+    }
+  });
+
+  const onUninstallService = useLockFn(async () => {
+    closeServiceMenu();
+    try {
+      if (verge?.enable_tun_mode) {
+        await handleTunToggle(false);
+      }
+      await uninstallServiceAndRestartCore();
+      await mutateSystemState();
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
@@ -348,20 +346,83 @@ const ProxyPage = () => {
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
           <Box display="flex" alignItems="center" gap={1}>
-            <ButtonGroup size="small">
-              {PROXY_ENTRY_MODES.map((mode) => (
-                <Button
-                  key={mode}
-                  variant={mode === proxyEntryMode ? "contained" : "outlined"}
-                  disabled={mode === "tun" && !isTunModeAvailable}
-                  onClick={() => onChangeProxyEntryMode(mode)}
-                  sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            <FormControlLabel
+              control={
+                <GuardState
+                  value={enable_tun_mode ?? false}
+                  valueProps="checked"
+                  onFormat={(_, v) => v}
+                  onGuard={handleTunToggle}
                 >
-                  {PROXY_ENTRY_LABELS[mode]}
-                  {mode === "tun" && !isTunModeAvailable ? "（需服务）" : ""}
-                </Button>
-              ))}
-            </ButtonGroup>
+                  <Switch size="small" disabled={!isTunModeAvailable} />
+                </GuardState>
+              }
+              label={
+                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
+                  {t("settings.sections.system.toggles.tunMode")}
+                  {!isTunModeAvailable && (
+                    <>
+                      {" "}
+                      <Box
+                        component="span"
+                        sx={{ color: "error.main", fontSize: "inherit" }}
+                      >
+                        {t(
+                          "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                        )}
+                      </Box>
+                    </>
+                  )}
+                </Typography>
+              }
+            />
+            <Tooltip title="服务管理">
+              <IconButton
+                size="small"
+                aria-label="服务管理"
+                aria-controls={
+                  serviceMenuAnchor ? "proxy-service-menu" : undefined
+                }
+                aria-haspopup="true"
+                aria-expanded={serviceMenuAnchor ? "true" : undefined}
+                onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
+                sx={{ mx: 1.5 }}
+              >
+                <BuildRounded fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Menu
+              id="proxy-service-menu"
+              anchorEl={serviceMenuAnchor}
+              open={Boolean(serviceMenuAnchor)}
+              onClose={closeServiceMenu}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+              transformOrigin={{ vertical: "top", horizontal: "left" }}
+            >
+              {!isServiceOk && (
+                <MenuItem onClick={() => void onInstallService()}>
+                  <ListItemIcon>
+                    <BuildRounded fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>安装服务</ListItemText>
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => void onReinstallService()}>
+                <ListItemIcon>
+                  <ReplayRounded fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>重新安装服务</ListItemText>
+              </MenuItem>
+              <MenuItem
+                disabled={!isServiceOk}
+                onClick={() => void onUninstallService()}
+              >
+                <ListItemIcon>
+                  <DeleteForeverRounded fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>卸载服务</ListItemText>
+              </MenuItem>
+            </Menu>
             <FormControlLabel
               control={
                 <GuardState
