@@ -163,15 +163,15 @@ async function updateHashCache(targetPath) {
 }
 
 // =======================
-// 单一自定义内核（MikeKen-Ken fork）
+// 单一自定义内核（MikeKen-Ken fork，钉死当前对接版本）
 // =======================
-// 仅打包 `verge-mihomo-custom`，下载自: https://github.com/MikeKen-Ken/mihomo (Prerelease-Alpha)
-// Windows amd64 发布包名为 mihomo-windows-amd64-{version}.zip
-const META_CUSTOM_VERSION_URL =
-  "https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_CUSTOM_URL_PREFIX = `https://github.com/MikeKen-Ken/mihomo/releases/download/Prerelease-Alpha`;
-const META_CUSTOM_RELEASE_TAG_API =
-  "https://api.github.com/repos/MikeKen-Ken/mihomo/releases/tags/Prerelease-Alpha";
+// 仅打包 `verge-mihomo-custom`，下载自自有仓库 MikeKen-Ken/mihomo。
+// 版本以 scripts/mihomo.pin.json 为准（与 Android gitlink 对齐），不再跟随浮动 version.txt。
+const META_CUSTOM_PIN_PATH = path.join(cwd, "scripts/mihomo.pin.json");
+const META_CUSTOM_PIN = JSON.parse(fs.readFileSync(META_CUSTOM_PIN_PATH, "utf-8"));
+const META_CUSTOM_RELEASE_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
+const META_CUSTOM_URL_PREFIX = `https://github.com/${META_CUSTOM_PIN.repo}/releases/download/${META_CUSTOM_RELEASE_TAG}`;
+const META_CUSTOM_RELEASE_TAG_API = `https://api.github.com/repos/${META_CUSTOM_PIN.repo}/releases/tags/${META_CUSTOM_RELEASE_TAG}`;
 let META_CUSTOM_VERSION;
 let META_CUSTOM_RELEASE_CACHE;
 
@@ -204,32 +204,6 @@ async function fetchText(url, options) {
     throw new Error(`Failed to fetch ${url}: ${response.status}`);
   }
   return (await response.text()).trim();
-}
-
-async function fetchAlphaVersionFromReleaseApi(options) {
-  const release = await fetchAlphaRelease(options);
-  const versionAsset = release.assets?.find((asset) => asset.name === "version.txt");
-  if (!versionAsset?.browser_download_url && !versionAsset?.url) {
-    throw new Error("version.txt asset not found in Prerelease-Alpha release");
-  }
-  // Prefer authenticated asset API URL for private repos.
-  if (versionAsset.url) {
-    const assetResp = await fetch(versionAsset.url, {
-      ...options,
-      method: "GET",
-      headers: {
-        ...options.headers,
-        Accept: "application/octet-stream",
-      },
-    });
-    if (assetResp.ok) {
-      return (await assetResp.text()).trim();
-    }
-  }
-  if (versionAsset.browser_download_url) {
-    return await fetchText(versionAsset.browser_download_url, options);
-  }
-  throw new Error("unable to download version.txt from release assets");
 }
 
 async function fetchAlphaRelease(options) {
@@ -275,34 +249,24 @@ async function downloadAlphaAssetViaApi(fileName, outPath, options) {
 const META_CUSTOM_ASSET_MAP = {
   "win32-x64": "mihomo-windows-amd64",
   "darwin-arm64": "mihomo-darwin-arm64",
+  "linux-x64": "mihomo-linux-amd64",
+  "linux-arm64": "mihomo-linux-arm64",
 };
 
 // =======================
-// Fetch latest versions
+// Resolve pinned custom mihomo version（自有仓库，不跟浮动 tip）
 // =======================
 async function getLatestCustomVersion() {
-  if (!FORCE) {
-    const cached = await getCachedVersion("META_CUSTOM_VERSION");
-    if (cached) {
-      META_CUSTOM_VERSION = cached;
-      return;
-    }
-  }
-  const options = createFetchOptions();
-
-  try {
-    try {
-      META_CUSTOM_VERSION = await fetchText(META_CUSTOM_VERSION_URL, options);
-    } catch (directErr) {
-      log_debug(`Direct custom version URL failed, fallback to API: ${directErr.message}`);
-      META_CUSTOM_VERSION = await fetchAlphaVersionFromReleaseApi(options);
-    }
-    log_info(`MikeKen-Ken mihomo version: ${META_CUSTOM_VERSION}`);
-    await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
-  } catch (err) {
-    log_error("Error fetching custom mihomo version:", err.message);
+  const pinned = String(META_CUSTOM_PIN.version || "").trim();
+  if (!pinned) {
+    log_error(`mihomo pin missing version: ${META_CUSTOM_PIN_PATH}`);
     process.exit(1);
   }
+  META_CUSTOM_VERSION = pinned;
+  log_info(
+    `MikeKen-Ken mihomo pinned: ${META_CUSTOM_VERSION} (commit ${String(META_CUSTOM_PIN.commit || "").slice(0, 8)})`,
+  );
+  await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
 }
 
 // =======================
