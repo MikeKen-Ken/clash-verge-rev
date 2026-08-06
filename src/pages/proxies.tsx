@@ -413,7 +413,6 @@ const ProxyPage = () => {
                 aria-haspopup="true"
                 aria-expanded={serviceMenuAnchor ? "true" : undefined}
                 onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
-                sx={{ mx: 1.5 }}
               >
                 <BuildRounded fontSize="small" />
               </IconButton>
