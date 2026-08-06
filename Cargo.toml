@@ -7,6 +7,11 @@ members = [
   "crates/tauri-plugin-clash-verge-sysinfo",
   "crates/clash-verge-i18n",
 ]
+# vendor/* are path deps (and service-ipc is also cargo-built by prebuild); exclude so Cargo won't treat them as missing workspace members
+exclude = [
+  "vendor/clash-verge-service-ipc",
+  "vendor/tauri-plugin-mihomo",
+]
 resolver = "2"
 
 
