@@ -161,6 +161,7 @@ const ProxyPage = () => {
     useState<ProxySiteTestSelection | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
   const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
+  const [refreshingUi, setRefreshingUi] = useState(false);
   const [serviceMenuAnchor, setServiceMenuAnchor] =
     useState<null | HTMLElement>(null);
 
@@ -264,7 +265,12 @@ const ProxyPage = () => {
   ]);
 
   const handleRefreshProxy = useLockFn(async () => {
-    await refreshProxy();
+    setRefreshingUi(true);
+    try {
+      await refreshProxy();
+    } finally {
+      setRefreshingUi(false);
+    }
   });
 
   // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
@@ -696,14 +702,27 @@ const ProxyPage = () => {
                 <DeleteSweepRounded fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="刷新 UI">
-              <IconButton
-                size="small"
-                onClick={handleRefreshProxy}
-                aria-label="刷新 UI"
-              >
-                <RefreshRounded fontSize="small" />
-              </IconButton>
+            <Tooltip title={t("shared.actions.refresh")}>
+              <span>
+                <IconButton
+                  size="small"
+                  color="inherit"
+                  onClick={handleRefreshProxy}
+                  disabled={refreshingUi}
+                  aria-label={t("shared.actions.refresh")}
+                  sx={{
+                    animation: refreshingUi
+                      ? "spin 1s linear infinite"
+                      : "none",
+                    "@keyframes spin": {
+                      "0%": { transform: "rotate(0deg)" },
+                      "100%": { transform: "rotate(360deg)" },
+                    },
+                  }}
+                >
+                  <RefreshRounded fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
             <Tooltip title={t("proxies.page.tooltips.flushFakeIp")}>
               <IconButton
