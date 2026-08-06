@@ -7,7 +7,6 @@ import DnsRounded from "@mui/icons-material/DnsRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
-import SystemUpdateAltRounded from "@mui/icons-material/SystemUpdateAltRounded";
 import {
   alpha,
   Box,
@@ -161,7 +160,7 @@ const ProxyPage = () => {
     useState<ProxySiteTestSelection | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
   const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
-  const [refreshingUi, setRefreshingUi] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serviceMenuAnchor, setServiceMenuAnchor] =
     useState<null | HTMLElement>(null);
 
@@ -265,12 +264,7 @@ const ProxyPage = () => {
   ]);
 
   const handleRefreshProxy = useLockFn(async () => {
-    setRefreshingUi(true);
-    try {
-      await refreshProxy();
-    } finally {
-      setRefreshingUi(false);
-    }
+    await refreshProxy();
   });
 
   // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
@@ -290,6 +284,7 @@ const ProxyPage = () => {
   const { checkUpdate: triggerCheckUpdate } = useUpdate(false);
 
   const handleCheckUpdate = useLockFn(async () => {
+    setCheckingUpdate(true);
     try {
       const info = await triggerCheckUpdate();
       localStorage.setItem("last_check_update", Date.now().toString());
@@ -303,6 +298,8 @@ const ProxyPage = () => {
       await info.downloadAndInstall();
     } catch (err) {
       showNotice.error(err);
+    } finally {
+      setCheckingUpdate(false);
     }
   });
 
@@ -372,8 +369,9 @@ const ProxyPage = () => {
       title={t("proxies.page.title.default")}
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-          <Box display="flex" alignItems="center" gap={1}>
+          <Box display="flex" alignItems="center" gap={0.25}>
             <FormControlLabel
+              sx={{ mr: 0 }}
               control={
                 <GuardState
                   value={enable_tun_mode ?? false}
@@ -701,27 +699,14 @@ const ProxyPage = () => {
                 <DeleteSweepRounded fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={t("shared.actions.refresh")}>
-              <span>
-                <IconButton
-                  size="small"
-                  color="inherit"
-                  onClick={handleRefreshProxy}
-                  disabled={refreshingUi}
-                  aria-label={t("shared.actions.refresh")}
-                  sx={{
-                    animation: refreshingUi
-                      ? "spin 1s linear infinite"
-                      : "none",
-                    "@keyframes spin": {
-                      "0%": { transform: "rotate(0deg)" },
-                      "100%": { transform: "rotate(360deg)" },
-                    },
-                  }}
-                >
-                  <RefreshRounded fontSize="small" />
-                </IconButton>
-              </span>
+            <Tooltip title="刷新 UI">
+              <IconButton
+                size="small"
+                onClick={handleRefreshProxy}
+                aria-label="刷新 UI"
+              >
+                <RefreshRounded fontSize="small" />
+              </IconButton>
             </Tooltip>
             <Tooltip title={t("proxies.page.tooltips.flushFakeIp")}>
               <IconButton
@@ -831,15 +816,28 @@ const ProxyPage = () => {
               ports={lanListenPorts}
             />
             <Tooltip title="检查更新">
-              <IconButton
-                size="small"
-                aria-label="检查更新"
-                onClick={() => {
-                  void handleCheckUpdate();
-                }}
-              >
-                <SystemUpdateAltRounded fontSize="small" />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  color="inherit"
+                  aria-label="检查更新"
+                  disabled={checkingUpdate}
+                  onClick={() => {
+                    void handleCheckUpdate();
+                  }}
+                  sx={{
+                    animation: checkingUpdate
+                      ? "spin 1s linear infinite"
+                      : "none",
+                    "@keyframes spin": {
+                      "0%": { transform: "rotate(0deg)" },
+                      "100%": { transform: "rotate(360deg)" },
+                    },
+                  }}
+                >
+                  <RefreshRounded fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
         </Box>
