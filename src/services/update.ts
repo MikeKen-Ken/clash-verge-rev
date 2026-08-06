@@ -9,6 +9,8 @@ import { version as appVersion } from "@root/package.json";
 export type VersionParts = {
   main: number[];
   pre: (number | string)[];
+  /** build metadata（+ 之后），用于 autobuild 等同版可更新判定 */
+  build: (number | string)[];
 };
 
 const SEMVER_FULL_REGEX =
@@ -42,46 +44,51 @@ export const extractSemver = (
   return normalizeVersion(match[0]);
 };
 
+const parseDotTokens = (part: string | undefined): (number | string)[] => {
+  if (!part) return [];
+  return part.split(".").map((token) => {
+    // 仅纯数字标识符按数值比较；含字母的（如 git short hash）保持字符串，避免 parseInt 截断
+    if (/^\d+$/.test(token)) return Number.parseInt(token, 10);
+    return token;
+  });
+};
+
+/**
+ * 拆分版本：先分离 build metadata（+），再分离 prerelease（-）。
+ * 切勿把 +build 当成 prerelease，否则同主版本的 autobuild 会永远小于正式版。
+ */
 export const splitVersion = (version: string | null): VersionParts | null => {
   if (!version) return null;
-  
-  // 处理 build metadata (+ 后面的部分): 将其转换为 pre-release 格式以便比较
-  // 例如: "2.4.6+autobuild.xxx" -> "2.4.6-autobuild.xxx"
-  let normalized = version;
-  if (normalized.includes("+")) {
-    normalized = normalized.replace("+", "-");
-  }
-  
-  const [mainPart, preRelease] = normalized.split("-");
+
+  const plusIndex = version.indexOf("+");
+  const core = plusIndex >= 0 ? version.slice(0, plusIndex) : version;
+  const buildPart = plusIndex >= 0 ? version.slice(plusIndex + 1) : "";
+
+  const dashIndex = core.indexOf("-");
+  const mainPart = dashIndex >= 0 ? core.slice(0, dashIndex) : core;
+  const prePart = dashIndex >= 0 ? core.slice(dashIndex + 1) : "";
+
   const main = mainPart
     .split(".")
     .map((part) => Number.parseInt(part, 10))
     .map((num) => (Number.isNaN(num) ? 0 : num));
 
-  const pre =
-    preRelease?.split(".").map((token) => {
-      const numeric = Number.parseInt(token, 10);
-      return Number.isNaN(numeric) ? token : numeric;
-    }) ?? [];
-
-  return { main, pre };
+  return {
+    main,
+    pre: parseDotTokens(prePart),
+    build: parseDotTokens(buildPart),
+  };
 };
 
-const compareVersionParts = (a: VersionParts, b: VersionParts): number => {
-  const length = Math.max(a.main.length, b.main.length);
-  for (let i = 0; i < length; i += 1) {
-    const diff = (a.main[i] ?? 0) - (b.main[i] ?? 0);
-    if (diff !== 0) return diff > 0 ? 1 : -1;
-  }
-
-  if (a.pre.length === 0 && b.pre.length === 0) return 0;
-  if (a.pre.length === 0) return 1;
-  if (b.pre.length === 0) return -1;
-
-  const preLen = Math.max(a.pre.length, b.pre.length);
-  for (let i = 0; i < preLen; i += 1) {
-    const aToken = a.pre[i];
-    const bToken = b.pre[i];
+/** 按 semver 标识符规则比较一段 token 序列（用于 pre / build） */
+const compareIdentSequences = (
+  a: (number | string)[],
+  b: (number | string)[],
+): number => {
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    const aToken = a[i];
+    const bToken = b[i];
     if (aToken === undefined) return -1;
     if (bToken === undefined) return 1;
 
@@ -91,14 +98,37 @@ const compareVersionParts = (a: VersionParts, b: VersionParts): number => {
       continue;
     }
 
+    // 数字标识符优先级低于字母数字（与 semver pre 规则一致）
     if (typeof aToken === "number") return -1;
     if (typeof bToken === "number") return 1;
 
     if (aToken > bToken) return 1;
     if (aToken < bToken) return -1;
   }
-
   return 0;
+};
+
+const compareVersionParts = (a: VersionParts, b: VersionParts): number => {
+  const length = Math.max(a.main.length, b.main.length);
+  for (let i = 0; i < length; i += 1) {
+    const diff = (a.main[i] ?? 0) - (b.main[i] ?? 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+
+  // prerelease：无 pre 的正式版 > 有 pre 的预发布版
+  if (a.pre.length === 0 && b.pre.length !== 0) return 1;
+  if (a.pre.length !== 0 && b.pre.length === 0) return -1;
+  if (a.pre.length !== 0 && b.pre.length !== 0) {
+    const preCmp = compareIdentSequences(a.pre, b.pre);
+    if (preCmp !== 0) return preCmp;
+  }
+
+  // build metadata：官方 semver 忽略；autobuild 频道需要同主版本下比较 +ab.*
+  // 无 build < 有 build；两边都有则按标识符序列比较
+  if (a.build.length === 0 && b.build.length === 0) return 0;
+  if (a.build.length === 0) return -1;
+  if (b.build.length === 0) return 1;
+  return compareIdentSequences(a.build, b.build);
 };
 
 export const compareVersions = (
