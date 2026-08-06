@@ -98,6 +98,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
+        with:
+          # 需要 vendor/clash-verge-service-ipc，整条服务链路本地编译
+          submodules: recursive
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -116,6 +119,7 @@ jobs:
           key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
           workspaces: |
             . -> target
+            vendor/clash-verge-service-ipc -> vendor/clash-verge-service-ipc/target
           cache-all-crates: true
           cache-workspace-crates: true
 

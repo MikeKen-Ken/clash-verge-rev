@@ -598,30 +598,115 @@ const resolveServicePermission = async () => {
 // =======================
 // Other resource resolvers (service, mmdb, geosite, geoip, enableLoopback)
 // =======================
-const SERVICE_URL = `https://github.com/clash-verge-rev/clash-verge-service-ipc/releases/download/${SIDECAR_HOST}`;
-const resolveService = () => {
+/** 本地子模块：整条服务链路只编这里，不再下载上游 release。 */
+const SERVICE_CRATE_DIR = path.join(cwd, "vendor/clash-verge-service-ipc");
+const SERVICE_BIN_NAMES = [
+  "clash-verge-service",
+  "clash-verge-service-install",
+  "clash-verge-service-uninstall",
+];
+
+function serviceResourceFileName(binBase) {
   const ext = platform === "win32" ? ".exe" : "";
+  // Linux 走 externalBin，资源文件名需带 target triple
   const suffix = platform === "linux" ? "-" + SIDECAR_HOST : "";
-  return resolveResource({
-    file: "clash-verge-service" + suffix + ext,
-    downloadURL: `${SERVICE_URL}/clash-verge-service${ext}`,
-  });
-};
-const resolveInstall = () => {
+  return binBase + suffix + ext;
+}
+
+function serviceBuildOutputPath(binBase) {
   const ext = platform === "win32" ? ".exe" : "";
-  const suffix = platform === "linux" ? "-" + SIDECAR_HOST : "";
-  return resolveResource({
-    file: "clash-verge-service-install" + suffix + ext,
-    downloadURL: `${SERVICE_URL}/clash-verge-service-install${ext}`,
-  });
-};
-const resolveUninstall = () => {
-  const ext = platform === "win32" ? ".exe" : "";
-  const suffix = platform === "linux" ? "-" + SIDECAR_HOST : "";
-  return resolveResource({
-    file: "clash-verge-service-uninstall" + suffix + ext,
-    downloadURL: `${SERVICE_URL}/clash-verge-service-uninstall${ext}`,
-  });
+  return path.join(
+    SERVICE_CRATE_DIR,
+    "target",
+    SIDECAR_HOST,
+    "release",
+    binBase + ext,
+  );
+}
+
+function readServiceSourceStamp() {
+  try {
+    return execSync("git rev-parse HEAD", { cwd: SERVICE_CRATE_DIR })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * 从 vendor/clash-verge-service-ipc 编译三个服务二进制并复制到 resources。
+ */
+const buildLocalServiceBins = async () => {
+  if (!fs.existsSync(path.join(SERVICE_CRATE_DIR, "Cargo.toml"))) {
+    throw new Error(
+      `未找到本地服务源码: ${SERVICE_CRATE_DIR}（请先初始化子模块 vendor/clash-verge-service-ipc）`,
+    );
+  }
+
+  const resDir = path.join(cwd, "src-tauri/resources");
+  await fsp.mkdir(resDir, { recursive: true });
+
+  const stamp = `${readServiceSourceStamp()}:${SIDECAR_HOST}`;
+  const stampFile = path.join(TEMP_DIR, `.service_build_stamp_${SIDECAR_HOST}`);
+  const targets = SERVICE_BIN_NAMES.map((name) => ({
+    name,
+    out: serviceBuildOutputPath(name),
+    dest: path.join(resDir, serviceResourceFileName(name)),
+  }));
+
+  let stampOk = false;
+  try {
+    if (!FORCE && fs.existsSync(stampFile)) {
+      const prev = (await fsp.readFile(stampFile, "utf-8")).trim();
+      stampOk = prev === stamp && targets.every((t) => fs.existsSync(t.dest));
+    }
+  } catch {
+    stampOk = false;
+  }
+
+  if (stampOk) {
+    log_success(
+      `本地服务已是当前源码 (${stamp.split(":")[0].slice(0, 8)})，跳过编译`,
+    );
+    return;
+  }
+
+  log_info(
+    `正在从本地子模块编译 clash-verge-service*（target=${SIDECAR_HOST}, features=standalone）`,
+  );
+  const binArgs = SERVICE_BIN_NAMES.flatMap((name) => ["--bin", name]);
+  execSync(
+    [
+      "cargo",
+      "build",
+      "--release",
+      "--target",
+      SIDECAR_HOST,
+      "--features",
+      "standalone",
+      ...binArgs,
+    ].join(" "),
+    {
+      cwd: SERVICE_CRATE_DIR,
+      stdio: "inherit",
+      env: process.env,
+      shell: true,
+    },
+  );
+
+  for (const t of targets) {
+    if (!fs.existsSync(t.out)) {
+      throw new Error(`服务编译产物缺失: ${t.out}`);
+    }
+    await fsp.copyFile(t.out, t.dest);
+    await updateHashCache(t.dest);
+    log_success(`已复制本地服务: ${path.basename(t.dest)}`);
+  }
+
+  await fsp.mkdir(TEMP_DIR, { recursive: true });
+  await fsp.writeFile(stampFile, stamp, "utf-8");
+  log_success("本地服务编译完成（未使用上游 release）");
 };
 
 const resolveMmdb = () =>
@@ -667,9 +752,8 @@ const tasks = [
     retry: 5,
   },
   { name: "plugin", func: resolvePlugin, retry: 5, winOnly: true },
-  { name: "service", func: resolveService, retry: 5 },
-  { name: "install", func: resolveInstall, retry: 5 },
-  { name: "uninstall", func: resolveUninstall, retry: 5 },
+  // 一次编出 service / install / uninstall，避免重复 cargo
+  { name: "service_local", func: buildLocalServiceBins, retry: 2 },
   { name: "mmdb", func: resolveMmdb, retry: 5 },
   { name: "geosite", func: resolveGeosite, retry: 5 },
   { name: "geoip", func: resolveGeoIP, retry: 5 },

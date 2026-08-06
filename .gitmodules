@@ -1,0 +1,4 @@
+[submodule "vendor/clash-verge-service-ipc"]
+	path = vendor/clash-verge-service-ipc
+	url = https://github.com/MikeKen-Ken/clash-verge-service-ipc.git
+	branch = pin/v2.1.2
