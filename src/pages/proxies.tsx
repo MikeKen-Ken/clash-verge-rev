@@ -375,83 +375,85 @@ const ProxyPage = () => {
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
           <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <FormControlLabel
-              sx={{ mr: 0 }}
-              control={
-                <GuardState
-                  value={enable_tun_mode ?? false}
-                  valueProps="checked"
-                  onFormat={(_, v) => v}
-                  onGuard={handleTunToggle}
-                >
-                  <Switch size="small" disabled={!isTunModeAvailable} />
-                </GuardState>
-              }
-              label={
-                <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
-                  {t("settings.sections.system.toggles.tunMode")}
-                  {!isTunModeAvailable && (
-                    <>
-                      {" "}
-                      <Box
-                        component="span"
-                        sx={{ color: "error.main", fontSize: "inherit" }}
-                      >
-                        {t(
-                          "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
-                        )}
-                      </Box>
-                    </>
-                  )}
-                </Typography>
-              }
-            />
-            <Tooltip title="服务管理">
-              <IconButton
-                size="small"
-                aria-label="服务管理"
-                aria-controls={
-                  serviceMenuAnchor ? "proxy-service-menu" : undefined
+            <Box display="flex" alignItems="center" gap={0.25}>
+              <FormControlLabel
+                sx={{ mr: 0 }}
+                control={
+                  <GuardState
+                    value={enable_tun_mode ?? false}
+                    valueProps="checked"
+                    onFormat={(_, v) => v}
+                    onGuard={handleTunToggle}
+                  >
+                    <Switch size="small" disabled={!isTunModeAvailable} />
+                  </GuardState>
                 }
-                aria-haspopup="true"
-                aria-expanded={serviceMenuAnchor ? "true" : undefined}
-                onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
+                label={
+                  <Typography variant="body2" sx={{ whiteSpace: "nowrap" }}>
+                    {t("settings.sections.system.toggles.tunMode")}
+                    {!isTunModeAvailable && (
+                      <>
+                        {" "}
+                        <Box
+                          component="span"
+                          sx={{ color: "error.main", fontSize: "inherit" }}
+                        >
+                          {t(
+                            "settings.sections.proxyControl.fields.tunModeRequiresAdmin",
+                          )}
+                        </Box>
+                      </>
+                    )}
+                  </Typography>
+                }
+              />
+              <Tooltip title="服务管理">
+                <IconButton
+                  size="small"
+                  aria-label="服务管理"
+                  aria-controls={
+                    serviceMenuAnchor ? "proxy-service-menu" : undefined
+                  }
+                  aria-haspopup="true"
+                  aria-expanded={serviceMenuAnchor ? "true" : undefined}
+                  onClick={(e) => setServiceMenuAnchor(e.currentTarget)}
+                >
+                  <BuildRounded fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                id="proxy-service-menu"
+                anchorEl={serviceMenuAnchor}
+                open={Boolean(serviceMenuAnchor)}
+                onClose={closeServiceMenu}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
               >
-                <BuildRounded fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Menu
-              id="proxy-service-menu"
-              anchorEl={serviceMenuAnchor}
-              open={Boolean(serviceMenuAnchor)}
-              onClose={closeServiceMenu}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-              transformOrigin={{ vertical: "top", horizontal: "left" }}
-            >
-              {!isServiceOk && (
-                <MenuItem onClick={() => void onInstallService()}>
+                {!isServiceOk && (
+                  <MenuItem onClick={() => void onInstallService()}>
+                    <ListItemIcon>
+                      <BuildRounded fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>安装服务</ListItemText>
+                  </MenuItem>
+                )}
+                <MenuItem onClick={() => void onReinstallService()}>
                   <ListItemIcon>
-                    <BuildRounded fontSize="small" />
+                    <ReplayRounded fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>安装服务</ListItemText>
+                  <ListItemText>重新安装服务</ListItemText>
                 </MenuItem>
-              )}
-              <MenuItem onClick={() => void onReinstallService()}>
-                <ListItemIcon>
-                  <ReplayRounded fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>重新安装服务</ListItemText>
-              </MenuItem>
-              <MenuItem
-                disabled={!isServiceOk}
-                onClick={() => void onUninstallService()}
-              >
-                <ListItemIcon>
-                  <DeleteForeverRounded fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>卸载服务</ListItemText>
-              </MenuItem>
-            </Menu>
+                <MenuItem
+                  disabled={!isServiceOk}
+                  onClick={() => void onUninstallService()}
+                >
+                  <ListItemIcon>
+                    <DeleteForeverRounded fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>卸载服务</ListItemText>
+                </MenuItem>
+              </Menu>
+            </Box>
             <FormControlLabel
               sx={{ mr: 0 }}
               control={
