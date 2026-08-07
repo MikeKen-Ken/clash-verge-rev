@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openWebUrl } from "@/services/cmds";
 import {
   compareVersions,
@@ -61,10 +62,17 @@ const resolveDownloadUrl = (manifest: ForkUpdateManifest): string | null => {
   return null;
 };
 
+/**
+ * 走 Tauri HTTP 插件（Rust 侧请求），绕过 WebView CORS。
+ * 浏览器原生 fetch 访问 GitHub / 代理会因无 Access-Control-Allow-Origin 失败。
+ */
 const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
-  const response = await fetch(endpoint, {
+  const response = await tauriFetch(endpoint, {
     method: "GET",
-    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+    },
   });
   if (!response.ok) {
     const hint =
