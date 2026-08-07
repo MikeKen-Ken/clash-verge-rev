@@ -1,9 +1,10 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { openWebUrl } from "@/services/cmds";
 import {
   compareVersions,
   normalizeVersion,
 } from "@/services/update";
-import { version as appVersion } from "@root/package.json";
+import { version as packageVersion } from "@root/package.json";
 
 /** 自用 fork 无签名更新清单（autobuild 频道） */
 const FORK_UPDATE_ENDPOINTS = [
@@ -27,8 +28,6 @@ export type ForkUpdateInfo = {
   downloadAndInstall: () => Promise<void>;
   close: () => Promise<void>;
 };
-
-const localVersionNormalized = normalizeVersion(appVersion);
 
 const resolvePlatformKeys = (): string[] => {
   const ua = navigator.userAgent.toLowerCase();
@@ -68,14 +67,39 @@ const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error(`更新清单请求失败: ${response.status}`);
+    const hint =
+      response.status === 403
+        ? "（可能触发 GitHub 速率限制）"
+        : "";
+    throw new Error(`更新清单请求失败: HTTP ${response.status}${hint}`);
   }
   return (await response.json()) as ForkUpdateManifest;
+};
+
+/** 优先运行时 getVersion，失败再回退 package.json */
+const resolveLocalVersion = async (): Promise<string> => {
+  try {
+    const runtime = await getVersion();
+    const normalized = normalizeVersion(runtime);
+    if (normalized) {
+      console.log("[fork-updater] 本地版本来源=getVersion()", runtime);
+      return normalized;
+    }
+  } catch (err) {
+    console.log("[fork-updater] getVersion() 失败，回退 package.json", err);
+  }
+  const fallback = normalizeVersion(packageVersion);
+  if (!fallback) {
+    throw new Error(`本地版本无法解析：package.json=${packageVersion}`);
+  }
+  console.log("[fork-updater] 本地版本来源=package.json", packageVersion);
+  return fallback;
 };
 
 /**
  * 检查自用 fork 的 autobuild 更新（无签名）。
  * 有新版本时返回可打开安装包下载链接的对象；已是最新则返回 null。
+ * 版本解析失败或清单拉取失败时抛错，禁止误报「已是最新」。
  */
 export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
   let lastError: unknown = null;
@@ -84,6 +108,7 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
   for (const endpoint of FORK_UPDATE_ENDPOINTS) {
     try {
       manifest = await fetchManifest(endpoint);
+      console.log("[fork-updater] 清单拉取成功", endpoint);
       break;
     } catch (err) {
       lastError = err;
@@ -97,9 +122,29 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
       : new Error("无法获取更新清单");
   }
 
-  const remoteVersion = normalizeVersion(manifest.name);
-  const comparison = compareVersions(remoteVersion, localVersionNormalized);
-  if (comparison === null || comparison <= 0) {
+  const localVersion = await resolveLocalVersion();
+  const remoteRaw = manifest.name;
+  const remoteVersion = normalizeVersion(remoteRaw);
+  if (!remoteVersion) {
+    throw new Error(
+      `远程版本无法解析：name=${remoteRaw == null ? "空" : String(remoteRaw)}`,
+    );
+  }
+
+  const comparison = compareVersions(remoteVersion, localVersion);
+  console.log(
+    "[fork-updater] 版本比较",
+    { local: localVersion, remote: remoteVersion, comparison },
+  );
+
+  // 解析失败不得当成「已是最新」
+  if (comparison === null) {
+    throw new Error(
+      `版本比较失败：local=${localVersion} remote=${remoteVersion}`,
+    );
+  }
+
+  if (comparison <= 0) {
     return null;
   }
 
@@ -109,7 +154,7 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
   }
 
   return {
-    version: remoteVersion ?? manifest.name ?? "",
+    version: remoteVersion,
     body: manifest.notes ?? "",
     date: manifest.pub_date ?? "",
     available: true,

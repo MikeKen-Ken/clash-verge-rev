@@ -289,11 +289,15 @@ const ProxyPage = () => {
     try {
       const info = await triggerCheckUpdate();
       localStorage.setItem("last_check_update", Date.now().toString());
-      if (!info?.available) {
+      // 仅 null 表示已是最新；undefined/异常结果不得误报最新
+      if (info === null) {
         showNotice.success(
           "settings.components.verge.advanced.notifications.latestVersion",
         );
         return;
+      }
+      if (!info?.available) {
+        throw new Error("检查更新返回异常结果");
       }
       showNotice.info("shared.feedback.notifications.updateAvailable", 2000);
       await info.downloadAndInstall();
