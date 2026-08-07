@@ -374,7 +374,7 @@ const ProxyPage = () => {
       title={t("proxies.page.title.default")}
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-          <Box display="flex" alignItems="center" gap={0.25}>
+          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
             <FormControlLabel
               sx={{ mr: 0 }}
               control={
@@ -453,6 +453,7 @@ const ProxyPage = () => {
               </MenuItem>
             </Menu>
             <FormControlLabel
+              sx={{ mr: 0 }}
               control={
                 <GuardState
                   value={allowLan}
@@ -495,6 +496,7 @@ const ProxyPage = () => {
               }
             />
             <FormControlLabel
+              sx={{ mr: 0 }}
               control={
                 <GuardState
                   value={strictRoute}
@@ -534,6 +536,7 @@ const ProxyPage = () => {
               }
             />
             <FormControlLabel
+              sx={{ mr: 0 }}
               control={
                 <GuardState
                   value={proxyAdsBlockEnabled}
