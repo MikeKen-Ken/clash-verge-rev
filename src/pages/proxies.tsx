@@ -7,6 +7,7 @@ import DnsRounded from "@mui/icons-material/DnsRounded";
 import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
+import SystemUpdateAltRounded from "@mui/icons-material/SystemUpdateAltRounded";
 import {
   alpha,
   Box,
@@ -835,7 +836,7 @@ const ProxyPage = () => {
                     },
                   }}
                 >
-                  <RefreshRounded fontSize="small" />
+                  <SystemUpdateAltRounded fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
