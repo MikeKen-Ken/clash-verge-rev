@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { selectNodeForGroup } from "@/services/proxy-select-node";
 import { useTranslation } from "react-i18next";
@@ -138,7 +138,6 @@ export const useCloseAllWithDelayCheck = () => {
             ? `第 ${groupPhase}/${plannedGroupCount} 组`
             : `组「${group.name}」`;
 
-        const url = delayManager.getUrl(group.name);
         const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
         const testableProxyNames = groupProxyNames.filter(
           (n) => n && n !== "DIRECT" && n !== "REJECT",
@@ -152,7 +151,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${group.name}」（组级 URLTest，${groupProxyNames.length} 个叶子，超时 ${timeout}ms）`,
+          `${phaseLabel}：正在测速「${group.name}」（节点级，${groupProxyNames.length} 个叶子，超时 ${timeout}ms）`,
         );
 
         try {
@@ -163,44 +162,15 @@ export const useCloseAllWithDelayCheck = () => {
               bulkReuseMap,
             );
             debugLog(
-              `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过组级/单节点测速`,
+              `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过节点级测速`,
             );
-          } else if (
-            testableProxyNames.length > 0 &&
-            missingBulkReuse.length === testableProxyNames.length
-          ) {
-            delayManager.markGroupDelayTesting(group.name, groupProxyNames);
-            try {
-              const dm = await delayGroup(group.name, url, timeout);
-              delayManager.applyGroupUrlTestDelays(group.name, groupProxyNames, dm, {
-                bulkReuseMap,
-                timeout,
-              });
-              debugLog(
-                `[CloseAll] delayGroup 完成 ${group.name}，返回 ${Object.keys(dm || {}).length} 条延迟`,
-              );
-            } catch (error: unknown) {
-              console.warn(
-                `[CloseAll] 组级 delayGroup 失败，回退逐节点测速: ${group.name}`,
-                error,
-              );
+          } else if (testableProxyNames.length > 0) {
+            if (missingBulkReuse.length < testableProxyNames.length) {
               pingDelayCheckNotice(
-                `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
-              );
-              await delayManager.checkListDelay(
-                groupProxyNames,
-                group.name,
-                timeout,
-                {
-                  bulkReuseMap,
-                  fullBulkMaxConcurrency: true,
-                },
+                `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点测速（${missingBulkReuse.length}/${testableProxyNames.length}）…`,
               );
             }
-          } else if (testableProxyNames.length > 0) {
-            pingDelayCheckNotice(
-              `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点逐节点测速（${missingBulkReuse.length}/${testableProxyNames.length}）…`,
-            );
+            delayManager.markGroupDelayTesting(group.name, groupProxyNames);
             await delayManager.checkListDelay(
               groupProxyNames,
               group.name,
@@ -209,6 +179,9 @@ export const useCloseAllWithDelayCheck = () => {
                 bulkReuseMap,
                 fullBulkMaxConcurrency: true,
               },
+            );
+            debugLog(
+              `[CloseAll] 节点级测速完成 ${group.name}，共 ${groupProxyNames.length} 个叶子`,
             );
           }
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
