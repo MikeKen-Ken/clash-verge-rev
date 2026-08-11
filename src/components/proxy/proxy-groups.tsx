@@ -27,6 +27,12 @@ import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
 } from "@/services/delay";
+import {
+  clearDelayCheckManualOverrides,
+  hasDelayCheckManualOverride,
+  markDelayCheckManualOverride,
+  snapshotDelayCheckManualOverrides,
+} from "@/services/delay-check-manual-override";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
@@ -534,6 +540,10 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
+      if (isDelayCheckingRef.current) {
+        markDelayCheckManualOverride(group.name, proxy.name);
+      }
+
       handleProxyGroupChange(group, proxy, options);
     },
     [handleProxyGroupChange, isChainMode, t],
@@ -549,6 +559,7 @@ export const ProxyGroups = (props: Props) => {
       return;
     }
     isDelayCheckingRef.current = true;
+    clearDelayCheckManualOverrides();
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     delayCheckingNoticeIdRef.current = showNotice.info(
       `${t("proxies.page.tooltips.delayCheck")}进行中...`,
@@ -690,9 +701,9 @@ export const ProxyGroups = (props: Props) => {
           ),
         );
 
-        // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
+        // 测速后优先切到该组中排序最靠前且测速成功的节点；测速期间用户已手动选择则跳过
         const firstSuccessProxy = successCandidates[0]?.proxyName;
-        if (firstSuccessProxy) {
+        if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
             `${phaseLabel}：测速已完成，正在请求核心切换「${groupName}」→ ${firstSuccessProxy}`,
           );
@@ -704,6 +715,13 @@ export const ProxyGroups = (props: Props) => {
               err,
             );
           });
+        } else if (hasDelayCheckManualOverride(groupName)) {
+          pingDelayCheckNotice(
+            `${phaseLabel}：测速期间已手动选择，跳过自动切换「${groupName}」`,
+          );
+          debugLog(
+            `[ProxyGroups] 分组 ${groupName} 测速期间用户已手动选择，跳过自动切换`,
+          );
         } else {
           pingDelayCheckNotice(
             `${phaseLabel}：「${groupName}」无测速成功节点，跳过切换`,
@@ -738,13 +756,16 @@ export const ProxyGroups = (props: Props) => {
           });
         }
 
-        // 测速后清空所有组的手动选择
+        // 测速后清空各组手动选择记录；测速期间用户手动选过的组保留
         if (current) {
+          const manualDuringCheck = snapshotDelayCheckManualOverrides();
           const allGroupNames = new Set(
             availableGroups.map((g: IProxyGroupItem) => g.name),
           );
           const next = (current.selected ?? []).filter(
-            (s) => !allGroupNames.has(s.name),
+            (s) =>
+              !allGroupNames.has(s.name) ||
+              manualDuringCheck.has(s.name),
           );
           if (next.length !== (current.selected ?? []).length) {
             patchCurrent({ selected: next })
@@ -772,6 +793,7 @@ export const ProxyGroups = (props: Props) => {
           hideNotice(noticeId);
         }
         isDelayCheckingRef.current = false;
+        clearDelayCheckManualOverrides();
       }
     }
   }, [
