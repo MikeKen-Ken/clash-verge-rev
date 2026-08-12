@@ -337,16 +337,25 @@ async fn read_chunked_data(reader: &mut BufReader<&mut WrapStream>) -> Result<St
 // 连接池配置
 #[derive(Debug, Clone)]
 pub struct IpcPoolConfig {
-    /// 最小连接数, 默认 `3`
+    /// 最小空闲连接数, 默认 `3`
     pub min_connections: usize,
-    /// 最大连接数, 默认 `10`
+    /// 普通请求（如节点测速）可用的最大并发连接数
     pub max_connections: usize,
+    /// 额外预留给切节点等短请求的连接数；普通请求不可占用
+    pub reserved_connections: usize,
     /// 空闲超时时间, 默认 `60s`
     pub idle_timeout: Duration,
     /// 健康检查间隔, 默认 `60s`
     pub health_check_interval: Duration,
-    /// 拒绝策略, 默认 `New` （无需等待连接池可用，直接创建新的 IPC 连接）
+    /// 拒绝策略, 默认 `New`
     pub reject_policy: RejectPolicy,
+}
+
+impl IpcPoolConfig {
+    /// 普通 + 预留的总并发上限
+    pub fn total_connections(&self) -> usize {
+        self.max_connections.saturating_add(self.reserved_connections)
+    }
 }
 
 impl Default for IpcPoolConfig {
@@ -354,6 +363,7 @@ impl Default for IpcPoolConfig {
         Self {
             min_connections: 3,
             max_connections: 20,
+            reserved_connections: 0,
             idle_timeout: Duration::from_secs(60),
             health_check_interval: Duration::from_secs(60),
             reject_policy: RejectPolicy::New,
@@ -364,6 +374,7 @@ impl Default for IpcPoolConfig {
 pub struct IpcPoolConfigBuilder {
     min_connections: usize,
     max_connections: usize,
+    reserved_connections: usize,
     idle_timeout: Duration,
     health_check_interval: Duration,
     reject_policy: RejectPolicy,
@@ -374,6 +385,7 @@ impl Default for IpcPoolConfigBuilder {
         Self {
             min_connections: 3,
             max_connections: 20,
+            reserved_connections: 0,
             idle_timeout: Duration::from_secs(60),
             health_check_interval: Duration::from_secs(60),
             reject_policy: RejectPolicy::New,
@@ -396,6 +408,11 @@ impl IpcPoolConfigBuilder {
         self
     }
 
+    pub fn reserved_connections(mut self, reserved_connections: usize) -> Self {
+        self.reserved_connections = reserved_connections;
+        self
+    }
+
     pub fn idle_timeout(mut self, idle_timeout: Duration) -> Self {
         self.idle_timeout = idle_timeout;
         self
@@ -415,6 +432,7 @@ impl IpcPoolConfigBuilder {
         IpcPoolConfig {
             min_connections: self.min_connections,
             max_connections: self.max_connections,
+            reserved_connections: self.reserved_connections,
             idle_timeout: self.idle_timeout,
             health_check_interval: self.health_check_interval,
             reject_policy: self.reject_policy,
@@ -470,10 +488,24 @@ impl IpcConnection {
 }
 
 // IPC 连接池
+/// 连接池 permit：普通请求同时占用 general 与 total；优先请求只占用 total（可用预留槽）
+enum PoolPermit<'a> {
+    General {
+        _general: SemaphorePermit<'a>,
+        _total: SemaphorePermit<'a>,
+    },
+    Priority {
+        _total: SemaphorePermit<'a>,
+    },
+}
+
 #[derive(Clone)]
 pub struct IpcConnectionPool {
     connections: Arc<Mutex<VecDeque<IpcConnection>>>,
+    /// 总并发（max + reserved）
     semaphore: Arc<Semaphore>,
+    /// 普通请求并发上限（max），防止测速占光预留槽
+    general_semaphore: Arc<Semaphore>,
     config: IpcPoolConfig,
 }
 
@@ -483,7 +515,8 @@ impl IpcConnectionPool {
     #[inline]
     fn new(config: IpcPoolConfig) -> Self {
         let pool = IpcConnectionPool {
-            semaphore: Arc::new(Semaphore::new(config.max_connections)),
+            semaphore: Arc::new(Semaphore::new(config.total_connections())),
+            general_semaphore: Arc::new(Semaphore::new(config.max_connections)),
             config,
             connections: Arc::new(Mutex::new(VecDeque::new())),
         };
@@ -553,50 +586,78 @@ impl IpcConnectionPool {
     }
 
     #[inline]
-    async fn get_connection<'a>(&'a self, socket_path: &str) -> Result<(IpcConnection, SemaphorePermit<'a>)> {
-        log::debug!("get connection from pool");
-        // 确保获取 semaphore permit
-        let permit = self.acquire_permit().await?;
-        // 开始创建连接
+    async fn get_connection<'a>(
+        &'a self,
+        socket_path: &str,
+        priority: bool,
+    ) -> Result<(IpcConnection, PoolPermit<'a>)> {
+        log::debug!("get connection from pool, priority={priority}");
+        let permit = self.acquire_permit(priority).await?;
         let conn = self.acquire_or_create_connection(socket_path).await?;
         Ok((conn, permit))
     }
 
-    async fn acquire_permit<'a>(&'a self) -> Result<SemaphorePermit<'a>> {
-        log::debug!("acquire permit");
-        match self.semaphore.try_acquire() {
+    async fn acquire_semaphore_with_policy<'a>(
+        &'a self,
+        sem: &'a Semaphore,
+        label: &str,
+    ) -> Result<SemaphorePermit<'a>> {
+        log::debug!("acquire {label} permit");
+        match sem.try_acquire() {
             Ok(permit) => Ok(permit),
             Err(_) => match self.config.reject_policy {
                 RejectPolicy::New => {
-                    log::debug!("max permit has acquire, add permit");
-                    self.semaphore.add_permits(1);
-                    match self.semaphore.acquire().await {
+                    log::debug!("{label}: max permit acquired, temporarily add one");
+                    sem.add_permits(1);
+                    match sem.acquire().await {
                         Ok(permit) => Ok(permit),
                         Err(e) => {
-                            log::error!("failed to acquire permit, forget permit");
-                            self.semaphore.forget_permits(1);
+                            log::error!("{label}: failed to acquire permit, forget permit");
+                            sem.forget_permits(1);
                             Err(Error::ConnectionFailed(e.to_string()))
                         }
                     }
                 }
                 RejectPolicy::Reject => Err(Error::ConnectionPoolFull),
                 RejectPolicy::Timeout(timeout_duration) => {
-                    let acquire_future = self.semaphore.acquire();
-                    match timeout(timeout_duration, acquire_future).await {
+                    match timeout(timeout_duration, sem.acquire()).await {
                         Ok(Ok(permit)) => Ok(permit),
                         Ok(Err(_)) => Err(Error::ConnectionPoolFull),
                         Err(e) => Err(Error::Timeout(e)),
                     }
                 }
-                RejectPolicy::Wait => {
-                    let acquire_future = self.semaphore.acquire().await;
-                    match acquire_future {
-                        Ok(permit) => Ok(permit),
-                        Err(_) => Err(Error::ConnectionPoolFull),
-                    }
-                }
+                RejectPolicy::Wait => match sem.acquire().await {
+                    Ok(permit) => Ok(permit),
+                    Err(_) => Err(Error::ConnectionPoolFull),
+                },
             },
         }
+    }
+
+    async fn acquire_permit<'a>(&'a self, priority: bool) -> Result<PoolPermit<'a>> {
+        if priority {
+            // 优先通道：只占 total，可使用 reserved 槽；测速占满 max 时仍可切入
+            let total = self
+                .acquire_semaphore_with_policy(&self.semaphore, "priority-total")
+                .await?;
+            return Ok(PoolPermit::Priority { _total: total });
+        }
+
+        // 普通通道：先占 general（上限 max），再占 total，永远吃不到 reserved
+        let general = self
+            .acquire_semaphore_with_policy(&self.general_semaphore, "general")
+            .await?;
+        let total = match self.semaphore.acquire().await {
+            Ok(permit) => permit,
+            Err(e) => {
+                drop(general);
+                return Err(Error::ConnectionFailed(e.to_string()));
+            }
+        };
+        Ok(PoolPermit::General {
+            _general: general,
+            _total: total,
+        })
     }
 
     async fn acquire_or_create_connection(&self, socket_path: &str) -> Result<IpcConnection> {
@@ -634,7 +695,7 @@ impl IpcConnectionPool {
         );
         connection.last_used = Instant::now();
 
-        if self.semaphore.available_permits() >= self.config.max_connections {
+        if self.semaphore.available_permits() >= self.config.total_connections() {
             self.semaphore.forget_permits(1);
             drop(connection);
         } else {
@@ -660,15 +721,30 @@ impl Drop for IpcConnectionPool {
 
 pub trait LocalSocket {
     async fn send_by_local_socket(self, socket_path: &str) -> Result<reqwest::Response>;
+    async fn send_by_local_socket_priority(self, socket_path: &str) -> Result<reqwest::Response>;
 }
 
 impl LocalSocket for RequestBuilder {
     async fn send_by_local_socket(self, socket_path: &str) -> Result<reqwest::Response> {
+        self.send_by_local_socket_with_priority(socket_path, false).await
+    }
+
+    async fn send_by_local_socket_priority(self, socket_path: &str) -> Result<reqwest::Response> {
+        self.send_by_local_socket_with_priority(socket_path, true).await
+    }
+}
+
+impl RequestBuilder {
+    async fn send_by_local_socket_with_priority(
+        self,
+        socket_path: &str,
+        priority: bool,
+    ) -> Result<reqwest::Response> {
         let request = self.build()?;
         let timeout = request.timeout().cloned();
 
         let pool = IpcConnectionPool::global()?;
-        let (mut conn, _permit) = pool.get_connection(socket_path).await?;
+        let (mut conn, _permit) = pool.get_connection(socket_path, priority).await?;
 
         let process = async move {
             log::trace!("building socket request");

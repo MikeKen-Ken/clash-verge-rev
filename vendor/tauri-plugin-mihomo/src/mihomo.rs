@@ -118,12 +118,31 @@ impl Mihomo {
     }
 
     async fn send_by_protocol(&self, client: RequestBuilder) -> Result<reqwest::Response> {
+        self.send_by_protocol_with_priority(client, false).await
+    }
+
+    /// 走 IPC 预留通道，避免被批量 delay 占满连接池
+    async fn send_by_protocol_priority(&self, client: RequestBuilder) -> Result<reqwest::Response> {
+        self.send_by_protocol_with_priority(client, true).await
+    }
+
+    async fn send_by_protocol_with_priority(
+        &self,
+        client: RequestBuilder,
+        priority: bool,
+    ) -> Result<reqwest::Response> {
         match self.protocol {
             Protocol::Http => client.send().await.map_err(Error::Reqwest),
             Protocol::LocalSocket => {
                 if let Some(socket_path) = self.socket_path.as_ref() {
-                    log::debug!("send to local socket: {socket_path}");
-                    client.send_by_local_socket(socket_path).await
+                    log::debug!(
+                        "send to local socket: {socket_path}, priority={priority}"
+                    );
+                    if priority {
+                        client.send_by_local_socket_priority(socket_path).await
+                    } else {
+                        client.send_by_local_socket(socket_path).await
+                    }
                 } else {
                     log::error!("missing socket path parameter");
                     Err(Error::Io(std::io::Error::new(
@@ -654,7 +673,7 @@ impl Mihomo {
         let client = self
             .build_request(Method::PUT, &format!("/proxies/{group_name_encode}"))?
             .json(&body);
-        let response = self.send_by_protocol(client).await?;
+        let response = self.send_by_protocol_priority(client).await?;
         if !response.status().is_success() {
             let err_msg = response.json::<ErrorResponse>().await.map_or_else(
                 |e| format!("select node[{}] for group[{}] failed, {}", node, group_name, e),
