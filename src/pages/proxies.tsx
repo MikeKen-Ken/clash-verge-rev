@@ -164,6 +164,10 @@ const ProxyPage = () => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serviceMenuAnchor, setServiceMenuAnchor] =
     useState<null | HTMLElement>(null);
+  const [regionSelectOpen, setRegionSelectOpen] = useState(false);
+  const [healthTimeoutSelectOpen, setHealthTimeoutSelectOpen] = useState(false);
+  const [delayConcurrencySelectOpen, setDelayConcurrencySelectOpen] =
+    useState(false);
 
   const availableRegions = useMemo(
     () => listAvailableRegionsFromProxyGroups(proxiesData?.groups ?? []),
@@ -407,7 +411,10 @@ const ProxyPage = () => {
                   </Typography>
                 }
               />
-              <Tooltip title="服务管理">
+              <Tooltip
+                title="服务管理"
+                open={serviceMenuAnchor ? false : undefined}
+              >
                 <IconButton
                   size="small"
                   aria-label="服务管理"
@@ -566,11 +573,16 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
-            <Tooltip title="按节点地区筛选（不含 Selector 组）">
+            <Tooltip
+              title="按节点地区筛选（不含 Selector 组）"
+              open={regionSelectOpen ? false : undefined}
+            >
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
                   value={regionFilter}
                   displayEmpty
+                  onOpen={() => setRegionSelectOpen(true)}
+                  onClose={() => setRegionSelectOpen(false)}
                   onChange={(e) => {
                     setRegionFilter(String(e.target.value));
                   }}
@@ -592,7 +604,10 @@ const ProxyPage = () => {
                 </Select>
               </FormControl>
             </Tooltip>
-            <Tooltip title={t("proxies.page.labels.healthCheckTimeout")}>
+            <Tooltip
+              title={t("proxies.page.labels.healthCheckTimeout")}
+              open={healthTimeoutSelectOpen ? false : undefined}
+            >
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
                   value={
@@ -604,6 +619,8 @@ const ProxyPage = () => {
                       : ""
                   }
                   displayEmpty
+                  onOpen={() => setHealthTimeoutSelectOpen(true)}
+                  onClose={() => setHealthTimeoutSelectOpen(false)}
                   onChange={(e) => {
                     const v = clampHealthValueByPresets(
                       typeof e.target.value === "string"
@@ -633,10 +650,15 @@ const ProxyPage = () => {
                 </Select>
               </FormControl>
             </Tooltip>
-            <Tooltip title="测速数量步长">
+            <Tooltip
+              title="测速数量步长"
+              open={delayConcurrencySelectOpen ? false : undefined}
+            >
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
                   value={healthCheckConcurrency}
+                  onOpen={() => setDelayConcurrencySelectOpen(true)}
+                  onClose={() => setDelayConcurrencySelectOpen(false)}
                   onChange={(e) => {
                     const value = Number(e.target.value);
                     setDelayCheckConcurrency(value);
