@@ -71,16 +71,22 @@ export const ProxiesEditorViewer = (props: Props) => {
   const [appendSeq, setAppendSeq] = useState<IProxyConfig[]>([]);
   const [deleteSeq, setDeleteSeq] = useState<string[]>([]);
 
+  // name 会作为 SortableContext 的 id；空/null 会让 @dnd-kit 对 null 做 in 运算并崩溃
+  const hasValidName = (proxy: IProxyConfig) =>
+    typeof proxy?.name === "string" && proxy.name.length > 0;
   const filteredPrependSeq = useMemo(
-    () => prependSeq.filter((proxy) => match(proxy.name)),
+    () =>
+      prependSeq.filter((proxy) => hasValidName(proxy) && match(proxy.name)),
     [prependSeq, match],
   );
   const filteredProxyList = useMemo(
-    () => proxyList.filter((proxy) => match(proxy.name)),
+    () =>
+      proxyList.filter((proxy) => hasValidName(proxy) && match(proxy.name)),
     [proxyList, match],
   );
   const filteredAppendSeq = useMemo(
-    () => appendSeq.filter((proxy) => match(proxy.name)),
+    () =>
+      appendSeq.filter((proxy) => hasValidName(proxy) && match(proxy.name)),
     [appendSeq, match],
   );
 
