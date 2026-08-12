@@ -169,11 +169,25 @@ async function updateHashCache(targetPath) {
 // 版本以 scripts/mihomo.pin.json 为准（与 Android gitlink 对齐），不再跟随浮动 version.txt。
 const META_CUSTOM_PIN_PATH = path.join(cwd, "scripts/mihomo.pin.json");
 const META_CUSTOM_PIN = JSON.parse(fs.readFileSync(META_CUSTOM_PIN_PATH, "utf-8"));
-const META_CUSTOM_RELEASE_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
-const META_CUSTOM_URL_PREFIX = `https://github.com/${META_CUSTOM_PIN.repo}/releases/download/${META_CUSTOM_RELEASE_TAG}`;
-const META_CUSTOM_RELEASE_TAG_API = `https://api.github.com/repos/${META_CUSTOM_PIN.repo}/releases/tags/${META_CUSTOM_RELEASE_TAG}`;
+const META_CUSTOM_ROLLING_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
 let META_CUSTOM_VERSION;
-let META_CUSTOM_RELEASE_CACHE;
+const META_CUSTOM_RELEASE_CACHE = new Map();
+
+function getMetaCustomReleaseTagCandidates() {
+  const tags = [];
+  const pinnedVersion = String(META_CUSTOM_PIN.version || "").trim();
+  if (pinnedVersion) tags.push(pinnedVersion);
+  if (!tags.includes(META_CUSTOM_ROLLING_TAG)) tags.push(META_CUSTOM_ROLLING_TAG);
+  return tags;
+}
+
+function getMetaCustomDownloadUrl(releaseTag, fileName) {
+  return `https://github.com/${META_CUSTOM_PIN.repo}/releases/download/${releaseTag}/${fileName}`;
+}
+
+function getMetaCustomReleaseTagApi(releaseTag) {
+  return `https://api.github.com/repos/${META_CUSTOM_PIN.repo}/releases/tags/${releaseTag}`;
+}
 
 function createFetchOptions() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
@@ -206,42 +220,70 @@ async function fetchText(url, options) {
   return (await response.text()).trim();
 }
 
-async function fetchAlphaRelease(options) {
-  if (META_CUSTOM_RELEASE_CACHE?.assets) return META_CUSTOM_RELEASE_CACHE;
-  const response = await fetch(META_CUSTOM_RELEASE_TAG_API, {
+async function fetchAlphaRelease(releaseTag, options) {
+  if (META_CUSTOM_RELEASE_CACHE.has(releaseTag)) {
+    return META_CUSTOM_RELEASE_CACHE.get(releaseTag);
+  }
+  const releaseTagApi = getMetaCustomReleaseTagApi(releaseTag);
+  const response = await fetch(releaseTagApi, {
     ...options,
     method: "GET",
   });
   if (!response.ok) {
-    throw new Error(
-      `Failed to fetch ${META_CUSTOM_RELEASE_TAG_API}: ${response.status}`,
-    );
+    throw new Error(`Failed to fetch ${releaseTagApi}: ${response.status}`);
   }
-  META_CUSTOM_RELEASE_CACHE = await response.json();
-  return META_CUSTOM_RELEASE_CACHE;
+  const release = await response.json();
+  META_CUSTOM_RELEASE_CACHE.set(releaseTag, release);
+  return release;
 }
 
 async function downloadAlphaAssetViaApi(fileName, outPath, options) {
-  const release = await fetchAlphaRelease(options);
-  const asset = release.assets?.find((item) => item.name === fileName);
-  if (!asset) {
-    throw new Error(`Alpha release asset not found: ${fileName}`);
+  const releaseTags = getMetaCustomReleaseTagCandidates();
+  let lastError;
+
+  for (const releaseTag of releaseTags) {
+    try {
+      const release = await fetchAlphaRelease(releaseTag, options);
+      const asset = release.assets?.find((item) => item.name === fileName);
+      if (!asset) {
+        const available = (release.assets || [])
+          .map((item) => item.name)
+          .filter((name) => name.startsWith("mihomo-"))
+          .join(", ");
+        lastError = new Error(
+          `Release ${releaseTag} missing asset ${fileName}${available ? `; available: ${available}` : ""}`,
+        );
+        continue;
+      }
+      const assetResp = await fetch(asset.url, {
+        ...options,
+        method: "GET",
+        headers: {
+          ...options.headers,
+          Accept: "application/octet-stream",
+        },
+      });
+      if (!assetResp.ok) {
+        lastError = new Error(
+          `Failed to download alpha asset ${fileName} from ${releaseTag}: status ${assetResp.status}`,
+        );
+        continue;
+      }
+      const buf = Buffer.from(await assetResp.arrayBuffer());
+      await fsp.mkdir(path.dirname(outPath), { recursive: true });
+      await fsp.writeFile(outPath, buf);
+      log_success(`download finished via API (${releaseTag}): ${fileName}`);
+      return;
+    } catch (err) {
+      lastError = err;
+    }
   }
-  const assetResp = await fetch(asset.url, {
-    ...options,
-    method: "GET",
-    headers: {
-      ...options.headers,
-      Accept: "application/octet-stream",
-    },
-  });
-  if (!assetResp.ok) {
-    throw new Error(`Failed to download alpha asset ${fileName}: status ${assetResp.status}`);
-  }
-  const buf = Buffer.from(await assetResp.arrayBuffer());
-  await fsp.mkdir(path.dirname(outPath), { recursive: true });
-  await fsp.writeFile(outPath, buf);
-  log_success(`download finished via API: ${fileName}`);
+
+  throw new Error(
+    `Alpha release asset not found: ${fileName}. Tried tags: ${releaseTags.join(", ")}. ` +
+      `Prerelease-Alpha only keeps the latest build; pin version must match an immutable tag or current rolling release. ` +
+      `${lastError?.message || ""}`.trim(),
+  );
 }
 
 // 资产名前缀须与 MikeKen-Ken/mihomo CI 产物一致：
@@ -285,74 +327,92 @@ function clashMetaCustom() {
   const assetBase = META_CUSTOM_ASSET_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
+  const zipFile = `${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`;
+  const [primaryReleaseTag] = getMetaCustomReleaseTagCandidates();
   return {
     name: "verge-mihomo-custom",
     // Tauri externalBin 要求 src-tauri/sidecar 下文件名为 verge-mihomo-custom-<host-triple>(.exe)，与「仅 verge-mihomo-custom.exe」不是同一命名规则。
     targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile: `${assetBase}${isWin ? ".exe" : ""}`,
-    zipFile: `${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`,
-    downloadURL: `${META_CUSTOM_URL_PREFIX}/${assetBase}-${META_CUSTOM_VERSION}.${urlExt}`,
+    zipFile,
+    downloadURL: getMetaCustomDownloadUrl(primaryReleaseTag, zipFile),
+    downloadURLCandidates: getMetaCustomReleaseTagCandidates().map((releaseTag) =>
+      getMetaCustomDownloadUrl(releaseTag, zipFile),
+    ),
   };
 }
 
 // =======================
 // download helper (增强：status + magic bytes)
 // =======================
-async function downloadFile(url, outPath) {
+async function downloadFile(url, outPath, urlCandidates = [url]) {
   const options = createFetchOptions();
+  let lastError;
 
-  const response = await fetch(url, {
-    ...options,
-    method: "GET",
-    headers: { "Content-Type": "application/octet-stream" },
-  });
-  if (!response.ok) {
-    if (
-      response.status === 404 &&
-      url.startsWith(META_CUSTOM_URL_PREFIX + "/")
-    ) {
-      const fileName = decodeURIComponent(url.split("/").pop() || "");
-      if (fileName) {
-        await downloadAlphaAssetViaApi(fileName, outPath, options);
-        return;
+  for (const candidateUrl of urlCandidates) {
+    const response = await fetch(candidateUrl, {
+      ...options,
+      method: "GET",
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    if (!response.ok) {
+      if (response.status === 404) {
+        const fileName = decodeURIComponent(candidateUrl.split("/").pop() || "");
+        if (fileName) {
+          try {
+            await downloadAlphaAssetViaApi(fileName, outPath, options);
+            return;
+          } catch (err) {
+            lastError = err;
+            continue;
+          }
+        }
+      }
+      const body = await response.text().catch(() => "");
+      await fsp.mkdir(path.dirname(outPath), { recursive: true });
+      await fsp.writeFile(outPath, body);
+      lastError = new Error(
+        `Failed to download ${candidateUrl}: status ${response.status}`,
+      );
+      continue;
+    }
+
+    const buf = Buffer.from(await response.arrayBuffer());
+    await fsp.mkdir(path.dirname(outPath), { recursive: true });
+
+    // 简单 magic 字节检查
+    if (candidateUrl.endsWith(".gz") || candidateUrl.endsWith(".tgz")) {
+      if (!(buf[0] === 0x1f && buf[1] === 0x8b)) {
+        await fsp.writeFile(outPath, buf);
+        lastError = new Error(
+          `Downloaded file for ${candidateUrl} is not a valid gzip (magic mismatch).`,
+        );
+        continue;
+      }
+    } else if (candidateUrl.endsWith(".zip")) {
+      if (!(buf[0] === 0x50 && buf[1] === 0x4b)) {
+        await fsp.writeFile(outPath, buf);
+        lastError = new Error(
+          `Downloaded file for ${candidateUrl} is not a valid zip (magic mismatch).`,
+        );
+        continue;
       }
     }
-    const body = await response.text().catch(() => "");
-    // 将 body 写到文件以便排查（可通过临时目录查看）
-    await fsp.mkdir(path.dirname(outPath), { recursive: true });
-    await fsp.writeFile(outPath, body);
-    throw new Error(`Failed to download ${url}: status ${response.status}`);
+
+    await fsp.writeFile(outPath, buf);
+    log_success(`download finished: ${candidateUrl}`);
+    return;
   }
 
-  const buf = Buffer.from(await response.arrayBuffer());
-  await fsp.mkdir(path.dirname(outPath), { recursive: true });
-
-  // 简单 magic 字节检查
-  if (url.endsWith(".gz") || url.endsWith(".tgz")) {
-    if (!(buf[0] === 0x1f && buf[1] === 0x8b)) {
-      await fsp.writeFile(outPath, buf);
-      throw new Error(
-        `Downloaded file for ${url} is not a valid gzip (magic mismatch).`,
-      );
-    }
-  } else if (url.endsWith(".zip")) {
-    if (!(buf[0] === 0x50 && buf[1] === 0x4b)) {
-      await fsp.writeFile(outPath, buf);
-      throw new Error(
-        `Downloaded file for ${url} is not a valid zip (magic mismatch).`,
-      );
-    }
-  }
-
-  await fsp.writeFile(outPath, buf);
-  log_success(`download finished: ${url}`);
+  throw lastError || new Error(`Failed to download ${url}`);
 }
 
 // =======================
 // resolveSidecar (支持 zip / tgz / gz)
 // =======================
 async function resolveSidecar(binInfo) {
-  const { name, targetFile, zipFile, exeFile, downloadURL } = binInfo;
+  const { name, targetFile, zipFile, exeFile, downloadURL, downloadURLCandidates } =
+    binInfo;
   const sidecarDir = path.join(cwd, "src-tauri", "sidecar");
   const sidecarPath = path.join(sidecarDir, targetFile);
   await fsp.mkdir(sidecarDir, { recursive: true });
@@ -369,7 +429,11 @@ async function resolveSidecar(binInfo) {
 
   try {
     if (!fs.existsSync(tempZip)) {
-      await downloadFile(downloadURL, tempZip);
+      await downloadFile(
+        downloadURL,
+        tempZip,
+        downloadURLCandidates?.length ? downloadURLCandidates : [downloadURL],
+      );
     }
 
     if (zipFile.endsWith(".zip")) {
