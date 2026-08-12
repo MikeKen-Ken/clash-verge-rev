@@ -581,9 +581,11 @@ export const ProxyGroups = (props: Props) => {
       const allGroupNames = new Set(
         availableGroups.map((g: IProxyGroupItem) => g.name),
       );
-      const next = (current.selected ?? []).filter(
-        (s) => !allGroupNames.has(s.name),
-      );
+      const next = (current.selected ?? []).filter((s) => {
+        const name = s.name;
+        if (!name) return true;
+        return !allGroupNames.has(name);
+      });
       if (next.length !== (current.selected ?? []).length) {
         patchCurrent({ selected: next }).catch(() => { });
       }
@@ -762,11 +764,13 @@ export const ProxyGroups = (props: Props) => {
           const allGroupNames = new Set(
             availableGroups.map((g: IProxyGroupItem) => g.name),
           );
-          const next = (current.selected ?? []).filter(
-            (s) =>
-              !allGroupNames.has(s.name) ||
-              manualDuringCheck.has(s.name),
-          );
+          const next = (current.selected ?? []).filter((s) => {
+            const name = s.name;
+            if (!name) return true;
+            return (
+              !allGroupNames.has(name) || manualDuringCheck.has(name)
+            );
+          });
           if (next.length !== (current.selected ?? []).length) {
             patchCurrent({ selected: next })
               .then(() => mutateProfiles())
