@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
+import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { selectNodeForGroup } from "@/services/proxy-select-node";
 
@@ -27,6 +27,12 @@ import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
 } from "@/services/delay";
+import {
+  clearDelayCheckManualOverrides,
+  hasDelayCheckManualOverride,
+  markDelayCheckManualOverride,
+  snapshotDelayCheckManualOverrides,
+} from "@/services/delay-check-manual-override";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
@@ -534,6 +540,10 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
+      if (isDelayCheckingRef.current) {
+        markDelayCheckManualOverride(group.name, proxy.name);
+      }
+
       handleProxyGroupChange(group, proxy, options);
     },
     [handleProxyGroupChange, isChainMode, t],
@@ -549,6 +559,7 @@ export const ProxyGroups = (props: Props) => {
       return;
     }
     isDelayCheckingRef.current = true;
+    clearDelayCheckManualOverrides();
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     delayCheckingNoticeIdRef.current = showNotice.info(
       `${t("proxies.page.tooltips.delayCheck")}进行中...`,
@@ -625,7 +636,6 @@ export const ProxyGroups = (props: Props) => {
             ? `第 ${groupPhase}/${plannedGroupCount} 组`
             : `组「${groupName}」`;
 
-        const url = delayManager.getUrl(groupName);
         const testableNames = names.filter(
           (n): n is string => Boolean(n) && n !== "DIRECT" && n !== "REJECT",
         );
@@ -638,11 +648,11 @@ export const ProxyGroups = (props: Props) => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${groupName}」（组级 URLTest，${names.length} 个叶子，超时 ${timeout}ms）`,
+          `${phaseLabel}：正在测速「${groupName}」（节点级，${names.length} 个叶子，超时 ${timeout}ms）`,
         );
 
         // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
-        // 全部命中缓存 → 只写 UI；全未命中 → delayGroup；部分命中 → 走 checkListDelay（内部按出站名复用，避免 delayGroup 整组重测）。
+        // 全部命中缓存 → 只写 UI；否则统一走节点级 checkListDelay（与 Android healthCheckWithTimeout 一致）。
         if (testableNames.length > 0 && missingBulkReuse.length === 0) {
           delayManager.applyBulkReuseHitsForGroup(
             groupName,
@@ -650,38 +660,15 @@ export const ProxyGroups = (props: Props) => {
             bulkReuseMap,
           );
           debugLog(
-            `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过组级/单节点测速`,
+            `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过节点级测速`,
           );
-        } else if (
-          testableNames.length > 0 &&
-          missingBulkReuse.length === testableNames.length
-        ) {
-          // 与 Android 一致：优先内核组级 URLTest（GET /group/{name}/delay），一次请求内并行测成员；
-          // 失败时再回退为逐节点 delay API（旧行为）。
-          delayManager.markGroupDelayTesting(groupName, names);
-          try {
-            const dm = await delayGroup(groupName, url, timeout);
-            delayManager.applyGroupUrlTestDelays(groupName, names, dm, {
-              bulkReuseMap,
-              timeout,
-            });
-          } catch (err) {
-            console.warn(
-              `[ProxyGroups] 组级 delayGroup 失败，回退逐节点测速: ${groupName}`,
-              err,
-            );
-            pingDelayCheckNotice(
-              `${phaseLabel}：组级测速不可用，已改用逐节点测速…`,
-            );
-            await delayManager.checkListDelay(names, groupName, timeout, {
-              bulkReuseMap,
-              fullBulkMaxConcurrency: true,
-            });
-          }
         } else if (testableNames.length > 0) {
-          pingDelayCheckNotice(
-            `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点逐节点测速（${missingBulkReuse.length}/${testableNames.length}）…`,
-          );
+          if (missingBulkReuse.length < testableNames.length) {
+            pingDelayCheckNotice(
+              `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点测速（${missingBulkReuse.length}/${testableNames.length}）…`,
+            );
+          }
+          delayManager.markGroupDelayTesting(groupName, names);
           await delayManager.checkListDelay(names, groupName, timeout, {
             bulkReuseMap,
             fullBulkMaxConcurrency: true,
@@ -714,9 +701,9 @@ export const ProxyGroups = (props: Props) => {
           ),
         );
 
-        // 测速后优先切到该组中排序最靠前且测速成功的节点，避免回退到超时首节点
+        // 测速后优先切到该组中排序最靠前且测速成功的节点；测速期间用户已手动选择则跳过
         const firstSuccessProxy = successCandidates[0]?.proxyName;
-        if (firstSuccessProxy) {
+        if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
             `${phaseLabel}：测速已完成，正在请求核心切换「${groupName}」→ ${firstSuccessProxy}`,
           );
@@ -728,6 +715,13 @@ export const ProxyGroups = (props: Props) => {
               err,
             );
           });
+        } else if (hasDelayCheckManualOverride(groupName)) {
+          pingDelayCheckNotice(
+            `${phaseLabel}：测速期间已手动选择，跳过自动切换「${groupName}」`,
+          );
+          debugLog(
+            `[ProxyGroups] 分组 ${groupName} 测速期间用户已手动选择，跳过自动切换`,
+          );
         } else {
           pingDelayCheckNotice(
             `${phaseLabel}：「${groupName}」无测速成功节点，跳过切换`,
@@ -762,13 +756,16 @@ export const ProxyGroups = (props: Props) => {
           });
         }
 
-        // 测速后清空所有组的手动选择
+        // 测速后清空各组手动选择记录；测速期间用户手动选过的组保留
         if (current) {
+          const manualDuringCheck = snapshotDelayCheckManualOverrides();
           const allGroupNames = new Set(
             availableGroups.map((g: IProxyGroupItem) => g.name),
           );
           const next = (current.selected ?? []).filter(
-            (s) => !allGroupNames.has(s.name),
+            (s) =>
+              !allGroupNames.has(s.name) ||
+              manualDuringCheck.has(s.name),
           );
           if (next.length !== (current.selected ?? []).length) {
             patchCurrent({ selected: next })
@@ -796,6 +793,7 @@ export const ProxyGroups = (props: Props) => {
           hideNotice(noticeId);
         }
         isDelayCheckingRef.current = false;
+        clearDelayCheckManualOverrides();
       }
     }
   }, [

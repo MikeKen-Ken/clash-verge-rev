@@ -90,10 +90,8 @@ const CACHE_PRUNE_INTERVAL_MS = 60_000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
 
-/** 全量/大批量测速时与代理页「测速数量步长」解耦的并行上限（与预设档位最大值一致） */
-export const DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY = Math.max(
-  ...DELAY_CHECK_CONCURRENCY_PRESETS,
-);
+/** 全量/大批量节点级测速时与代理页「测速数量步长」解耦的并行上限 */
+export const DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY = 175;
 
 const DEFAULT_DELAY_CHECK_CONCURRENCY = 30;
 

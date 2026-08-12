@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import {
-  delayGroup,
   getBaseConfig,
   getRuleProviders,
   getRules,
@@ -179,13 +178,14 @@ export const AppDataProvider = ({
     const run = async () => {
       await Promise.allSettled(
         urlTestOrFallback.map(async (g) => {
-          const url = delayManager.getUrl(g.name);
           const timeout = g.timeout ?? 5000;
-          const dm = await delayGroup(g.name, url, timeout);
           const names = (g.all ?? [])
             .map((p) => (typeof p === "string" ? p : p.name))
             .filter((name): name is string => Boolean(name));
-          delayManager.applyGroupUrlTestDelays(g.name, names, dm, { timeout });
+          delayManager.markGroupDelayTesting(g.name, names);
+          await delayManager.checkListDelay(names, g.name, timeout, {
+            fullBulkMaxConcurrency: true,
+          });
           await hydrateConnectivityStatsFromDisk();
         }),
       );
