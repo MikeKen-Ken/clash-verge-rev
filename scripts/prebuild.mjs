@@ -68,6 +68,14 @@ const SIDECAR_HOST = target
     .toString()
     .match(/(?<=host: ).+(?=\s*)/g)[0];
 
+function parseJsonText(text) {
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
+}
+
+function readJsonFileSync(filePath) {
+  return parseJsonText(fs.readFileSync(filePath, "utf-8"));
+}
+
 // =======================
 // Version Cache
 // =======================
@@ -75,7 +83,7 @@ async function loadVersionCache() {
   try {
     if (fs.existsSync(VERSION_CACHE_FILE)) {
       const data = await fsp.readFile(VERSION_CACHE_FILE, "utf-8");
-      return JSON.parse(data);
+      return parseJsonText(data);
     }
   } catch (err) {
     log_debug("Failed to load version cache:", err.message);
@@ -123,7 +131,7 @@ async function loadHashCache() {
   try {
     if (fs.existsSync(HASH_CACHE_FILE)) {
       const data = await fsp.readFile(HASH_CACHE_FILE, "utf-8");
-      return JSON.parse(data);
+      return parseJsonText(data);
     }
   } catch (err) {
     log_debug("Failed to load hash cache:", err.message);
@@ -168,7 +176,7 @@ async function updateHashCache(targetPath) {
 // 仅打包 `verge-mihomo-custom`，下载自自有仓库 MikeKen-Ken/mihomo。
 // 版本以 scripts/mihomo.pin.json 为准（与 Android gitlink 对齐），不再跟随浮动 version.txt。
 const META_CUSTOM_PIN_PATH = path.join(cwd, "scripts/mihomo.pin.json");
-const META_CUSTOM_PIN = JSON.parse(fs.readFileSync(META_CUSTOM_PIN_PATH, "utf-8"));
+const META_CUSTOM_PIN = readJsonFileSync(META_CUSTOM_PIN_PATH);
 const META_CUSTOM_ROLLING_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
 let META_CUSTOM_VERSION;
 const META_CUSTOM_RELEASE_CACHE = new Map();
