@@ -35,7 +35,7 @@ import {
   flushFakeIp,
 } from "tauri-plugin-mihomo-api";
 
-import { BasePage } from "@/components/base";
+import { BasePage, ToolbarControlTooltip } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { markProxyModeChanged } from "@/hooks/use-fallback-switch-notify";
 import {
@@ -411,9 +411,9 @@ const ProxyPage = () => {
                   </Typography>
                 }
               />
-              <Tooltip
+              <ToolbarControlTooltip
                 title="服务管理"
-                open={serviceMenuAnchor ? false : undefined}
+                panelOpen={Boolean(serviceMenuAnchor)}
               >
                 <IconButton
                   size="small"
@@ -427,7 +427,7 @@ const ProxyPage = () => {
                 >
                   <BuildRounded fontSize="small" />
                 </IconButton>
-              </Tooltip>
+              </ToolbarControlTooltip>
               <Menu
                 id="proxy-service-menu"
                 anchorEl={serviceMenuAnchor}
@@ -573,9 +573,9 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
-            <Tooltip
+            <ToolbarControlTooltip
               title="按节点地区筛选（不含 Selector 组）"
-              open={regionSelectOpen ? false : undefined}
+              panelOpen={regionSelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <Select
@@ -603,10 +603,10 @@ const ProxyPage = () => {
                   ))}
                 </Select>
               </FormControl>
-            </Tooltip>
-            <Tooltip
+            </ToolbarControlTooltip>
+            <ToolbarControlTooltip
               title={t("proxies.page.labels.healthCheckTimeout")}
-              open={healthTimeoutSelectOpen ? false : undefined}
+              panelOpen={healthTimeoutSelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
@@ -649,10 +649,10 @@ const ProxyPage = () => {
                   ))}
                 </Select>
               </FormControl>
-            </Tooltip>
-            <Tooltip
+            </ToolbarControlTooltip>
+            <ToolbarControlTooltip
               title="测速数量步长"
-              open={delayConcurrencySelectOpen ? false : undefined}
+              panelOpen={delayConcurrencySelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 88 }}>
                 <Select
@@ -673,7 +673,7 @@ const ProxyPage = () => {
                   ))}
                 </Select>
               </FormControl>
-            </Tooltip>
+            </ToolbarControlTooltip>
           </Box>
           <Box
             display="flex"
