@@ -726,21 +726,20 @@ pub trait LocalSocket {
 
 impl LocalSocket for RequestBuilder {
     async fn send_by_local_socket(self, socket_path: &str) -> Result<reqwest::Response> {
-        self.send_by_local_socket_with_priority(socket_path, false).await
+        send_by_local_socket_with_priority(self, socket_path, false).await
     }
 
     async fn send_by_local_socket_priority(self, socket_path: &str) -> Result<reqwest::Response> {
-        self.send_by_local_socket_with_priority(socket_path, true).await
+        send_by_local_socket_with_priority(self, socket_path, true).await
     }
 }
 
-impl RequestBuilder {
-    async fn send_by_local_socket_with_priority(
-        self,
-        socket_path: &str,
-        priority: bool,
-    ) -> Result<reqwest::Response> {
-        let request = self.build()?;
+async fn send_by_local_socket_with_priority(
+    builder: RequestBuilder,
+    socket_path: &str,
+    priority: bool,
+) -> Result<reqwest::Response> {
+        let request = builder.build()?;
         let timeout = request.timeout().cloned();
 
         let pool = IpcConnectionPool::global()?;
@@ -802,5 +801,4 @@ impl RequestBuilder {
                 process.await
             }
         }
-    }
 }
