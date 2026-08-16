@@ -110,6 +110,8 @@ export const useCloseAllWithDelayCheck = () => {
       );
 
       let groupPhase = 0;
+      delayManager.beginBulkDelaySession();
+      try {
       // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
       for (const group of groups as IProxyGroupItem[]) {
         if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) {
@@ -188,6 +190,9 @@ export const useCloseAllWithDelayCheck = () => {
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
         }
+      }
+      } finally {
+        delayManager.endBulkDelaySession();
       }
       debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
 

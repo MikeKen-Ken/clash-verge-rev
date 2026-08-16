@@ -1,7 +1,7 @@
-import { delayProxyByName, ProxyDelay } from "tauri-plugin-mihomo-api";
-
 import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { debugLog } from "@/utils/debug";
+
+import { raceProxyDelayWithTimeout } from "./delay-timeout";
 
 /** 默认测速 URL（与 Android `tunnel/connectivity.go` 中空 testURL 一致） */
 export const DEFAULT_DELAY_TEST_URL =
@@ -70,6 +70,8 @@ function bulkDelayReuseKey(name: string): string {
 export interface CheckDelayOptions {
   silentGlobal?: boolean;
   bulkReuseMap?: Map<string, DelayUpdate>;
+  /** 同组新一轮测速已开始时停止写入旧结果 */
+  isCancelled?: () => boolean;
 }
 
 export interface CheckListDelayOptions {
@@ -169,6 +171,10 @@ class DelayManager {
   private pendingGroupUpdates = new Set<string>();
   private itemFlushScheduled = false;
   private groupFlushScheduled = false;
+  /** 嵌套批量测速会话：>0 时抑制全局 refreshProxy / 每节点 hydrate */
+  private bulkSessionDepth = 0;
+  /** 同组重叠测速：新一轮会作废仍在跑的 help 循环 */
+  private listCheckGenerationByGroup = new Map<string, number>();
 
   private scheduleItemFlush() {
     if (this.itemFlushScheduled) return;
@@ -458,17 +464,13 @@ class DelayManager {
     const subscribers = this.listenerKeysByName.get(name);
     if (subscribers) {
       for (const lk of subscribers) {
-        const queue = this.pendingItemUpdates.get(lk);
-        if (queue) {
-          queue.push(update);
-        } else {
-          this.pendingItemUpdates.set(lk, [update]);
-        }
+        // 只保留最新一次，避免 rAF 卡住时队列按节点数线性膨胀
+        this.pendingItemUpdates.set(lk, [update]);
       }
       this.scheduleItemFlush();
     }
 
-    if (!meta?.silentGlobal) {
+    if (!meta?.silentGlobal && this.bulkSessionDepth === 0) {
       this.scheduleGlobalFlush();
       this.scheduleNotifyAllGroupListeners();
     }
@@ -520,6 +522,36 @@ class DelayManager {
     return map;
   }
 
+  /** 多组测速外层会话：结束时才 hydrate + 刷新代理树 */
+  beginBulkDelaySession() {
+    this.bulkSessionDepth += 1;
+  }
+
+  endBulkDelaySession() {
+    this.bulkSessionDepth = Math.max(0, this.bulkSessionDepth - 1);
+    if (this.bulkSessionDepth === 0) {
+      this.finishBulkDelaySession();
+    }
+  }
+
+  /** 作废该组仍在进行的 checkListDelay（例如离开链式模式） */
+  cancelGroupDelayCheck(group: string) {
+    const next = (this.listCheckGenerationByGroup.get(group) ?? 0) + 1;
+    this.listCheckGenerationByGroup.set(group, next);
+  }
+
+  private bumpGroupCheckGeneration(group: string) {
+    const next = (this.listCheckGenerationByGroup.get(group) ?? 0) + 1;
+    this.listCheckGenerationByGroup.set(group, next);
+    return next;
+  }
+
+  private finishBulkDelaySession() {
+    void hydrateConnectivityStatsFromDisk();
+    this.scheduleGlobalFlush();
+    this.scheduleNotifyAllGroupListeners();
+  }
+
   async checkDelay(
     name: string,
     group: string,
@@ -531,10 +563,16 @@ class DelayManager {
     );
 
     const silent = options?.silentGlobal ?? false;
+    const cancelled = () => options?.isCancelled?.() === true;
+    if (cancelled()) {
+      return (
+        this.getDelayUpdate(name, group) ?? { delay: -1, updatedAt: Date.now() }
+      );
+    }
+
     const url = this.getTestUrlForOutbound(name, group);
     const reuseMap = options?.bulkReuseMap;
-    const reuseKey =
-      reuseMap ? bulkDelayReuseKey(name) : undefined;
+    const reuseKey = reuseMap ? bulkDelayReuseKey(name) : undefined;
 
     if (reuseMap != null && reuseKey !== undefined) {
       const cached = reuseMap.get(reuseKey);
@@ -549,47 +587,45 @@ class DelayManager {
       }
     }
 
-    // 先将状态设置为测试中
     this.setDelay(name, group, -2, { silentGlobal: silent });
 
     let delay = -1;
     let elapsed = 0;
-
     const startTime = Date.now();
 
     try {
       debugLog(`[DelayManager] 调用API测试延迟，代理: ${name}, URL: ${url}`);
-
-      // 设置超时处理, delay = 0 为超时
-      const timeoutPromise = new Promise<ProxyDelay>((resolve) => {
-        setTimeout(() => resolve({ delay: 0 }), timeout);
-      });
-
-      // 使用Promise.race来实现超时控制
-      const result = await Promise.race([
-        delayProxyByName(name, url, timeout),
-        timeoutPromise,
-      ]);
-
-      const elapsedTime = Date.now() - startTime;
-
+      const result = await raceProxyDelayWithTimeout(name, url, timeout);
+      if (cancelled()) {
+        return (
+          this.getDelayUpdate(name, group) ?? {
+            delay: -1,
+            updatedAt: Date.now(),
+          }
+        );
+      }
       delay = result.delay;
-      elapsed = elapsedTime;
+      elapsed = Date.now() - startTime;
       debugLog(
-        `[DelayManager] API返回 代理:${name} 组:${group} 延迟:${delay}ms 耗时:${elapsedTime}ms timeout:${timeout}ms`,
+        `[DelayManager] API返回 代理:${name} 组:${group} 延迟:${delay}ms 耗时:${elapsed}ms timeout:${timeout}ms`,
       );
     } catch (error) {
       console.error(`[DelayManager] 延迟测试出错，代理: ${name}`, error);
-      delay = 1e6; // error
+      delay = 1e6;
       elapsed = Date.now() - startTime;
+    }
+
+    if (cancelled()) {
+      return (
+        this.getDelayUpdate(name, group) ?? { delay: -1, updatedAt: Date.now() }
+      );
     }
 
     const update = this.setDelay(name, group, delay, {
       elapsed,
       silentGlobal: silent,
     });
-    // 联通统计由内核 Proxy.URLTest 写入磁盘；前端只刷新缓存，避免与安卓双通道不一致/双记
-    if (update.delay !== -2) {
+    if (update.delay !== -2 && this.bulkSessionDepth === 0) {
       void hydrateConnectivityStatsFromDisk();
     }
     if (reuseMap != null && reuseKey !== undefined && update.delay !== -2) {
@@ -624,60 +660,72 @@ class DelayManager {
       `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${actualConcurrency} fullBulk:${fullBulkMaxConcurrency} timeout:${timeout}ms`,
     );
     const startTime = Date.now();
+    const gen = this.bumpGroupCheckGeneration(group);
+    const isCancelled = () =>
+      this.listCheckGenerationByGroup.get(group) !== gen;
 
-    // 设置正在延迟测试中
-    names.forEach((name) => this.setDelay(name, group, -2));
+    this.beginBulkDelaySession();
+    try {
+      names.forEach((name) =>
+        this.setDelay(name, group, -2, { silentGlobal: true }),
+      );
 
-    let index = 0;
+      let index = 0;
+      const help = async (): Promise<void> => {
+        if (isCancelled()) return;
+        const currName = names[index++];
+        if (!currName) return;
 
-    const help = async (): Promise<void> => {
-      const currName = names[index++];
-      if (!currName) return;
+        const nodeStart = Date.now();
+        try {
+          if (index > 1) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.random() * 200),
+            );
+            if (isCancelled()) return;
+          }
 
-      const nodeStart = Date.now();
-      try {
-        this.setDelay(currName, group, -2);
-
-        if (index > 1) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.random() * 200),
+          await this.checkDelay(currName, group, timeout, {
+            bulkReuseMap,
+            silentGlobal: true,
+            isCancelled,
+          });
+          debugLog(
+            `[DelayManager] 单节点API 代理:${currName} 耗时:${Date.now() - nodeStart}ms`,
           );
+        } catch (error) {
+          console.error(
+            `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
+            error,
+          );
+          if (!isCancelled()) {
+            this.setDelay(currName, group, 1e6, { silentGlobal: true });
+          }
         }
 
-        await this.checkDelay(currName, group, timeout, {
-          bulkReuseMap,
-        });
-        const nodeElapsed = Date.now() - nodeStart;
-        debugLog(
-          `[DelayManager] 单节点API 代理:${currName} 耗时:${nodeElapsed}ms`,
-        );
-      } catch (error) {
-        console.error(
-          `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
-          error,
-        );
-        this.setDelay(currName, group, 1e6);
+        if (isCancelled()) return;
+        return help();
+      };
+
+      const promiseList: Promise<void>[] = [];
+      for (let i = 0; i < actualConcurrency; i++) {
+        promiseList.push(help());
       }
 
-      return help();
-    };
-
-    const promiseList: Promise<void>[] = [];
-    for (let i = 0; i < actualConcurrency; i++) {
-      promiseList.push(help());
+      await Promise.all(promiseList);
+      debugLog(
+        `[DelayManager] 批量测试完成 组:${group} 总耗时:${Date.now() - startTime}ms 节点:${names.length}`,
+      );
+    } finally {
+      this.endBulkDelaySession();
     }
-
-    await Promise.all(promiseList);
-    const totalTime = Date.now() - startTime;
-    debugLog(
-      `[DelayManager] 批量测试完成 组:${group} 总耗时:${totalTime}ms 节点:${names.length}`,
-    );
   }
 
   /**
    * 批量静默写入后触发一次全局与分组监听刷新（避免每条 setDelay 触发全量防抖风暴）。
    */
   flushAfterBulkSilentWrites() {
+    if (this.bulkSessionDepth > 0) return;
     this.scheduleGlobalFlush();
     this.scheduleNotifyAllGroupListeners();
   }
@@ -711,8 +759,9 @@ class DelayManager {
       });
       opts?.bulkReuseMap?.set(name, { ...update });
     }
-    // 组级 URLTest 已由内核记账；此处只同步磁盘统计到前端缓存
-    void hydrateConnectivityStatsFromDisk();
+    if (this.bulkSessionDepth === 0) {
+      void hydrateConnectivityStatsFromDisk();
+    }
     this.flushAfterBulkSilentWrites();
   }
 
@@ -783,13 +832,7 @@ export async function checkProxyDelayForUrl(
   timeout: number,
 ): Promise<number> {
   try {
-    const timeoutPromise = new Promise<ProxyDelay>((resolve) => {
-      setTimeout(() => resolve({ delay: 0 }), timeout);
-    });
-    const result = await Promise.race([
-      delayProxyByName(proxyName, url, timeout),
-      timeoutPromise,
-    ]);
+    const result = await raceProxyDelayWithTimeout(proxyName, url, timeout);
     return result.delay;
   } catch {
     return 1e6;

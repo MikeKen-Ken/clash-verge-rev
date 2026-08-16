@@ -176,19 +176,23 @@ export const AppDataProvider = ({
     };
 
     const run = async () => {
-      await Promise.allSettled(
-        urlTestOrFallback.map(async (g) => {
-          const timeout = g.timeout ?? 5000;
-          const names = (g.all ?? [])
-            .map((p) => (typeof p === "string" ? p : p.name))
-            .filter((name): name is string => Boolean(name));
-          delayManager.markGroupDelayTesting(g.name, names);
-          await delayManager.checkListDelay(names, g.name, timeout, {
-            fullBulkMaxConcurrency: true,
-          });
-          await hydrateConnectivityStatsFromDisk();
-        }),
-      );
+      delayManager.beginBulkDelaySession();
+      try {
+        await Promise.allSettled(
+          urlTestOrFallback.map(async (g) => {
+            const timeout = g.timeout ?? 5000;
+            const names = (g.all ?? [])
+              .map((p) => (typeof p === "string" ? p : p.name))
+              .filter((name): name is string => Boolean(name));
+            delayManager.markGroupDelayTesting(g.name, names);
+            await delayManager.checkListDelay(names, g.name, timeout, {
+              fullBulkMaxConcurrency: true,
+            });
+          }),
+        );
+      } finally {
+        delayManager.endBulkDelaySession();
+      }
       await refreshProxy();
       pollingCountRef.current += 1;
       scheduleNextPoll();

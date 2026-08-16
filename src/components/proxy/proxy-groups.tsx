@@ -575,6 +575,7 @@ export const ProxyGroups = (props: Props) => {
       );
     };
     markManualDelayCheckStarted();
+    delayManager.beginBulkDelaySession();
 
     // 测速前清空所有组的手动选择
     if (current) {
@@ -746,6 +747,7 @@ export const ProxyGroups = (props: Props) => {
         );
       }
     } finally {
+      delayManager.endBulkDelaySession();
       try {
         // 处理 provider 健康检查（fire and forget）
         if (allProviders.size) {

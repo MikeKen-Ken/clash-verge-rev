@@ -169,12 +169,11 @@ export const useRenderList = (
       }
     };
 
-    // 延迟执行避免阻塞
     const handle = setTimeout(calculateDelays, 100);
 
     return () => {
       clearTimeout(handle);
-      // 清理组监听器
+      delayManager.cancelGroupDelayCheck("chain-mode");
       delayManager.removeGroupListener("chain-mode");
     };
   }, [isChainMode, runtimeConfig, refreshProxy]);
