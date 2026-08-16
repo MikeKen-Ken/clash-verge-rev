@@ -35,6 +35,11 @@ import {
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import {
+  CONNECTION_ORDER_OPTIONS,
+  filterConnectionsForDisplay,
+  type ConnectionOrderKey,
+} from "@/components/connection/filter-connections";
+import {
   useConnectionData,
 } from "@/hooks/use-connection-data";
 import {
@@ -65,75 +70,9 @@ import { ConnectionRuleMenu } from "@/features/session-rules/connection-rule-men
 import { SessionRulesPanel } from "@/features/session-rules/session-rules-panel";
 import { useSessionRules } from "@/features/session-rules/use-session-rules";
 
-type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
+type OrderKey = ConnectionOrderKey;
 
-const ORDER_OPTIONS = [
-  {
-    id: "default",
-    labelKey: "connections.components.order.default",
-    fn: (list: IConnectionsItem[]) =>
-      list.sort(
-        (a, b) =>
-          new Date(b.start || "0").getTime()! -
-          new Date(a.start || "0").getTime()!,
-      ),
-  },
-  {
-    id: "uploadSpeed",
-    labelKey: "connections.components.order.uploadSpeed",
-    fn: (list: IConnectionsItem[]) =>
-      list.sort((a, b) => b.curUpload! - a.curUpload!),
-  },
-  {
-    id: "downloadSpeed",
-    labelKey: "connections.components.order.downloadSpeed",
-    fn: (list: IConnectionsItem[]) =>
-      list.sort((a, b) => b.curDownload! - a.curDownload!),
-  },
-] as const;
 const DEFAULT_LAN_SILENT_THRESHOLD_SECONDS = 60;
-
-type OrderKey = (typeof ORDER_OPTIONS)[number]["id"];
-
-const orderFunctionMap = ORDER_OPTIONS.reduce<Record<OrderKey, OrderFunc>>(
-  (acc, option) => {
-    acc[option.id] = option.fn;
-    return acc;
-  },
-  {} as Record<OrderKey, OrderFunc>,
-);
-
-/** 按域名合并已关闭连接，合并下载量、上传量 */
-const mergeClosedConnectionsByHost = (
-  list: IConnectionsItem[],
-): IConnectionsItem[] => {
-  const byHost = new Map<string, IConnectionsItem[]>();
-  for (const conn of list) {
-    const key = conn.metadata?.host || conn.metadata?.remoteDestination || conn.metadata?.destinationIP || conn.id;
-    if (!byHost.has(key)) byHost.set(key, []);
-    byHost.get(key)!.push(conn);
-  }
-  return Array.from(byHost.entries()).map(([hostKey, group]) => {
-    const first = group[0]!;
-    const upload = group.reduce((s, c) => s + (c.upload ?? 0), 0);
-    const download = group.reduce((s, c) => s + (c.download ?? 0), 0);
-    const latest = group.reduce(
-      (latest, c) =>
-        new Date(c.start || "0").getTime() > new Date(latest.start || "0").getTime()
-          ? c
-          : latest,
-      first,
-    );
-    return {
-      ...latest,
-      id: `merged-${hostKey}-${first.id}`,
-      upload,
-      download,
-      curUpload: 0,
-      curDownload: 0,
-    } as IConnectionsItem;
-  });
-};
 
 const ConnectionsPage = () => {
   const { t } = useTranslation();
@@ -196,34 +135,32 @@ const ConnectionsPage = () => {
     [],
   );
 
-  const [filterConn] = useMemo(() => {
-    const orderFunc = orderFunctionMap[curOrderOpt];
-    const closedForDisplay = connections?.closedConnections ?? [];
-    const conns =
-      connectionsType === "active"
-        ? (connections?.activeConnections ?? [])
-        : closedForDisplay;
-    const visibleConns =
-      connectionsType === "active"
-        ? conns.filter((conn) => !blockedLanIpSet.has(conn.metadata?.sourceIP || ""))
-        : conns;
-    let matchConns = visibleConns.filter((conn) => {
-      const { host, destinationIP, process } = conn.metadata;
-      return (
-        match(host || "") || match(destinationIP || "") || match(process || "")
-      );
-    });
+  const [hasSearchQuery, setHasSearchQuery] = useState(false);
 
-    // 避免原地排序修改引用，减少高频推送时的重排与闪动
-    if (orderFunc) matchConns = orderFunc([...matchConns]);
-
-    if (connectionsType === "closed" && mergeByDomain && matchConns.length > 0) {
-      matchConns = mergeClosedConnectionsByHost(matchConns);
-      if (orderFunc) matchConns = orderFunc(matchConns);
-    }
-
-    return [matchConns];
-  }, [connections, connectionsType, match, curOrderOpt, mergeByDomain, blockedLanIpSet]);
+  const [filterConn] = useMemo(
+    () => [
+      filterConnectionsForDisplay({
+        connections,
+        connectionsType,
+        blockedLanIpSet,
+        match,
+        orderKey: curOrderOpt,
+        mergeByDomain,
+        isTableLayout,
+        hasSearchQuery,
+      }),
+    ],
+    [
+      connections,
+      connectionsType,
+      match,
+      curOrderOpt,
+      mergeByDomain,
+      blockedLanIpSet,
+      isTableLayout,
+      hasSearchQuery,
+    ],
+  );
 
   const activeLanConnections = useMemo(() => {
     const active = connections?.activeConnections ?? [];
@@ -424,10 +361,17 @@ const ConnectionsPage = () => {
   const isCloseMenuOpen = Boolean(closeMenuAnchor);
 
   const detailRef = useRef<ConnectionDetailRef>(null!);
+  const handleShowDetail = useCallback((detail: IConnectionsItem) => {
+    detailRef.current?.open(detail, connectionsType === "closed");
+  }, [connectionsType]);
 
-  const handleSearch = useCallback((match: (content: string) => boolean) => {
-    setMatch(() => match);
-  }, []);
+  const handleSearch = useCallback(
+    (nextMatch: (input: string) => boolean, state?: { text: string }) => {
+      setMatch(() => nextMatch);
+      setHasSearchQuery(Boolean(state?.text));
+    },
+    [],
+  );
 
   const handleCloseMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setCloseMenuAnchor(event.currentTarget);
@@ -713,7 +657,7 @@ const ConnectionsPage = () => {
             value={curOrderOpt}
             onChange={(e) => setCurOrderOpt(e.target.value as OrderKey)}
           >
-            {ORDER_OPTIONS.map((option) => (
+            {CONNECTION_ORDER_OPTIONS.map((option) => (
               <MenuItem key={option.id} value={option.id}>
                 <span style={{ fontSize: 14 }}>{t(option.labelKey)}</span>
               </MenuItem>
@@ -936,9 +880,7 @@ const ConnectionsPage = () => {
       ) : isTableLayout ? (
         <ConnectionTable
           connections={filterConn}
-          onShowDetail={(detail) =>
-            detailRef.current?.open(detail, connectionsType === "closed")
-          }
+          onShowDetail={handleShowDetail}
           onContextMenu={handleConnectionContextMenu}
           columnManagerOpen={isTableLayout && isColumnManagerOpen}
           onOpenColumnManager={() => setIsColumnManagerOpen(true)}

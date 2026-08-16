@@ -10,6 +10,7 @@ import {
 } from "@/utils/closed-connections-storage";
 import {
   compactRejectClosed,
+  isRejectOutbound,
   upsertRejectClosed,
 } from "@/utils/reject-closed-dedupe";
 
@@ -23,6 +24,8 @@ import {
 } from "./use-connection-setting";
 
 const EMPTY_SNAPSHOT_GRACE_MS = 1200;
+/** 连接 WS 在窗口内只解析最新一条，避免突发快照每条都物化对象图 */
+const CONNECTION_WS_FLUSH_MS = 500;
 
 /** 当前生效的已关闭条数上限（由设置同步，供 WS merge 路径使用） */
 let activeClosedConnectionsLimit: number = DEFAULT_CLOSED_CONNECTIONS_LIMIT;
@@ -67,7 +70,65 @@ export interface ConnectionMonitorData {
 export type { NonDirectSessionTraffic } from "@/utils/non-direct-session-traffic";
 export { computeNonDirectSessionTraffic } from "@/utils/non-direct-session-traffic";
 
-/** 按 id 去重，保留较新的 closedAt */
+const metadataShallowEqual = (
+  left: IConnectionsItem["metadata"] | undefined,
+  right: IConnectionsItem["metadata"] | undefined,
+) => {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.network === right.network &&
+    left.type === right.type &&
+    left.host === right.host &&
+    left.sourceIP === right.sourceIP &&
+    left.sourcePort === right.sourcePort &&
+    left.destinationPort === right.destinationPort &&
+    left.destinationIP === right.destinationIP &&
+    left.remoteDestination === right.remoteDestination &&
+    left.process === right.process &&
+    left.processPath === right.processPath
+  );
+};
+
+const chainsShallowEqual = (left: string[] | undefined, right: string[] | undefined) => {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((name, index) => name === right[index]);
+};
+
+/** 流量与元数据未变时复用上一帧对象；流量变时仍复用 metadata/chains 引用 */
+const reuseOrUpdateActive = (
+  prev: IConnectionsItem,
+  next: IConnectionsItem,
+): IConnectionsItem => {
+  const curUpload = next.upload - prev.upload;
+  const curDownload = next.download - prev.download;
+  const sameMeta =
+    prev.start === next.start &&
+    prev.rule === next.rule &&
+    prev.rulePayload === next.rulePayload &&
+    prev.ruleDetail === next.ruleDetail &&
+    metadataShallowEqual(prev.metadata, next.metadata) &&
+    chainsShallowEqual(prev.chains, next.chains);
+  if (
+    sameMeta &&
+    prev.upload === next.upload &&
+    prev.download === next.download &&
+    (prev.curUpload ?? 0) === curUpload &&
+    (prev.curDownload ?? 0) === curDownload
+  ) {
+    return prev;
+  }
+  return {
+    ...next,
+    metadata: sameMeta ? prev.metadata : next.metadata,
+    chains: sameMeta ? prev.chains : next.chains,
+    curUpload,
+    curDownload,
+  } as IConnectionsItem;
+};
+
+/** 按 id 去重，保留较新的 closedAt；已带 closedAt 的项不克隆 */
 const dedupeClosedConnectionsById = (
   items: IConnectionsItem[],
 ): IConnectionsItem[] => {
@@ -78,7 +139,10 @@ const dedupeClosedConnectionsById = (
     const existingClosedAt =
       existing?.closedAt ?? new Date(existing?.start || 0).getTime();
     if (!existing || closedAt >= existingClosedAt) {
-      map.set(item.id, { ...item, closedAt });
+      map.set(
+        item.id,
+        item.closedAt === closedAt ? item : { ...item, closedAt },
+      );
     }
   }
   return Array.from(map.values());
@@ -149,11 +213,7 @@ const mergeConnectionSnapshot = (
       if (!next) return null;
 
       nextById.delete(prev.id);
-      return {
-        ...next,
-        curUpload: next.upload - prev.upload,
-        curDownload: next.download - prev.download,
-      } as IConnectionsItem;
+      return reuseOrUpdateActive(prev, next);
     })
     .filter(Boolean) as IConnectionsItem[];
 
@@ -165,7 +225,13 @@ const mergeConnectionSnapshot = (
       curDownload: 0,
     }));
 
-  const activeConnections = [...carried, ...newcomers];
+  const activeUnchanged =
+    newcomers.length === 0 &&
+    carried.length === previousActive.length &&
+    carried.every((item, index) => item === previousActive[index]);
+  const activeConnections = activeUnchanged
+    ? previousActive
+    : [...carried, ...newcomers];
 
   const newlyClosed = previousActive
     .filter((conn) => !newIds.has(conn.id))
@@ -179,19 +245,25 @@ const mergeConnectionSnapshot = (
     knownClosedIds,
   );
 
-  let closedAcc: IConnectionsItem[] = [...previousClosed];
-  for (const conn of newlyClosed) {
-    closedAcc = upsertRejectClosed(closedAcc, conn);
+  const incomingClosed = [...newlyClosed, ...fromRecentClosed];
+  let closedConnections = previousClosed;
+  if (incomingClosed.length > 0) {
+    const closedAcc = incomingClosed.some(isRejectOutbound)
+      ? incomingClosed.reduce(
+          (list, conn) => upsertRejectClosed(list, conn),
+          previousClosed,
+        )
+      : previousClosed.concat(incomingClosed);
+    closedConnections = trimClosedConnectionsByMaxCount(
+      dedupeClosedConnectionsById(closedAcc),
+      activeClosedConnectionsLimit,
+    );
+  } else if (previousClosed.length > activeClosedConnectionsLimit) {
+    closedConnections = trimClosedConnectionsByMaxCount(
+      previousClosed,
+      activeClosedConnectionsLimit,
+    );
   }
-  for (const conn of fromRecentClosed) {
-    closedAcc = upsertRejectClosed(closedAcc, conn);
-  }
-
-  // 仅按条数上限裁剪（无时间限制）；上限由用户设置同步到 activeClosedConnectionsLimit
-  const closedConnections = trimClosedConnectionsByMaxCount(
-    dedupeClosedConnectionsById(closedAcc),
-    activeClosedConnectionsLimit,
-  );
   // 仅当最终列表内容变化时才调度写盘（写盘侧另有节流）
   const closedChanged =
     closedConnections.length !== previousClosed.length ||
@@ -276,41 +348,87 @@ export const useConnectionData = () => {
       buildSubscriptKey: (date) => `getClashConnection-${date}`,
       fallbackData: latestStableConnData,
       connect: () => MihomoWebSocket.connect_connections(),
-      setupHandlers: ({ next, scheduleReconnect }) => ({
-        handleMessage: (data) => {
-          if (data.startsWith("Websocket error")) {
-            next(data);
-            void scheduleReconnect();
-            return;
-          }
+      keepPreviousData: false,
+      setupHandlers: ({ next, scheduleReconnect, isMounted }) => {
+        let pendingRaw: string | null = null;
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+        const clearFlushTimer = () => {
+          if (flushTimer) {
+            clearTimeout(flushTimer);
+            flushTimer = null;
+          }
+        };
+
+        const applySnapshot = (raw: string) => {
           try {
-            const parsed = JSON.parse(data) as IConnections;
+            const parsed = JSON.parse(raw) as IConnections;
             const nextConnections = parsed.connections ?? [];
             next(null, (old = initConnData) => {
               // 部分环境下重连后会短暂收到空 connections 快照，容易导致连接页闪空。
               // 这里给一个短暂宽限期，连续空快照超过阈值才认定为真实空列表。
-              if (nextConnections.length === 0 && (old.activeConnections?.length ?? 0) > 0) {
+              if (
+                nextConnections.length === 0 &&
+                (old.activeConnections?.length ?? 0) > 0
+              ) {
                 const now = Date.now();
                 if (emptySnapshotStartedAtRef.current == null) {
                   emptySnapshotStartedAtRef.current = now;
                   return old;
                 }
-                if (now - emptySnapshotStartedAtRef.current < EMPTY_SNAPSHOT_GRACE_MS) {
+                if (
+                  now - emptySnapshotStartedAtRef.current <
+                  EMPTY_SNAPSHOT_GRACE_MS
+                ) {
                   return old;
                 }
               } else {
                 emptySnapshotStartedAtRef.current = null;
               }
 
-              return normalizeTotals(mergeConnectionSnapshot(parsed, old));
-            },
-            );
+              const merged = normalizeTotals(
+                mergeConnectionSnapshot(parsed, old),
+              );
+              if (
+                merged.activeConnections === old.activeConnections &&
+                merged.closedConnections === old.closedConnections &&
+                merged.uploadTotal === old.uploadTotal &&
+                merged.downloadTotal === old.downloadTotal
+              ) {
+                return old;
+              }
+              return merged;
+            });
           } catch (error) {
             next(error);
           }
-        },
-      }),
+        };
+
+        const flushPending = () => {
+          flushTimer = null;
+          const raw = pendingRaw;
+          pendingRaw = null;
+          if (!raw || !isMounted()) return;
+          applySnapshot(raw);
+        };
+
+        return {
+          handleMessage: (data) => {
+            if (data.startsWith("Websocket error")) {
+              next(data);
+              void scheduleReconnect();
+              return;
+            }
+
+            // 节流窗口内只保留最新原文，避免高频快照解析出用不到的对象图
+            pendingRaw = data;
+            if (!flushTimer) {
+              flushTimer = setTimeout(flushPending, CONNECTION_WS_FLUSH_MS);
+            }
+          },
+          cleanup: clearFlushTimer,
+        };
+      },
     });
 
   // 重新进入连接页时从 IndexedDB 恢复上次快照（活跃+已关闭），避免列表空白；若无快照则仅恢复已关闭列表
