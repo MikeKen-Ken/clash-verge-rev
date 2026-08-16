@@ -374,7 +374,13 @@ const ProxyPage = () => {
   return (
     <BasePage
       full
-      contentStyle={{ height: "101.5%" }}
+      contentStyle={{
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
       title={t("proxies.page.title.default")}
       header={
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">

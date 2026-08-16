@@ -1,29 +1,12 @@
-import {
-  ExpandLessRounded,
-  ExpandMoreRounded,
-  InboxRounded,
-} from "@mui/icons-material";
-import {
-  alpha,
-  Box,
-  ListItemText,
-  ListItemButton,
-  Typography,
-  styled,
-  Chip,
-  Tooltip,
-} from "@mui/material";
+import { InboxRounded } from "@mui/icons-material";
+import { Box, Typography } from "@mui/material";
 import { memo, useMemo } from "react";
-import { useTranslation } from "react-i18next";
 
-import { useIconCache } from "@/hooks/use-icon-cache";
-import { useVerge } from "@/hooks/use-verge";
-import { useThemeMode } from "@/services/states";
-
+import { ProxyGroupHeader } from "./proxy-group-header";
 import { ProxyHead } from "./proxy-head";
 import { ProxyItem } from "./proxy-item";
 import { ProxyItemMini } from "./proxy-item-mini";
-import { HeadState } from "./use-head-state";
+import type { HeadState } from "./use-head-state";
 import type { IRenderItem } from "./use-render-list";
 
 interface RenderProps {
@@ -36,9 +19,7 @@ interface RenderProps {
     proxy: IRenderItem["proxy"] & { name: string },
     options?: { isManualSelection?: boolean },
   ) => void;
-  /** 当前使用的节点名（用于高亮） */
   getSelectedForGroup?: (groupName: string) => string | undefined;
-  /** 组头显示的「当前节点」文案；当 now 为子分组时会解析为「子分组名 (实际节点)」 */
   getDisplayNowForGroup?: (
     group: {
       name: string;
@@ -46,12 +27,10 @@ interface RenderProps {
     },
     useNameAsLabel?: boolean,
   ) => string;
-  /** 仅当返回值等于节点名时显示「手动选择」图标（Selector/URLTest/Fallback 组） */
   getManualSelectionForGroup?: (groupName: string) => string | undefined;
 }
 
 const ProxyRenderInner = (props: RenderProps) => {
-  const { t } = useTranslation();
   const {
     indent,
     item,
@@ -60,38 +39,27 @@ const ProxyRenderInner = (props: RenderProps) => {
     getSelectedForGroup,
     getDisplayNowForGroup,
     getManualSelectionForGroup,
-    isChainMode: _ = false,
   } = props;
   const { type, group, headState, proxy, proxyCol } = item;
-  const { verge } = useVerge();
-  const enable_group_icon = verge?.enable_group_icon ?? true;
-  const mode = useThemeMode();
-  const isDark = mode === "light" ? false : true;
-  const itembackgroundcolor = isDark ? "#282A36" : "#ffffff";
-  const iconCachePath = useIconCache({
-    icon: group.icon,
-    cacheKey: group.name.replaceAll(" ", ""),
-    enabled: enable_group_icon,
-  });
-  const connectTimesLabel =
-    typeof group.maxConnectTimes === "number" && group.maxConnectTimes > 0
-      ? `${group.connectTimes ?? 0}/${group.maxConnectTimes}`
-      : null;
+  const groupInfo = useMemo(
+    () => ({
+      name: group.name,
+      type: group.type,
+      timeout: group.timeout,
+      selectedTimeout: group.selectedTimeout,
+    }),
+    [group.name, group.type, group.timeout, group.selectedTimeout],
+  );
 
   const proxyColItemsMemo = useMemo(() => {
-    if (type !== 4 || !proxyCol) {
-      return null;
-    }
+    if (type !== 4 || !proxyCol) return null;
 
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
     return proxyCol.map((proxyItem) => {
       const name = proxyItem?.name ?? "unknown";
       const displayNameRaw = getDisplayNowForGroup?.(
-        {
-          name,
-          now: proxyItem?.now,
-        },
+        { name, now: proxyItem?.now },
         true,
       );
       const itemDisplayName =
@@ -99,7 +67,7 @@ const ProxyRenderInner = (props: RenderProps) => {
       return (
         <ProxyItemMini
           key={`${item.key}-${name}`}
-          group={group}
+          group={groupInfo}
           proxy={proxyItem!}
           itemDisplayName={itemDisplayName}
           selected={selectedName != null ? selectedName === name : false}
@@ -118,114 +86,21 @@ const ProxyRenderInner = (props: RenderProps) => {
     proxyCol,
     item.key,
     group,
-    headState,
+    groupInfo,
+    headState?.showType,
     onChangeProxy,
     getSelectedForGroup,
+    getDisplayNowForGroup,
     getManualSelectionForGroup,
   ]);
 
   if (type === 0) {
     return (
-      <ListItemButton
-        dense
-        style={{
-          background: itembackgroundcolor,
-          height: "100%",
-          margin: "8px 8px",
-          borderRadius: "8px",
-        }}
-        onClick={() => onHeadState(group.name, { open: !headState?.open })}
-      >
-        {enable_group_icon &&
-          group.icon &&
-          group.icon.trim().startsWith("http") && (
-            <img
-              src={iconCachePath === "" ? group.icon : iconCachePath}
-              width="32px"
-              style={{ marginRight: "12px", borderRadius: "6px" }}
-            />
-          )}
-        {enable_group_icon &&
-          group.icon &&
-          group.icon.trim().startsWith("data") && (
-            <img
-              src={group.icon}
-              width="32px"
-              style={{ marginRight: "12px", borderRadius: "6px" }}
-            />
-          )}
-        {enable_group_icon &&
-          group.icon &&
-          group.icon.trim().startsWith("<svg") && (
-            <img
-              src={`data:image/svg+xml;base64,${btoa(group.icon)}`}
-              width="32px"
-            />
-          )}
-        <ListItemText
-          primary={
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-              <StyledPrimary>{group.name}</StyledPrimary>
-              {connectTimesLabel && (
-                <Tooltip title="max-connect-times" arrow>
-                  <Chip
-                    size="small"
-                    label={connectTimesLabel}
-                    sx={{
-                      height: 20,
-                      fontSize: 11,
-                      flexShrink: 0,
-                      backgroundColor: (theme) =>
-                        alpha(theme.palette.info.main, 0.1),
-                      color: (theme) => theme.palette.info.main,
-                    }}
-                  />
-                </Tooltip>
-              )}
-            </Box>
-          }
-          secondary={
-            <Box
-              sx={{
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                pt: "2px",
-              }}
-            >
-              <Box component="span" sx={{ marginTop: "2px" }}>
-                <StyledTypeBox>{group.type}</StyledTypeBox>
-                <StyledSubtitle sx={{ color: "text.secondary" }}>
-                  {getDisplayNowForGroup
-                    ? getDisplayNowForGroup(group)
-                    : group.now ?? ""}
-                </StyledSubtitle>
-              </Box>
-            </Box>
-          }
-          slotProps={{
-            secondary: {
-              component: "div",
-              sx: { display: "flex", alignItems: "center", color: "#ccc" },
-            },
-          }}
-        />
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <Tooltip title={t("proxies.page.labels.proxyCount")} arrow>
-            <Chip
-              size="small"
-              label={`${group.all.length}`}
-              sx={{
-                mr: 1,
-                backgroundColor: (theme) =>
-                  alpha(theme.palette.primary.main, 0.1),
-                color: (theme) => theme.palette.primary.main,
-              }}
-            />
-          </Tooltip>
-          {headState?.open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
-        </Box>
-      </ListItemButton>
+      <ProxyGroupHeader
+        item={item}
+        onHeadState={onHeadState}
+        getDisplayNowForGroup={getDisplayNowForGroup}
+      />
     );
   }
 
@@ -246,10 +121,7 @@ const ProxyRenderInner = (props: RenderProps) => {
     const manualName = getManualSelectionForGroup?.(group.name);
     const name = proxy?.name ?? "";
     const displayNameRaw = getDisplayNowForGroup?.(
-      {
-        name,
-        now: proxy?.now,
-      },
+      { name, now: proxy?.now },
       true,
     );
     const itemDisplayName =
@@ -312,31 +184,3 @@ const ProxyRenderInner = (props: RenderProps) => {
 };
 
 export const ProxyRender = memo(ProxyRenderInner);
-
-const StyledPrimary = styled("span")`
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-const StyledSubtitle = styled("span")`
-  font-size: 13px;
-  overflow: hidden;
-  color: text.secondary;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const StyledTypeBox = styled(Box)(({ theme }) => ({
-  display: "inline-block",
-  border: "1px solid #ccc",
-  borderColor: alpha(theme.palette.primary.main, 0.5),
-  color: alpha(theme.palette.primary.main, 0.8),
-  borderRadius: 4,
-  fontSize: 10,
-  padding: "0 4px",
-  lineHeight: 1.5,
-  marginRight: "8px",
-}));

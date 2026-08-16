@@ -11,7 +11,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { type VirtuosoHandle } from "react-virtuoso";
 import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { selectNodeForGroup } from "@/services/proxy-select-node";
@@ -51,7 +51,7 @@ import {
   DEFAULT_HOVER_DELAY,
   ProxyGroupNavigator,
 } from "./proxy-group-navigator";
-import { ProxyRender } from "./proxy-render";
+import { ProxyVirtuosoList } from "./proxy-virtuoso-list";
 import { useRenderList } from "./use-render-list";
 
 interface Props {
@@ -78,8 +78,6 @@ interface ProxyChainItem {
 }
 
 const SKIP_DELAY_CHECK_GROUPS = new Set(["Direct", "Final"]);
-
-const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 
 const formatGroupNameWithConnectTimes = (group: {
   name: string;
@@ -382,22 +380,6 @@ export const ProxyGroups = (props: Props) => {
     [saveScrollPosition],
   );
 
-  // 添加和清理滚动事件监听器
-  useEffect(() => {
-    const node = scrollerRef.current;
-    if (!node) return;
-
-    const listener = handleScroll as EventListener;
-    const options: AddEventListenerOptions = { passive: true };
-
-    node.addEventListener("scroll", listener, options);
-
-    return () => {
-      node.removeEventListener("scroll", listener, options);
-    };
-  }, [handleScroll]);
-
-  // 滚动到顶部
   const scrollToTop = useCallback(() => {
     virtuosoRef.current?.scrollTo?.({
       top: 0,
@@ -405,6 +387,23 @@ export const ProxyGroups = (props: Props) => {
     });
     saveScrollPosition(0);
   }, [saveScrollPosition]);
+
+  const proxyList = (
+    <ProxyVirtuosoList
+      virtuosoRef={virtuosoRef}
+      scrollerRef={scrollerRef}
+      renderList={renderList}
+      indent={mode === "rule" || mode === "script"}
+      isChainMode={isChainMode}
+      initialScrollTop={scrollPositionRef.current[mode]}
+      onScroll={handleScroll as EventListener}
+      onHeadState={onHeadState}
+      onChangeProxy={handleChangeProxy}
+      getSelectedForGroup={getSelectedForGroup}
+      getDisplayNowForGroup={getDisplayNowForGroup}
+      getManualSelectionForGroup={getManualSelectionForGroup}
+    />
+  );
 
   // 关闭重复节点警告
   const handleCloseDuplicateWarning = useCallback(() => {
@@ -855,8 +854,17 @@ export const ProxyGroups = (props: Props) => {
 
     return (
       <>
-        <Box sx={{ display: "flex", height: "100%", gap: 2 }}>
-          <Box sx={{ flex: 1, position: "relative" }}>
+        <Box sx={{ display: "flex", height: "100%", minHeight: 0, gap: 2 }}>
+          <Box
+            sx={{
+              flex: 1,
+              position: "relative",
+              minHeight: 0,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {/* 代理规则标题和代理组按钮栏 */}
             {mode === "rule" && proxyGroups.length > 0 && (
               <Box sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
@@ -925,40 +933,9 @@ export const ProxyGroups = (props: Props) => {
               </Box>
             )}
 
-            <Virtuoso
-              ref={virtuosoRef}
-              style={{
-                height:
-                  mode === "rule" && proxyGroups.length > 0
-                    ? "calc(100% - 80px)" // 只有标题的高度
-                    : "calc(100% - 14px)",
-              }}
-              totalCount={renderList.length}
-              increaseViewportBy={{ top: 200, bottom: 200 }}
-              overscan={150}
-              defaultItemHeight={56}
-              scrollerRef={(ref) => {
-                scrollerRef.current = ref as Element;
-              }}
-              components={{
-                Footer: VirtuosoFooter,
-              }}
-              initialScrollTop={scrollPositionRef.current[mode]}
-              computeItemKey={(index) => renderList[index].key}
-              itemContent={(index) => (
-                <ProxyRender
-                  key={renderList[index].key}
-                  item={renderList[index]}
-                  indent={mode === "rule" || mode === "script"}
-                  onHeadState={onHeadState}
-                  onChangeProxy={handleChangeProxy}
-                  getSelectedForGroup={getSelectedForGroup}
-                  getDisplayNowForGroup={getDisplayNowForGroup}
-                  getManualSelectionForGroup={getManualSelectionForGroup}
-                  isChainMode={isChainMode}
-                />
-              )}
-            />
+            <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              {proxyList}
+            </Box>
             <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
           </Box>
 
@@ -1056,7 +1033,14 @@ export const ProxyGroups = (props: Props) => {
 
   return (
     <div
-      style={{ position: "relative", height: "100%", willChange: "transform" }}
+      style={{
+        position: "relative",
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
       {/* 代理组导航栏 */}
       {mode === "rule" && (
@@ -1068,35 +1052,9 @@ export const ProxyGroups = (props: Props) => {
         />
       )}
 
-      <Virtuoso
-        ref={virtuosoRef}
-        style={{ height: "calc(100% - 14px)" }}
-        totalCount={renderList.length}
-        increaseViewportBy={{ top: 200, bottom: 200 }}
-        overscan={150}
-        defaultItemHeight={56}
-        scrollerRef={(ref) => {
-          scrollerRef.current = ref as Element;
-        }}
-        components={{
-          Footer: VirtuosoFooter,
-        }}
-        // 添加平滑滚动设置
-        initialScrollTop={scrollPositionRef.current[mode]}
-        computeItemKey={(index) => renderList[index].key}
-        itemContent={(index) => (
-          <ProxyRender
-            key={renderList[index].key}
-            item={renderList[index]}
-            indent={mode === "rule" || mode === "script"}
-            onHeadState={onHeadState}
-            onChangeProxy={handleChangeProxy}
-            getSelectedForGroup={getSelectedForGroup}
-            getDisplayNowForGroup={getDisplayNowForGroup}
-            getManualSelectionForGroup={getManualSelectionForGroup}
-          />
-        )}
-      />
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {proxyList}
+      </div>
       <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
       <Snackbar
         open={delayCheckBusyWarning.open}

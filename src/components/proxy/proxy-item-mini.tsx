@@ -1,29 +1,38 @@
 import { CheckCircleOutlineRounded, LabelOutlined } from "@mui/icons-material";
-import { alpha, Box, ListItemButton, styled, Typography } from "@mui/material";
+import { alpha, styled } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { useCallback, useEffect, useReducer } from "react";
-import { useTranslation } from "react-i18next";
+import { memo, useCallback, useEffect, useReducer } from "react";
 
 import { BaseLoading } from "@/components/base";
 import delayManager, {
   getGroupDelayTimeout,
-  DelayUpdate,
+  type DelayUpdate,
 } from "@/services/delay";
 
+export type ProxyItemGroupInfo = Pick<
+  IProxyGroupItem,
+  "name" | "type" | "timeout" | "selectedTimeout"
+>;
+
 interface Props {
-  group: IProxyGroupItem;
+  group: ProxyItemGroupInfo;
   proxy: IProxyItem;
   selected: boolean;
-  /** 仅当为 true 时显示「手动选择」图标（Selector/URLTest/Fallback 组且 profile 与 core 一致时） */
   showManualIcon?: boolean;
   showType?: boolean;
-  /** 当该项是子分组时，展示「分组名 (该分组当前使用的节点)」 */
   itemDisplayName?: string;
   onClick?: (name: string) => void;
 }
 
-// 多列布局
-export const ProxyItemMini = (props: Props) => {
+const PRESET_NAMES = new Set([
+  "DIRECT",
+  "REJECT",
+  "REJECT-DROP",
+  "PASS",
+  "COMPATIBLE",
+]);
+
+function ProxyItemMiniInner(props: Props) {
   const {
     group,
     proxy,
@@ -34,55 +43,47 @@ export const ProxyItemMini = (props: Props) => {
     onClick,
   } = props;
 
-  const { t } = useTranslation();
-
-  const presetList = ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"];
-  const isPreset = presetList.includes(proxy.name);
-  // -1/<=0 为不显示，-2 为 loading
+  const isPreset = PRESET_NAMES.has(proxy.name);
   const [delayState, setDelayState] = useReducer(
     (_: DelayUpdate, next: DelayUpdate) => next,
     { delay: -1, updatedAt: 0 },
   );
   const timeout = getGroupDelayTimeout(group, showManualIcon);
+  const proxyName = proxy.name;
+  const groupName = group.name;
 
   useEffect(() => {
     if (isPreset) return;
-    delayManager.setListener(proxy.name, group.name, setDelayState);
-
+    delayManager.setListener(proxyName, groupName, setDelayState);
     return () => {
-      delayManager.removeListener(proxy.name, group.name);
+      delayManager.removeListener(proxyName, groupName);
     };
-  }, [isPreset, proxy.name, group.name]);
+  }, [isPreset, proxyName, groupName]);
+
+  const historyTime = proxy.history?.[proxy.history.length - 1]?.time;
+  const historyDelay = proxy.history?.[proxy.history.length - 1]?.delay;
 
   const updateDelay = useCallback(() => {
-    if (!proxy) return;
-    const cachedUpdate = delayManager.getDelayUpdate(proxy.name, group.name);
+    const cachedUpdate = delayManager.getDelayUpdate(proxyName, groupName);
     if (cachedUpdate) {
       setDelayState({ ...cachedUpdate });
       return;
     }
 
-    const fallbackDelay = delayManager.getDelayFix(proxy, group.name);
+    const fallbackDelay = delayManager.getDelayFix(proxy, groupName);
     if (fallbackDelay === -1) {
       setDelayState({ delay: -1, updatedAt: 0 });
       return;
     }
 
     let updatedAt = 0;
-    const history = proxy.history;
-    if (history && history.length > 0) {
-      const lastRecord = history[history.length - 1];
-      const parsed = Date.parse(lastRecord.time);
-      if (!Number.isNaN(parsed)) {
-        updatedAt = parsed;
-      }
+    if (historyTime) {
+      const parsed = Date.parse(historyTime);
+      if (!Number.isNaN(parsed)) updatedAt = parsed;
     }
 
-    setDelayState({
-      delay: fallbackDelay,
-      updatedAt,
-    });
-  }, [proxy, group.name]);
+    setDelayState({ delay: fallbackDelay, updatedAt });
+  }, [proxy, proxyName, groupName, historyTime, historyDelay]);
 
   useEffect(() => {
     updateDelay();
@@ -90,87 +91,34 @@ export const ProxyItemMini = (props: Props) => {
 
   const onDelay = useLockFn(async () => {
     setDelayState({ delay: -2, updatedAt: Date.now() });
-    setDelayState(
-      await delayManager.checkDelay(proxy.name, group.name, timeout),
-    );
+    setDelayState(await delayManager.checkDelay(proxyName, groupName, timeout));
   });
 
   const delayValue = delayState.delay;
+  const delayText =
+    delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
+  const isSuccess =
+    delayText !== "" &&
+    delayText !== "T" &&
+    delayText !== "E" &&
+    delayText !== "-" &&
+    delayText !== "testing";
+  const showDelay = delayValue > 0;
+  const groupType = group.type?.toLowerCase() ?? "";
+  const label = itemDisplayName ?? proxyName;
 
   return (
-    <ListItemButton
-      dense
-      selected={selected}
-      onClick={() => onClick?.(proxy.name)}
-      sx={[
-        {
-          height: 56,
-          borderRadius: 1.5,
-          pl: 1.5,
-          pr: 1,
-          justifyContent: "space-between",
-          alignItems: "center",
-        },
-        ({ palette: { mode, primary, success } }) => {
-          const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
-          const showDelay = delayValue > 0;
-          const selectColor = mode === "light" ? primary.main : primary.light;
-
-          // 判断节点是否测试成功（不是 T 或 E）
-          const delayText =
-            delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
-          const isSuccess =
-            delayText !== "T" &&
-            delayText !== "E" &&
-            delayText !== "-" &&
-            delayText !== "testing" &&
-            delayText !== "";
-
-          // 成功的节点使用浅绿色背景
-          const finalBgcolor = isSuccess ? alpha(success.main, 0.15) : bgcolor;
-
-          return {
-            "&:hover .the-check": { display: !showDelay ? "block" : "none" },
-            "&:hover .the-delay": { display: showDelay ? "block" : "none" },
-            "&:hover .the-icon": { display: "none" },
-            "& .the-pin": {
-              position: "absolute",
-              fontSize: "12px",
-              top: "-5px",
-              right: "-5px",
-            },
-            "&.Mui-selected": {
-              width: `calc(100% + 3px)`,
-              marginLeft: `-3px`,
-              borderLeft: `3px solid ${selectColor}`,
-              bgcolor:
-                mode === "light"
-                  ? alpha(primary.main, 0.15)
-                  : alpha(primary.main, 0.35),
-            },
-            backgroundColor: finalBgcolor,
-          };
-        },
-      ]}
+    <CellButton
+      type="button"
+      data-selected={selected ? "1" : "0"}
+      data-success={isSuccess ? "1" : "0"}
+      data-has-delay={showDelay ? "1" : "0"}
+      title={`${label}\n${proxy.now ?? ""}`}
+      onClick={() => onClick?.(proxyName)}
     >
-      <Box
-        title={`${itemDisplayName ?? proxy.name}\n${proxy.now ?? ""}`}
-        sx={{ overflow: "hidden" }}
-      >
-        <Typography
-          variant="body2"
-          component="div"
-          color="text.primary"
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            textOverflow: "ellipsis",
-            wordBreak: "break-all",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {showManualIcon && group.type?.toLowerCase() !== "fallback" && (
+      <CellMain>
+        <NameRow>
+          {showManualIcon && groupType !== "fallback" && (
             <LabelOutlined
               sx={{
                 fontSize: 14,
@@ -181,113 +129,56 @@ export const ProxyItemMini = (props: Props) => {
               titleAccess="manual"
             />
           )}
-          {itemDisplayName ?? proxy.name}
-        </Typography>
-
+          <NameText>{label}</NameText>
+        </NameRow>
         {showType && (
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "nowrap",
-              flex: "none",
-              marginTop: "4px",
-            }}
-          >
+          <MetaRow>
             {proxy.now && !itemDisplayName && (
-              <Typography
-                variant="body2"
-                component="div"
-                color="text.secondary"
-                sx={{
-                  display: "block",
-                  textOverflow: "ellipsis",
-                  wordBreak: "break-all",
-                  overflow: "hidden",
-                  whiteSpace: "nowrap",
-                  marginRight: "8px",
-                }}
-              >
-                {proxy.now}
-              </Typography>
+              <NowText>{proxy.now}</NowText>
             )}
-            {!!proxy.provider && (
-              <TypeBox color="text.secondary" component="span">
-                {proxy.provider}
-              </TypeBox>
-            )}
-            <TypeBox color="text.secondary" component="span">
-              {proxy.type}
-            </TypeBox>
-            {proxy.udp && (
-              <TypeBox color="text.secondary" component="span">
-                UDP
-              </TypeBox>
-            )}
-            {proxy.xudp && (
-              <TypeBox color="text.secondary" component="span">
-                XUDP
-              </TypeBox>
-            )}
-            {proxy.tfo && (
-              <TypeBox color="text.secondary" component="span">
-                TFO
-              </TypeBox>
-            )}
-            {proxy.mptcp && (
-              <TypeBox color="text.secondary" component="span">
-                MPTCP
-              </TypeBox>
-            )}
-            {proxy.smux && (
-              <TypeBox color="text.secondary" component="span">
-                SMUX
-              </TypeBox>
-            )}
-          </Box>
+            {!!proxy.provider && <TypeTag>{proxy.provider}</TypeTag>}
+            <TypeTag>{proxy.type}</TypeTag>
+            {proxy.udp && <TypeTag>UDP</TypeTag>}
+            {proxy.xudp && <TypeTag>XUDP</TypeTag>}
+            {proxy.tfo && <TypeTag>TFO</TypeTag>}
+            {proxy.mptcp && <TypeTag>MPTCP</TypeTag>}
+            {proxy.smux && <TypeTag>SMUX</TypeTag>}
+          </MetaRow>
         )}
-      </Box>
-      <Box
-        sx={{ ml: 0.5, color: "primary.main", display: isPreset ? "none" : "" }}
-      >
+      </CellMain>
+      <CellSide style={{ display: isPreset ? "none" : undefined }}>
         {delayValue === -2 && (
           <Widget>
             <BaseLoading />
           </Widget>
         )}
         {!proxy.provider && delayValue !== -2 && (
-          // provider 的节点不支持检测
           <Widget
             className="the-check"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onDelay();
+              void onDelay();
             }}
-            sx={({ palette }) => ({
-              display: "none", // hover 时显示
-              ":hover": { bgcolor: alpha(palette.primary.main, 0.15) },
-            })}
           >
             Check
           </Widget>
         )}
-
         {delayValue >= 0 && (
-          // 显示延迟
           <Widget
             className="the-delay"
+            data-tone={
+              delayManager.formatDelayColor(delayValue, timeout) ===
+              "error.main"
+                ? "error"
+                : "success"
+            }
             onClick={(e) => {
               if (proxy.provider) return;
               e.preventDefault();
               e.stopPropagation();
-              onDelay();
+              void onDelay();
             }}
-            color={delayManager.formatDelayColor(delayValue, timeout)}
-            sx={({ palette }) =>
-              !proxy.provider
-                ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
-                : {}
-            }
           >
             {delayManager.formatDelay(delayValue, timeout)}
           </Widget>
@@ -296,41 +187,146 @@ export const ProxyItemMini = (props: Props) => {
           delayValue !== -2 &&
           delayValue < 0 &&
           selected && (
-            // 展示已选择的 icon
             <CheckCircleOutlineRounded
               className="the-icon"
               sx={{ fontSize: 16, mr: 0.5, display: "block" }}
             />
           )}
-      </Box>
-      {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
+      </CellSide>
+      {showManualIcon && groupType.includes("fallback") && (
         <span className="the-pin" title="manual">
           📌
         </span>
       )}
-    </ListItemButton>
+    </CellButton>
   );
-};
+}
 
-const Widget = styled(Box)(({ theme: { typography } }) => ({
-  padding: "2px 4px",
-  fontSize: 14,
-  fontFamily: typography.fontFamily,
-  borderRadius: "4px",
+function miniPropsEqual(prev: Props, next: Props) {
+  const a = prev.proxy;
+  const b = next.proxy;
+  return (
+    prev.selected === next.selected &&
+    prev.showManualIcon === next.showManualIcon &&
+    prev.showType === next.showType &&
+    prev.itemDisplayName === next.itemDisplayName &&
+    prev.group.name === next.group.name &&
+    prev.group.type === next.group.type &&
+    prev.group.timeout === next.group.timeout &&
+    prev.group.selectedTimeout === next.group.selectedTimeout &&
+    a.name === b.name &&
+    a.type === b.type &&
+    a.now === b.now &&
+    a.provider === b.provider &&
+    a.udp === b.udp &&
+    a.xudp === b.xudp &&
+    a.tfo === b.tfo &&
+    a.mptcp === b.mptcp &&
+    a.smux === b.smux
+  );
+}
+
+export const ProxyItemMini = memo(ProxyItemMiniInner, miniPropsEqual);
+
+const CellButton = styled("button")(({ theme }) => {
+  const { mode, primary, success } = theme.palette;
+  const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
+  const selectColor = mode === "light" ? primary.main : primary.light;
+  return {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    height: 56,
+    margin: 0,
+    padding: "0 8px 0 12px",
+    border: "none",
+    borderRadius: 12,
+    cursor: "pointer",
+    textAlign: "left",
+    color: "inherit",
+    backgroundColor: bgcolor,
+    "&[data-success='1']": {
+      backgroundColor: alpha(success.main, 0.15),
+    },
+    "&[data-selected='1']": {
+      width: "calc(100% + 3px)",
+      marginLeft: "-3px",
+      borderLeft: `3px solid ${selectColor}`,
+      backgroundColor:
+        mode === "light" ? alpha(primary.main, 0.15) : alpha(primary.main, 0.35),
+    },
+    "& .the-check": { display: "none" },
+    "&[data-has-delay='0']:hover .the-check": { display: "block" },
+    "&:hover .the-icon": { display: "none" },
+    "& .the-pin": {
+      position: "absolute",
+      fontSize: "12px",
+      top: "-5px",
+      right: "-5px",
+    },
+  };
+});
+
+const CellMain = styled("div")({
+  overflow: "hidden",
+  minWidth: 0,
+  flex: 1,
+});
+
+const NameRow = styled("div")({
+  display: "flex",
+  alignItems: "center",
+});
+
+const NameText = styled("span")(({ theme }) => ({
+  ...theme.typography.body2,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 }));
 
-const TypeBox = styled(Box, {
-  shouldForwardProp: (prop) => prop !== "component",
-})<{ component?: React.ElementType }>(({ theme: { typography } }) => ({
+const MetaRow = styled("div")({
+  display: "flex",
+  flexWrap: "nowrap",
+  marginTop: 4,
+});
+
+const NowText = styled("span")(({ theme }) => ({
+  ...theme.typography.body2,
+  color: theme.palette.text.secondary,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  marginRight: 8,
+}));
+
+const CellSide = styled("div")(({ theme }) => ({
+  marginLeft: 4,
+  color: theme.palette.primary.main,
+  flexShrink: 0,
+}));
+
+const Widget = styled("span")(({ theme }) => ({
+  padding: "2px 4px",
+  fontSize: 14,
+  fontFamily: theme.typography.fontFamily,
+  borderRadius: 4,
+  "&[data-tone='error']": { color: theme.palette.error.main },
+  "&[data-tone='success']": { color: theme.palette.success.main },
+  "&:hover": { backgroundColor: alpha(theme.palette.primary.main, 0.15) },
+}));
+
+const TypeTag = styled("span")(({ theme }) => ({
   display: "inline-block",
-  border: "1px solid #ccc",
-  borderColor: "text.secondary",
-  color: "text.secondary",
+  border: "1px solid",
+  borderColor: alpha(theme.palette.text.secondary, 0.36),
+  color: alpha(theme.palette.text.secondary, 0.72),
   borderRadius: 4,
   fontSize: 10,
-  fontFamily: typography.fontFamily,
-  marginRight: "4px",
-  marginTop: "auto",
+  fontFamily: theme.typography.fontFamily,
+  marginRight: 4,
   padding: "0 4px",
   lineHeight: 1.5,
 }));
