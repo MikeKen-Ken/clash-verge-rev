@@ -52,6 +52,7 @@ type ProxyGroup = {
   testUrl?: string;
   provider?: string;
   timeout?: number;
+  selectedTimeout?: number;
   connectTimes?: number;
   maxConnectTimes?: number;
 };

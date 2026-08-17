@@ -388,23 +388,6 @@ export const ProxyGroups = (props: Props) => {
     saveScrollPosition(0);
   }, [saveScrollPosition]);
 
-  const proxyList = (
-    <ProxyVirtuosoList
-      virtuosoRef={virtuosoRef}
-      scrollerRef={scrollerRef}
-      renderList={renderList}
-      indent={mode === "rule" || mode === "script"}
-      isChainMode={isChainMode}
-      initialScrollTop={scrollPositionRef.current[mode]}
-      onScroll={handleScroll as EventListener}
-      onHeadState={onHeadState}
-      onChangeProxy={handleChangeProxy}
-      getSelectedForGroup={getSelectedForGroup}
-      getDisplayNowForGroup={getDisplayNowForGroup}
-      getManualSelectionForGroup={getManualSelectionForGroup}
-    />
-  );
-
   // 关闭重复节点警告
   const handleCloseDuplicateWarning = useCallback(() => {
     setDuplicateWarning({ open: false, message: "" });
@@ -546,6 +529,23 @@ export const ProxyGroups = (props: Props) => {
       handleProxyGroupChange(group, proxy, options);
     },
     [handleProxyGroupChange, isChainMode, t],
+  );
+
+  const proxyList = (
+    <ProxyVirtuosoList
+      virtuosoRef={virtuosoRef}
+      scrollerRef={scrollerRef}
+      renderList={renderList}
+      indent={mode === "rule" || mode === "script"}
+      isChainMode={isChainMode}
+      initialScrollTop={scrollPositionRef.current[mode]}
+      onScroll={handleScroll as EventListener}
+      onHeadState={onHeadState}
+      onChangeProxy={handleChangeProxy}
+      getSelectedForGroup={getSelectedForGroup}
+      getDisplayNowForGroup={getDisplayNowForGroup}
+      getManualSelectionForGroup={getManualSelectionForGroup}
+    />
   );
 
   // 测全部延迟：按组顺序测试；同一会话内同一出站名复用首轮测速（含嵌套组出现在多个父 selector）
