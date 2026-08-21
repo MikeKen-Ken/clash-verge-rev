@@ -370,7 +370,7 @@ const ProfilePage = () => {
 
   const onGenerateMergedProfile = useLockFn(
     async (inclusionOverride?: Record<string, boolean>) => {
-      showNotice.info("开始执行配置合并", 1500);
+      showNotice.info("Starting profile merge", 1500);
       const freshProfiles = await getProfiles();
       const items = filterMergeProfileItems(freshProfiles?.items);
       const inclusion = inclusionOverride ?? mergeInclusion;
@@ -390,7 +390,7 @@ const ProfilePage = () => {
         );
 
       if (!sourceProfiles.length) {
-        showNotice.error("没有勾选参与合并的远程订阅");
+        showNotice.error("No remote subscriptions selected for merging");
         return;
       }
 
@@ -469,7 +469,7 @@ const ProfilePage = () => {
         await saveProfileFile(targetProfile.uid, nextText);
         await enhanceProfiles();
         await mutateProfiles();
-        showNotice.success(`合并完成：已处理 ${sourceProfiles.length} 个远程配置`, 3000);
+        showNotice.success(`Merge complete: processed ${sourceProfiles.length} remote profiles`, 3000);
       } catch (err: any) {
         showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
       }
@@ -477,7 +477,7 @@ const ProfilePage = () => {
   );
 
   const updateAllRemoteAndMerge = useLockFn(async (source: string) => {
-    showNotice.info(`${source}：开始更新远程规则`, 1500);
+    showNotice.info(`${source}: starting remote rule update`, 1500);
     const throttleMutate = throttle(mutateProfiles, 2000, {
       trailing: true,
     });
@@ -503,7 +503,7 @@ const ProfilePage = () => {
       });
     });
 
-    showNotice.success(`${source}：远程规则更新完成，开始合并`, 2000);
+    showNotice.success(`${source}: remote rule update complete; starting merge`, 2000);
     await onGenerateMergedProfile();
   });
 
@@ -1125,7 +1125,7 @@ const ProfilePage = () => {
           <IconButton
             size="small"
             color="inherit"
-            title="打开 Clash 数据目录"
+            title="Open Clash data directory"
             onClick={() => void openAppDir()}
           >
             <FolderOpenRounded />
@@ -1141,11 +1141,11 @@ const ProfilePage = () => {
           </IconButton>
 
           <FormControl size="small" sx={{ minWidth: 110 }}>
-            <InputLabel id="global-update-hours-label">定时(小时)</InputLabel>
+            <InputLabel id="global-update-hours-label">Schedule (hours)</InputLabel>
             <Select
               labelId="global-update-hours-label"
               value={globalUpdateHours}
-              label="定时(小时)"
+            label="Schedule (hours)"
               onChange={(event) =>
                 setGlobalUpdateHours(Number(event.target.value))
               }
@@ -1162,7 +1162,7 @@ const ProfilePage = () => {
             <IconButton
               size="small"
               color="warning"
-              title="数据异常，点击强制刷新"
+            title="Data appears invalid; click to force refresh"
               onClick={onEmergencyRefresh}
               sx={{
                 animation: "pulse 2s infinite",

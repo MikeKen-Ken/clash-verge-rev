@@ -113,12 +113,12 @@ const LogPage = () => {
   const handleExportLogs = useLockFn(async () => {
     const raw = logData ?? [];
     if (raw.length === 0) {
-      showNotice.info("当前没有可导出的日志");
+      showNotice.info("There are no logs to export");
       return;
     }
     const defaultPath = `clash-verge-logs-${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.txt`;
     const savePath = await save({
-      title: "导出日志",
+      title: "Export logs",
       defaultPath,
     });
     if (!savePath || Array.isArray(savePath)) {
@@ -126,11 +126,11 @@ const LogPage = () => {
     }
     try {
       await exportTextFile(savePath, formatLogExportLines(raw));
-      showNotice.success("日志已导出");
+      showNotice.success("Logs exported");
     } catch (error) {
       console.error(error);
       showNotice.error(
-        error instanceof Error ? `导出失败：${error.message}` : "导出失败",
+        error instanceof Error ? `Export failed: ${error.message}` : "Export failed",
       );
     }
   });
@@ -215,7 +215,7 @@ const LogPage = () => {
               void handleExportLogs();
             }}
           >
-            导出日志
+            Export logs
           </Button>
           <Button
             size="small"

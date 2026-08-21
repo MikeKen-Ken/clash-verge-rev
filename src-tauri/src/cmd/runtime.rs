@@ -141,7 +141,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
             let runtime = Config::runtime().await;
             let cfg_src = runtime.latest_arc();
             let Some(cfg) = cfg_src.config.as_ref() else {
-                return Err("运行时配置未就绪".into());
+                return Err("Runtime configuration is not ready".into());
             };
             enhance::apply_proxy_ads_block(cfg.clone())
         };

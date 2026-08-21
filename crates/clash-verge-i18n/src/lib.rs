@@ -1,7 +1,7 @@
 use rust_i18n::i18n;
 
-const DEFAULT_LANGUAGE: &str = "zh";
-i18n!("locales", fallback = "zh");
+const DEFAULT_LANGUAGE: &str = "en";
+i18n!("locales", fallback = "en");
 
 /// 语言解析逻辑在非测试构建中暂未接入（`sync_locale` / `set_locale` 固定 zh），保留给单元测试与后续扩展。
 #[cfg(test)]

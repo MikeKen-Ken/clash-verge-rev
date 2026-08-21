@@ -19,17 +19,17 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 const AUTO_TRIGGER_LABELS: Record<string, string> = {
-  scheduled: "定时自动备份",
-  merge: "全局扩展变更备份",
-  script: "全局脚本变更备份",
-  profile: "订阅变更备份",
+  scheduled: "Scheduled automatic backup",
+  merge: "Global enhancement change backup",
+  script: "Global script change backup",
+  profile: "Subscription change backup",
 };
 
 const AUTO_TRIGGER_DESCRIPTIONS: Record<string, string> = {
-  scheduled: "按设定频率在后台自动创建",
-  merge: "全局扩展配置变更后自动创建",
-  script: "全局脚本变更后自动创建",
-  profile: "订阅增删改后自动创建",
+  scheduled: "Created automatically in the background at the configured interval",
+  merge: "Created automatically after global enhancement configuration changes",
+  script: "Created automatically after global script changes",
+  profile: "Created automatically after subscriptions are added, removed, or changed",
 };
 
 export interface LocalBackupDisplayInfo {
@@ -46,7 +46,7 @@ const formatFileSize = (contentLength?: number) => {
 };
 
 const getPlatformLabel = (platform?: string) => {
-  if (!platform) return "未知平台";
+  if (!platform) return "Unknown platform";
   return PLATFORM_LABELS[platform.toLowerCase()] ?? platform;
 };
 
@@ -64,7 +64,7 @@ export const getLocalBackupDisplayInfo = (
   if (!match?.groups) {
     const stem = filename.replace(/\.zip$/i, "");
     const detailParts = [
-      "导入或外部备份文件",
+      "Imported or external backup file",
       timeText,
       fileSize,
     ].filter(Boolean);
@@ -78,11 +78,11 @@ export const getLocalBackupDisplayInfo = (
   const platform = getPlatformLabel(match.groups.platform);
   const trigger = match.groups.trigger?.toLowerCase();
   const displayName = trigger
-    ? (AUTO_TRIGGER_LABELS[trigger] ?? "自动本地备份")
-    : "手动本地备份";
+    ? (AUTO_TRIGGER_LABELS[trigger] ?? "Automatic local backup")
+    : "Manual local backup";
   const triggerDescription = trigger
-    ? (AUTO_TRIGGER_DESCRIPTIONS[trigger] ?? "关键变更后自动创建")
-    : "通过「备份」按钮手动创建";
+    ? (AUTO_TRIGGER_DESCRIPTIONS[trigger] ?? "Created automatically after important changes")
+    : "Created manually with the Backup button";
 
   const detailParts = [triggerDescription, platform, timeText, fileSize].filter(
     Boolean,

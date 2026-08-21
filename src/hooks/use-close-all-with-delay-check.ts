@@ -31,26 +31,26 @@ export const useCloseAllWithDelayCheck = () => {
     markCloseConnectionsStarted();
 
     delayCheckingNoticeIdRef.current = showNotice.info(
-      `${t("proxies.page.tooltips.delayCheck")}进行中...`,
+      `${t("proxies.page.tooltips.delayCheck")} in progress...`,
       0,
     );
-    const pingDelayCheckNotice = (detailZh: string) => {
+    const pingDelayCheckNotice = (detail: string) => {
       const nid = delayCheckingNoticeIdRef.current;
       if (nid == null) return;
       updateNotice(
         nid,
-        `${t("proxies.page.tooltips.delayCheck")}进行中\n${detailZh}`,
+        `${t("proxies.page.tooltips.delayCheck")} in progress\n${detail}`,
         0,
       );
     };
 
     try {
       if (!proxiesData?.groups) {
-        pingDelayCheckNotice("无代理组数据，直接关闭非 DIRECT 连接…");
+        pingDelayCheckNotice("No proxy group data; closing non-DIRECT connections...");
         debugLog("[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)");
         await closeConnectionsExcludingDirect();
         showNotice.success(
-          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
+          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
         );
         return;
       }
@@ -78,12 +78,12 @@ export const useCloseAllWithDelayCheck = () => {
       if (allProviders.size > 0) {
         debugLog(`[CloseAll] Checking delays for ${allProviders.size} providers`);
         pingDelayCheckNotice(
-          `正在对 ${allProviders.size} 个订阅提供者执行健康检查（与组内叶子测速并行准备）…`,
+          `Running health checks for ${allProviders.size} providers (preparing leaf-node tests in parallel)...`,
         );
         await Promise.allSettled(
           [...allProviders].map((provider) => healthcheckProxyProvider(provider)),
         );
-        pingDelayCheckNotice("订阅提供者健康检查已完成，开始按组测速…");
+        pingDelayCheckNotice("Provider health checks complete; starting group tests...");
       }
 
       let plannedGroupCount = 0;
@@ -105,8 +105,8 @@ export const useCloseAllWithDelayCheck = () => {
       }
       pingDelayCheckNotice(
         plannedGroupCount > 0
-          ? `准备：共 ${plannedGroupCount} 个代理组将顺序测速`
-          : "当前无可测速的叶子节点分组",
+          ? `Preparing: testing ${plannedGroupCount} proxy groups in sequence`
+          : "No proxy groups with testable leaf nodes",
       );
 
       let groupPhase = 0;
@@ -137,8 +137,8 @@ export const useCloseAllWithDelayCheck = () => {
         groupPhase += 1;
         const phaseLabel =
           plannedGroupCount > 0
-            ? `第 ${groupPhase}/${plannedGroupCount} 组`
-            : `组「${group.name}」`;
+            ? `Group ${groupPhase}/${plannedGroupCount}`
+            : `Group "${group.name}"`;
 
         const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
         const testableProxyNames = groupProxyNames.filter(
@@ -153,7 +153,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${group.name}」（节点级，${groupProxyNames.length} 个叶子，超时 ${timeout}ms）`,
+          `${phaseLabel}: testing "${group.name}" (${groupProxyNames.length} leaf nodes, timeout ${timeout}ms)`,
         );
 
         try {
@@ -169,7 +169,7 @@ export const useCloseAllWithDelayCheck = () => {
           } else if (testableProxyNames.length > 0) {
             if (missingBulkReuse.length < testableProxyNames.length) {
               pingDelayCheckNotice(
-                `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点测速（${missingBulkReuse.length}/${testableProxyNames.length}）…`,
+                `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableProxyNames.length})...`,
               );
             }
             delayManager.markGroupDelayTesting(group.name, groupProxyNames);
@@ -205,7 +205,7 @@ export const useCloseAllWithDelayCheck = () => {
       );
       if (switchable.length > 0) {
         pingDelayCheckNotice(
-          `组内测速已完成，正在对 ${switchable.length} 个 url-test / fallback 组评估自动切换…`,
+          `Group tests complete; evaluating automatic switching for ${switchable.length} url-test/fallback groups...`,
         );
       }
 
@@ -264,7 +264,7 @@ export const useCloseAllWithDelayCheck = () => {
             try {
               switchPhase += 1;
               pingDelayCheckNotice(
-                `url-test/fallback 切换 ${switchPhase}：「${group.name}」${currentProxy ?? "（无）"} → ${firstSuccessProxy}`,
+                `url-test/fallback switch ${switchPhase}: "${group.name}"${currentProxy ?? " (none)"} → ${firstSuccessProxy}`,
               );
               debugLog(
                 `[CloseAll] Auto-switching group ${group.name}: ${currentProxy || "none"} -> ${firstSuccessProxy}`,
@@ -289,11 +289,11 @@ export const useCloseAllWithDelayCheck = () => {
         }
       }
 
-      pingDelayCheckNotice("正在关闭非 DIRECT 的活跃连接…");
+      pingDelayCheckNotice("Closing active non-DIRECT connections...");
       // Close all connections except those using DIRECT
       await closeConnectionsExcludingDirect();
 
-      pingDelayCheckNotice("连接清理完成，正在发送完成事件…");
+      pingDelayCheckNotice("Connection cleanup complete; sending completion event...");
       // 发送完成通知
       try {
         await invoke("notify_close_all_completed");
@@ -302,7 +302,7 @@ export const useCloseAllWithDelayCheck = () => {
         console.error("[CloseAll] Failed to send notification:", error);
       }
       showNotice.success(
-        `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
+        `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
       );
     } catch (error) {
       console.error("[CloseAll] Error during close all connections:", error);
@@ -310,7 +310,7 @@ export const useCloseAllWithDelayCheck = () => {
       if (nid != null) {
         updateNotice(
           nid,
-          `${t("proxies.page.tooltips.delayCheck")}出错\n${error instanceof Error ? error.message : String(error)}`,
+          `${t("proxies.page.tooltips.delayCheck")} failed\n${error instanceof Error ? error.message : String(error)}`,
           0,
         );
       }

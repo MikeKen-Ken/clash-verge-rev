@@ -46,11 +46,11 @@ function formatCount(n: number): string {
 }
 
 function formatRowSecondary(row: ConnectivityScoreRow): string {
-  if (!row.hasStats) return "无统计";
+  if (!row.hasStats) return "No statistics";
   const delay = Number.isFinite(row.effectiveAvgDelayMs)
     ? `${Math.round(row.effectiveAvgDelayMs)}ms`
     : "—";
-  return `分数 ${row.score.toFixed(3)} · 成功 ${formatCount(row.weightedSuccess)} · 失败 ${formatCount(row.weightedFailure)} · 有效延迟 ${delay}`;
+  return `Score ${row.score.toFixed(3)} · Success ${formatCount(row.weightedSuccess)} · Failure ${formatCount(row.weightedFailure)} · Effective delay ${delay}`;
 }
 
 export type ConnectivityStatsDialogProps = {
@@ -95,21 +95,21 @@ export const ConnectivityStatsDialog = ({
     await hydrateConnectivityStatsFromDisk();
     await clearConnectivityStatsForProxy(name);
     await reloadRows();
-    showNotice.success(`已清空「${name}」的测速统计`);
+    showNotice.success(`Cleared connectivity statistics for "${name}"`);
     await refreshProxy();
   });
 
   const handleClearAll = useLockFn(async () => {
     if (clearing) return;
     const ok = window.confirm(
-      "确定清空所有节点的测速成功/失败统计吗？此操作不可恢复。",
+      "Clear connectivity statistics for all nodes? This action cannot be undone.",
     );
     if (!ok) return;
     setClearing(true);
     try {
       await clearConnectivityStats();
       await reloadRows();
-      showNotice.success("已清空节点测速统计");
+      showNotice.success("Cleared connectivity statistics for all nodes");
       await refreshProxy();
     } finally {
       setClearing(false);
@@ -125,7 +125,7 @@ export const ConnectivityStatsDialog = ({
           alignItems="center"
           gap={1}
         >
-          <Typography variant="h6">节点测速统计</Typography>
+          <Typography variant="h6">Node Connectivity Statistics</Typography>
           <Button
             variant="contained"
             size="small"
@@ -136,7 +136,7 @@ export const ConnectivityStatsDialog = ({
               void handleClearAll();
             }}
           >
-            一键清空
+            Clear All
           </Button>
         </Box>
       </DialogTitle>
@@ -145,7 +145,7 @@ export const ConnectivityStatsDialog = ({
         <List sx={{ py: 0, minHeight: 250 }}>
           {rows.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              暂无代理节点
+              No proxy nodes
             </Typography>
           ) : (
             rows.map((row) => (
@@ -172,14 +172,14 @@ export const ConnectivityStatsDialog = ({
                   },
                 ]}
                 secondaryAction={
-                  <Tooltip title={row.hasStats ? "清空该节点统计" : "无统计"}>
+                  <Tooltip title={row.hasStats ? "Clear node statistics" : "No statistics"}>
                     <span>
                       <IconButton
                         edge="end"
                         size="small"
                         color="error"
                         disabled={!row.hasStats}
-                        aria-label={`清空 ${row.name}`}
+                        aria-label={`Clear ${row.name}`}
                         onClick={() => {
                           void handleClearOne(row.name);
                         }}
@@ -212,7 +212,7 @@ export const ConnectivityStatsDialog = ({
 
       <DialogActions>
         <Button onClick={onClose} variant="outlined">
-          关闭
+          Close
         </Button>
       </DialogActions>
     </Dialog>

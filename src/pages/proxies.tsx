@@ -103,9 +103,9 @@ const IS_WINDOWS = getSystem() === "windows";
 const ProxyPage = () => {
   const { t } = useTranslation();
 
-  /** fork 专属：离线模式文案（硬编码简体中文） */
+  /** Fork-specific offline mode label. */
   const getModeLabel = (mode: Mode) =>
-    mode === "offline" ? "离线" : t(`proxies.page.modes.${mode}`);
+    mode === "offline" ? "Offline" : t(`proxies.page.modes.${mode}`);
 
   const location = useLocation();
 
@@ -301,7 +301,7 @@ const ProxyPage = () => {
         return;
       }
       if (!info?.available) {
-        throw new Error("检查更新返回异常结果");
+        throw new Error("The update check returned an invalid result");
       }
       showNotice.info("shared.feedback.notifications.updateAvailable", 2000);
       await info.downloadAndInstall();
@@ -418,12 +418,12 @@ const ProxyPage = () => {
                 }
               />
               <ToolbarControlTooltip
-                title="服务管理"
+                title="Service management"
                 panelOpen={Boolean(serviceMenuAnchor)}
               >
                 <IconButton
                   size="small"
-                  aria-label="服务管理"
+                  aria-label="Service management"
                   aria-controls={
                     serviceMenuAnchor ? "proxy-service-menu" : undefined
                   }
@@ -447,14 +447,14 @@ const ProxyPage = () => {
                     <ListItemIcon>
                       <BuildRounded fontSize="small" />
                     </ListItemIcon>
-                    <ListItemText>安装服务</ListItemText>
+                        <ListItemText>Install service</ListItemText>
                   </MenuItem>
                 )}
                 <MenuItem onClick={() => void onReinstallService()}>
                   <ListItemIcon>
                     <ReplayRounded fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>重新安装服务</ListItemText>
+                  <ListItemText>Reinstall service</ListItemText>
                 </MenuItem>
                 <MenuItem
                   disabled={!isServiceOk}
@@ -463,7 +463,7 @@ const ProxyPage = () => {
                   <ListItemIcon>
                     <DeleteForeverRounded fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText>卸载服务</ListItemText>
+                  <ListItemText>Uninstall service</ListItemText>
                 </MenuItem>
               </Menu>
             </Box>
@@ -496,7 +496,7 @@ const ProxyPage = () => {
                     if (!v) {
                       const closedCount = await closeLanConnections();
                       if (closedCount > 0) {
-                        showNotice.success(`已断开局域网连接（${closedCount}）`);
+                        showNotice.success(`Closed ${closedCount} LAN connection(s)`);
                       }
                     }
                   }}
@@ -580,7 +580,7 @@ const ProxyPage = () => {
               }
             />
             <ToolbarControlTooltip
-              title="按节点地区筛选（不含 Selector 组）"
+              title="Filter nodes by region (excluding Selector groups)"
               panelOpen={regionSelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -594,13 +594,13 @@ const ProxyPage = () => {
                   }}
                   sx={{ height: 32 }}
                   renderValue={(value) => {
-                    if (!value) return "地区筛选";
+                    if (!value) return "Filter by region";
                     const label = REGION_FLAG_LABELS[value];
                     return label ? `${value} ${label}` : value;
                   }}
                 >
                   <MenuItem value="">
-                    <em>全部地区</em>
+                    <em>All regions</em>
                   </MenuItem>
                   {availableRegions.map(({ flag, label }) => (
                     <MenuItem key={flag} value={flag}>
@@ -657,7 +657,7 @@ const ProxyPage = () => {
               </FormControl>
             </ToolbarControlTooltip>
             <ToolbarControlTooltip
-              title="测速数量步长"
+              title="Delay test concurrency"
               panelOpen={delayConcurrencySelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 88 }}>
@@ -690,7 +690,7 @@ const ProxyPage = () => {
           >
             {IS_WINDOWS && (
               <>
-                <Tooltip title="打开 Windows 防火墙设置（允许应用通过防火墙）">
+                <Tooltip title="Open Windows Firewall settings (allow the app through the firewall)">
                   <Button
                     size="small"
                     variant="outlined"
@@ -704,10 +704,10 @@ const ProxyPage = () => {
                       void openWindowsFirewallAllowedAppsSettings();
                     }}
                   >
-                    防火墙
+                    Firewall
                   </Button>
                 </Tooltip>
-                <Tooltip title="打开 Windows 系统代理设置（手动配置 HTTP 代理等）">
+                <Tooltip title="Open Windows system proxy settings (manually configure HTTP proxy, etc.)">
                   <Button
                     size="small"
                     variant="outlined"
@@ -721,15 +721,15 @@ const ProxyPage = () => {
                       void openSystemNetworkProxySettings();
                     }}
                   >
-                    系统代理
+                    System Proxy
                   </Button>
                 </Tooltip>
               </>
             )}
-            <Tooltip title="节点测速统计">
+            <Tooltip title="Node connectivity statistics">
               <IconButton
                 size="small"
-                aria-label="节点测速统计"
+                aria-label="Node connectivity statistics"
                 onClick={() => {
                   setConnectivityStatsOpen(true);
                 }}
@@ -737,11 +737,11 @@ const ProxyPage = () => {
                 <DeleteSweepRounded fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="刷新 UI">
+            <Tooltip title="Refresh UI">
               <IconButton
                 size="small"
                 onClick={handleRefreshProxy}
-                aria-label="刷新 UI"
+                aria-label="Refresh UI"
               >
                 <RefreshRounded fontSize="small" />
               </IconButton>
@@ -853,12 +853,12 @@ const ProxyPage = () => {
               allowLan={allowLan}
               ports={lanListenPorts}
             />
-            <Tooltip title="检查更新">
+            <Tooltip title="Check for updates">
               <span>
                 <IconButton
                   size="small"
                   color="inherit"
-                  aria-label="检查更新"
+                  aria-label="Check for updates"
                   disabled={checkingUpdate}
                   onClick={() => {
                     void handleCheckUpdate();

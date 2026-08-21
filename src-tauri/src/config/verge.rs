@@ -374,6 +374,15 @@ impl IVerge {
         match dirs::verge_path() {
             Ok(path) => match help::read_yaml::<Self>(&path).await {
                 Ok(mut config) => {
+                    // The Windows desktop build is English-only. Normalize legacy
+                    // persisted values so they cannot switch runtime notifications
+                    // back to a Chinese locale.
+                    if config.language.as_deref() != Some("en") {
+                        config.language = Some("en".into());
+                        if let Err(err) = config.save_file().await {
+                            logging!(warn, Type::Config, "Failed to persist English locale: {err}");
+                        }
+                    }
                     // compatibility
                     if let Some(start_page) = config.start_page.clone()
                         && start_page == "/home"
@@ -399,7 +408,7 @@ impl IVerge {
             app_log_max_size: Some(128),
             app_log_max_count: Some(8),
             clash_core: Some("verge-mihomo-custom".into()),
-            language: Some("zh".into()),
+            language: Some("en".into()),
             theme_mode: Some("system".into()),
             #[cfg(not(target_os = "windows"))]
             env_type: Some("bash".into()),
@@ -490,7 +499,9 @@ impl IVerge {
         patch!(app_log_max_size);
         patch!(app_log_max_count);
 
-        patch!(language);
+        if patch.language.is_some() {
+            self.language = Some("en".into());
+        }
         patch!(theme_mode);
         patch!(tray_event);
         patch!(env_type);

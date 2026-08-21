@@ -159,7 +159,7 @@ const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
           label={
             proxy.delay > 0
               ? `${proxy.delay}ms`
-              : t("shared.labels.timeout") || "超时"
+              : t("shared.labels.timeout") || "Timeout"
           }
           size="small"
           color={
@@ -311,7 +311,7 @@ export const ProxyChain = ({
         onUpdateChain([]);
       } catch (error) {
         console.error("Failed to disconnect from proxy chain:", error);
-        alert(t("proxies.page.chain.disconnectFailed") || "断开链式代理失败");
+        alert(t("proxies.page.chain.disconnectFailed") || "Failed to disconnect the proxy chain");
       } finally {
         setIsConnecting(false);
       }
@@ -319,7 +319,7 @@ export const ProxyChain = ({
     }
 
     if (proxyChain.length < 2) {
-      alert(t("proxies.page.chain.minimumNodes") || "链式代理至少需要2个节点");
+      alert(t("proxies.page.chain.minimumNodes") || "A proxy chain requires at least two nodes");
       return;
     }
 
@@ -337,7 +337,7 @@ export const ProxyChain = ({
 
       // 根据模式确定使用的代理组名称
       if (mode !== "global" && !selectedGroup) {
-        throw new Error("规则模式下必须选择代理组");
+        throw new Error("A proxy group must be selected in rule mode");
       }
 
       const targetGroup = mode === "global" ? "GLOBAL" : selectedGroup;
@@ -354,7 +354,7 @@ export const ProxyChain = ({
       debugLog("Successfully connected to proxy chain");
     } catch (error) {
       console.error("Failed to connect to proxy chain:", error);
-      alert(t("proxies.page.chain.connectFailed") || "连接链式代理失败");
+      alert(t("proxies.page.chain.connectFailed") || "Failed to connect the proxy chain");
     } finally {
       setIsConnecting(false);
     }
@@ -509,7 +509,7 @@ export const ProxyChain = ({
                 },
               }}
               title={
-                t("proxies.page.actions.clearChainConfig") || "删除链式配置"
+                t("proxies.page.actions.clearChainConfig") || "Clear proxy chain"
               }
             >
               <DeleteIcon fontSize="small" />
@@ -532,15 +532,15 @@ export const ProxyChain = ({
             title={
               proxyChain.length < 2
                 ? t("proxies.page.chain.minimumNodes") ||
-                "链式代理至少需要2个节点"
+                "A proxy chain requires at least two nodes"
                 : undefined
             }
           >
             {isConnecting
               ? t("proxies.page.actions.connecting") || "连接中..."
               : isConnected
-                ? t("proxies.page.actions.disconnect") || "断开"
-                : t("proxies.page.actions.connect") || "连接"}
+                ? t("proxies.page.actions.disconnect") || "Disconnect"
+                : t("proxies.page.actions.connect") || "Connect"}
           </Button>
         </Box>
       </Box>
@@ -551,9 +551,9 @@ export const ProxyChain = ({
       >
         {proxyChain.length === 1
           ? t("proxies.page.chain.minimumNodesHint") ||
-          "链式代理至少需要2个节点，请再添加一个节点。"
+          "A proxy chain requires at least two nodes. Add another node."
           : t("proxies.page.chain.instruction") ||
-          "按顺序点击节点添加到代理链中"}
+          "Click nodes in order to add them to the proxy chain"}
       </Alert>
 
       <Box sx={{ flex: 1, overflow: "auto" }}>

@@ -553,7 +553,7 @@ export const ProxyGroups = (props: Props) => {
     if (isDelayCheckingRef.current) {
       setDelayCheckBusyWarning({
         open: true,
-        message: t("proxies.page.tooltips.delayCheck") + "进行中，请稍后重试",
+        message: `${t("proxies.page.tooltips.delayCheck")} in progress; please try again later`,
       });
       return;
     }
@@ -561,15 +561,15 @@ export const ProxyGroups = (props: Props) => {
     clearDelayCheckManualOverrides();
     debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
     delayCheckingNoticeIdRef.current = showNotice.info(
-      `${t("proxies.page.tooltips.delayCheck")}进行中...`,
+      `${t("proxies.page.tooltips.delayCheck")} in progress...`,
       0,
     );
-    const pingDelayCheckNotice = (detailZh: string) => {
+    const pingDelayCheckNotice = (detail: string) => {
       const nid = delayCheckingNoticeIdRef.current;
       if (nid == null) return;
       updateNotice(
         nid,
-        `${t("proxies.page.tooltips.delayCheck")}进行中\n${detailZh}`,
+        `${t("proxies.page.tooltips.delayCheck")} in progress\n${detail}`,
         0,
       );
     };
@@ -607,8 +607,8 @@ export const ProxyGroups = (props: Props) => {
       }
       pingDelayCheckNotice(
         plannedGroupCount > 0
-          ? `准备：共 ${plannedGroupCount} 个代理组将依次测速`
-          : "准备：当前无可测速的叶子节点分组",
+          ? `Preparing: testing ${plannedGroupCount} proxy groups in sequence`
+          : "Preparing: no proxy groups with testable leaf nodes",
       );
 
       let groupPhase = 0;
@@ -635,8 +635,8 @@ export const ProxyGroups = (props: Props) => {
         groupPhase += 1;
         const phaseLabel =
           plannedGroupCount > 0
-            ? `第 ${groupPhase}/${plannedGroupCount} 组`
-            : `组「${groupName}」`;
+            ? `Group ${groupPhase}/${plannedGroupCount}`
+            : `Group "${groupName}"`;
 
         const testableNames = names.filter(
           (n): n is string => Boolean(n) && n !== "DIRECT" && n !== "REJECT",
@@ -650,7 +650,7 @@ export const ProxyGroups = (props: Props) => {
         );
 
         pingDelayCheckNotice(
-          `${phaseLabel}：正在测速「${groupName}」（节点级，${names.length} 个叶子，超时 ${timeout}ms）`,
+          `${phaseLabel}: testing "${groupName}" (${names.length} leaf nodes, timeout ${timeout}ms)`,
         );
 
         // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
@@ -667,7 +667,7 @@ export const ProxyGroups = (props: Props) => {
         } else if (testableNames.length > 0) {
           if (missingBulkReuse.length < testableNames.length) {
             pingDelayCheckNotice(
-              `${phaseLabel}：部分叶子复用他组同会话结果，对其余节点测速（${missingBulkReuse.length}/${testableNames.length}）…`,
+              `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableNames.length})...`,
             );
           }
           delayManager.markGroupDelayTesting(groupName, names);
@@ -707,7 +707,7 @@ export const ProxyGroups = (props: Props) => {
         const firstSuccessProxy = successCandidates[0]?.proxyName;
         if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
-            `${phaseLabel}：测速已完成，正在请求核心切换「${groupName}」→ ${firstSuccessProxy}`,
+            `${phaseLabel}: testing complete; asking the core to switch "${groupName}" → ${firstSuccessProxy}`,
           );
           await selectNodeForGroup(groupName, firstSuccessProxy, {
             reason: "proxy-ui-delay-bulk-auto",
@@ -719,14 +719,14 @@ export const ProxyGroups = (props: Props) => {
           });
         } else if (hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
-            `${phaseLabel}：测速期间已手动选择，跳过自动切换「${groupName}」`,
+            `${phaseLabel}: manual selection detected; skipping automatic switch for "${groupName}"`,
           );
           debugLog(
             `[ProxyGroups] 分组 ${groupName} 测速期间用户已手动选择，跳过自动切换`,
           );
         } else {
           pingDelayCheckNotice(
-            `${phaseLabel}：「${groupName}」无测速成功节点，跳过切换`,
+            `${phaseLabel}: no successful test result for "${groupName}"; skipping switch`,
           );
           debugLog(
             `[ProxyGroups] 分组 ${groupName} 未找到测速成功节点，保留核心当前选择`,
@@ -734,14 +734,14 @@ export const ProxyGroups = (props: Props) => {
         }
       }
       debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
-      pingDelayCheckNotice("测速与切换已完成，正在刷新代理数据并收尾…");
+      pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
     } catch (error) {
       console.error(`[ProxyGroups] 测试所有分组延迟出错`, error);
       const nid = delayCheckingNoticeIdRef.current;
       if (nid != null) {
         updateNotice(
           nid,
-          `${t("proxies.page.tooltips.delayCheck")}出错\n${error instanceof Error ? error.message : String(error)}`,
+          `${t("proxies.page.tooltips.delayCheck")} failed\n${error instanceof Error ? error.message : String(error)}`,
           0,
         );
       }
@@ -789,7 +789,7 @@ export const ProxyGroups = (props: Props) => {
           });
         onProxies();
         showNotice.success(
-          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}，连接清理将在后台继续`,
+          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
         );
       } finally {
         const noticeId = delayCheckingNoticeIdRef.current;
@@ -1022,7 +1022,7 @@ export const ProxyGroups = (props: Props) => {
           {availableGroups.length === 0 && (
             <MenuItem disabled>
               <Typography variant="body2" color="text.secondary">
-                暂无可用代理组
+            No proxy groups available
               </Typography>
             </MenuItem>
           )}

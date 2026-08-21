@@ -75,26 +75,26 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
         }
         NotificationEvent::CloseAllConnectionsStarted => {
             notify(
-                "开始关闭连接".into(),
-                "正在检测节点延迟并关闭所有连接...".into(),
+                "Closing connections".into(),
+                "Checking node delays and closing all connections...".into(),
             );
         }
         NotificationEvent::CloseAllConnectionsCompleted => {
             notify(
-                "操作完成".into(),
-                "所有连接已关闭，节点已切换完成，可以正常使用网络".into(),
+                "Operation complete".into(),
+                "All connections are closed and node switching is complete. Network access is ready.".into(),
             );
         }
         NotificationEvent::FallbackProxySwitched { group, from: _, to: _ } => {
             notify(
-                "节点自动切换".into(),
-                format!("分组 {} 触发了 fallback", group).into(),
+                "Node switched automatically".into(),
+                format!("Group {} triggered a fallback", group).into(),
             );
         }
         NotificationEvent::MaxConnectTimesDelayTest { group, proxy } => {
             notify(
-                "连接次数测速".into(),
-                format!("分组 {} 达到连接次数阈值，正在测速当前节点 {}", group, proxy).into(),
+                "Request count delay test".into(),
+                format!("Group {} reached the request count limit; testing current node {}", group, proxy).into(),
             );
         }
         #[cfg(target_os = "macos")]

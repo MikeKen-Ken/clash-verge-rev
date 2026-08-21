@@ -289,15 +289,15 @@ const ConnectionsPage = () => {
       },
     } as Partial<IConfigData>);
     setBlockedLanIps(next);
-    showNotice.success("已禁用该设备");
+    showNotice.success("Device disabled");
   });
   const onDisconnectDevice = useLockFn(async (sourceIp: string) => {
     const closedCount = await closeConnectionsBySourceIp(sourceIp);
     if (closedCount > 0) {
-      showNotice.success(`已断开设备连接（${closedCount}）`);
+      showNotice.success(`Disconnected ${closedCount} connection(s) from the device`);
       return;
     }
-    showNotice.success("该设备当前无可断开的连接");
+    showNotice.success("The device has no connections to disconnect");
   });
   const onEnableDevice = useLockFn(async (sourceIp: string) => {
     const next = normalizeBlockedLanSourceIps(
@@ -309,7 +309,7 @@ const ConnectionsPage = () => {
       },
     } as Partial<IConfigData>);
     setBlockedLanIps(next);
-    showNotice.success("已从禁用列表移除");
+    showNotice.success("Removed from the disabled list");
   });
   const flushLanSettingsPersist = useCallback(async () => {
     if (lanSettingsPersistRunningRef.current) return;
@@ -342,7 +342,7 @@ const ConnectionsPage = () => {
     };
     setLanMaxDevices(normalized);
     queueLanSettingsPersist();
-    showNotice.success("设备数量限制已生效");
+    showNotice.success("Device limit applied");
   }, [queueLanSettingsPersist]);
   const onLanSilentThresholdChange = useCallback((value: number) => {
     const normalized = Number.isFinite(value)
@@ -354,7 +354,7 @@ const ConnectionsPage = () => {
     };
     setLanSilentThresholdSeconds(normalized);
     queueLanSettingsPersist();
-    showNotice.success("静默阈值已生效");
+    showNotice.success("Idle threshold applied");
   }, [queueLanSettingsPersist]);
 
   const [closeMenuAnchor, setCloseMenuAnchor] = useState<null | HTMLElement>(null);
@@ -500,7 +500,7 @@ const ConnectionsPage = () => {
             startIcon={<RuleRounded />}
             onClick={() => setSessionRulesOpen(true)}
           >
-            临时规则 {sessionRules.length}
+                Temporary rules {sessionRules.length}
           </Button>
           <IconButton
             color="inherit"
@@ -522,7 +522,7 @@ const ConnectionsPage = () => {
           <ButtonGroup size="small" variant="contained">
             <Button onClick={handleCloseExcludingDirect}>
               <span style={{ whiteSpace: "nowrap" }}>
-                关闭非DIRECT连接
+                Close non-DIRECT connections
               </span>
             </Button>
             <Button
@@ -545,7 +545,7 @@ const ConnectionsPage = () => {
             }}
           >
             <MenuItem onClick={handleCloseExcludingDirect}>
-              关闭非DIRECT连接
+                Close non-DIRECT connections
             </MenuItem>
             <MenuItem onClick={handleCloseAll}>
               {t("shared.actions.closeAll")}
@@ -621,7 +621,7 @@ const ConnectionsPage = () => {
               })
             }
           >
-            设备视图 {activeLanDeviceCount}
+          Device view {activeLanDeviceCount}
           </Button>
         )}
         {connectionsType === "active" && connectionsView === "devices" && (
@@ -630,11 +630,11 @@ const ConnectionsPage = () => {
               value={String(lanMaxDevices)}
               onChange={(e) => onLanMaxDevicesChange(Number(e.target.value))}
               sx={{ minWidth: 110 }}
-              title="最大设备数（0=无限制）"
+              title="Maximum devices (0 = unlimited)"
             >
               {[0, 1, 2, 3, 4, 5, 8, 10, 15, 20].map((value) => (
                 <MenuItem key={value} value={String(value)}>
-                  <span style={{ fontSize: 14 }}>设备上限: {value}</span>
+                  <span style={{ fontSize: 14 }}>Device limit: {value}</span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>
@@ -642,11 +642,11 @@ const ConnectionsPage = () => {
               value={String(lanSilentThresholdSeconds)}
               onChange={(e) => onLanSilentThresholdChange(Number(e.target.value))}
               sx={{ minWidth: 170 }}
-              title="静默判定阈值（秒）"
+              title="Idle detection threshold (seconds)"
             >
               {[15, 30, 45, 60, 90, 120, 180, 300, 600].map((value) => (
                 <MenuItem key={value} value={String(value)}>
-                  <span style={{ fontSize: 14 }}>静默阈值：{value} 秒</span>
+                  <span style={{ fontSize: 14 }}>Idle threshold: {value}s</span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>
@@ -693,11 +693,11 @@ const ConnectionsPage = () => {
                 })
               }
               sx={{ minWidth: 100, flexShrink: 0 }}
-              title="已关闭保留条数"
+              title="Closed connection retention"
             >
               {CLOSED_CONNECTIONS_LIMITS.map((n) => (
                 <MenuItem key={n} value={String(n)}>
-                  <span style={{ fontSize: 14 }}>{n} 条</span>
+                  <span style={{ fontSize: 14 }}>{n} entries</span>
                 </MenuItem>
               ))}
             </BaseStyledSelect>
@@ -761,13 +761,13 @@ const ConnectionsPage = () => {
                   {device.sourceIp}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  连接数: {device.connectionCount}
+                  Connections: {device.connectionCount}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  最新链接: {device.latestHost || "-"}
+                  Latest host: {device.latestHost || "-"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  开始时间: {dayjs(device.latestStart).format("YYYY-MM-DD HH:mm:ss")}
+                  Started: {dayjs(device.latestStart).format("YYYY-MM-DD HH:mm:ss")}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   ↓ {parseTraffic(device.download)} / ↑ {parseTraffic(device.upload)}
@@ -779,7 +779,7 @@ const ConnectionsPage = () => {
                     variant="outlined"
                     onClick={() => onDisconnectDevice(device.sourceIp)}
                   >
-                    断开设备
+                    Disconnect device
                   </Button>
                   <Button
                     size="small"
@@ -787,7 +787,7 @@ const ConnectionsPage = () => {
                     variant="outlined"
                     onClick={() => onDisableDevice(device.sourceIp)}
                   >
-                    禁用设备
+                    Disable device
                   </Button>
                 </Box>
               </Box>
@@ -809,14 +809,14 @@ const ConnectionsPage = () => {
                   {ip}
                 </Typography>
                 <Typography variant="caption" color="warning.main">
-                  已禁用
+                  Disabled
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  最后使用: {(() => {
+                  Last used: {(() => {
                     const ts = blockedLastUsedMap.get(ip) ?? 0;
                     return ts > 0
                       ? dayjs(ts).format("YYYY-MM-DD HH:mm:ss")
-                      : "暂无记录";
+                      : "No record";
                   })()}
                 </Typography>
                 <Box sx={{ pt: 0.5 }}>
@@ -826,7 +826,7 @@ const ConnectionsPage = () => {
                     variant="outlined"
                     onClick={() => onEnableDevice(ip)}
                   >
-                    移除禁用
+                    Remove disable
                   </Button>
                 </Box>
               </Box>
@@ -848,10 +848,10 @@ const ConnectionsPage = () => {
                   {item.ip}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {item.status === "silent" ? "静默（连接仍存在）" : "已断开"}
+                  {item.status === "silent" ? "Idle (connection remains)" : "Disconnected"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  最后使用: {dayjs(item.lastUsed).format("YYYY-MM-DD HH:mm:ss")}
+                  Last used: {dayjs(item.lastUsed).format("YYYY-MM-DD HH:mm:ss")}
                 </Typography>
                 <Box sx={{ pt: 0.5, display: "flex", gap: 0.75, flexWrap: "wrap" }}>
                   <Button
@@ -860,7 +860,7 @@ const ConnectionsPage = () => {
                     variant="outlined"
                     onClick={() => onDisconnectDevice(item.ip)}
                   >
-                    断开设备
+                    Disconnect device
                   </Button>
                   <Button
                     size="small"
@@ -868,7 +868,7 @@ const ConnectionsPage = () => {
                     variant="outlined"
                     onClick={() => onDisableDevice(item.ip)}
                   >
-                    禁用设备
+                    Disable device
                   </Button>
                 </Box>
               </Box>

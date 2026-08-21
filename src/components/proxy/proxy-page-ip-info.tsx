@@ -60,10 +60,10 @@ export const ProxyPageIpInfo = ({
   };
 
   const tooltipTitle = !canCopy
-    ? "本机 IP"
+    ? "Local IP"
     : allowLan && endpoints.length > 0
-      ? "点击复制局域网地址"
-      : "点击复制本机 IP";
+      ? "Click to copy LAN address"
+      : "Click to copy local IP";
 
   return (
     <Box sx={cardSx}>
@@ -93,7 +93,7 @@ export const ProxyPageIpInfo = ({
             color={allowLan ? "primary.main" : "text.secondary"}
             sx={{ whiteSpace: "nowrap", flexShrink: 0, minWidth: 44 }}
           >
-            本机 IP
+            Local IP
           </Typography>
           {endpoints.length > 1 ? (
             <Box

@@ -24,7 +24,7 @@ pub async fn add_session_rule(
 #[tauri::command]
 pub async fn remove_session_rule(id: String) -> CmdResult {
     if !session_rules::remove_rule(&id) {
-        return Err("临时规则不存在".into());
+        return Err("Temporary rule does not exist".into());
     }
     feat::enhance_profiles()
         .await

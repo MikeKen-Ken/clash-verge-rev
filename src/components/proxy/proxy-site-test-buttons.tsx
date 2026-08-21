@@ -17,7 +17,7 @@ import delayManager from "@/services/delay";
 const SITE_TESTS = [
   {
     id: "baidu",
-    name: "百度",
+    name: "Baidu",
     url: "https://www.baidu.com",
     icon: baiduIcon,
   },
@@ -54,10 +54,10 @@ interface Props {
 }
 
 const MODE_HINT: Record<string, string> = {
-  rule: "规则模式：由配置规则决定出站（如国内站直连、国外站走代理）",
-  global: "全局模式：全部流量走当前全局节点",
-  direct: "直连模式：全部流量直连",
-  offline: "离线模式：规则为 MATCH,REJECT，测速结果预期失败",
+  rule: "Rule mode: routing follows the configured rules",
+  global: "Global mode: all traffic uses the current global node",
+  direct: "Direct mode: all traffic connects directly",
+  offline: "Offline mode: rules are MATCH,REJECT; delay tests are expected to fail",
 };
 
 const renderSiteIcon = (icon: string, name: string) => (
@@ -111,20 +111,20 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
   });
 
   const selectionHint = selection
-    ? `${selection.groupName} → ${selection.proxyName}${selection.isManualSelection ? "（手动）" : "（自动）"
+    ? `${selection.groupName} → ${selection.proxyName}${selection.isManualSelection ? " (manual)" : " (automatic)"
     }`
     : null;
 
   const buildTooltip = () => {
-    const modeHint = MODE_HINT[mode] ?? `当前模式：${mode}`;
+    const modeHint = MODE_HINT[mode] ?? `Current mode: ${mode}`;
     const globalNode =
       mode === "global" && selectionHint
-        ? `\n当前全局节点：${selectionHint}`
+        ? `\nCurrent global node: ${selectionHint}`
         : "";
-    const sites = SITE_TESTS.map(({ name, url }) => `${name}（${url}）`).join(
+    const sites = SITE_TESTS.map(({ name, url }) => `${name} (${url})`).join(
       "\n",
     );
-    return `${modeHint}\n同时测试：\n${sites}${globalNode}\n点击开始测速`;
+    return `${modeHint}\nTesting simultaneously:\n${sites}${globalNode}\nClick to start`;
   };
 
   return (
@@ -134,7 +134,7 @@ export const ProxySiteTestButtons = ({ mode, selection }: Props) => {
           size="small"
           disabled={testing}
           onClick={runAllTests}
-          aria-label="站点连通性测速"
+          aria-label="Test site connectivity"
           sx={{
             border: 1,
             borderColor: "divider",

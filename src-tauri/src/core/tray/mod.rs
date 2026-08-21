@@ -759,7 +759,7 @@ async fn create_tray_menu(
     let offline_mode = &CheckMenuItem::with_id(
         app_handle,
         MenuIds::OFFLINE_MODE,
-        "离线",
+        "Offline",
         true,
         current_proxy_mode == "offline",
         None::<&str>,
@@ -771,7 +771,7 @@ async fn create_tray_menu(
         let current_mode_text = match current_proxy_mode {
             "global" => clash_verge_i18n::t!("tray.global"),
             "direct" => clash_verge_i18n::t!("tray.direct"),
-            "offline" => std::borrow::Cow::Borrowed("离线"),
+            "offline" => std::borrow::Cow::Borrowed("Offline"),
             _ => clash_verge_i18n::t!("tray.rule"),
         };
         let outbound_modes_label = format!("{} ({})", texts.outbound_modes, current_mode_text);

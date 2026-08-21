@@ -329,7 +329,7 @@ pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result
 
     let response = clash_verge_service_ipc::start_clash(&payload)
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("Unable to connect to the Clash Verge Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;
@@ -366,7 +366,7 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
 pub(super) async fn poll_clash_logs_by_service() -> Result<Vec<CompactString>> {
     let response = clash_verge_service_ipc::get_clash_logs()
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("Unable to connect to the Clash Verge Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;
@@ -383,7 +383,7 @@ pub(super) async fn stop_core_by_service() -> Result<()> {
 
     let response = clash_verge_service_ipc::stop_clash()
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("Unable to connect to the Clash Verge Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;
@@ -420,7 +420,7 @@ pub async fn wait_and_check_service_available(status: &mut ServiceManager) -> Re
         }
         other => {
             status.0 = other.clone();
-            bail!("服务安装后仍未就绪: {:?}", other)
+            bail!("Service is still not ready after installation: {:?}", other)
         }
     }
 }
@@ -446,7 +446,7 @@ async fn probe_service_version() -> std::result::Result<ServiceStatus, String> {
                 );
                 Ok(ServiceStatus::NeedsReinstall)
             }
-            None => Err("服务版本为空".into()),
+            None => Err("Service version is empty".into()),
         },
         Err(e) => Err(e.to_string()),
     }
@@ -473,7 +473,7 @@ async fn wait_for_service_probe() -> ServiceStatus {
             }
         }
     }
-    ServiceStatus::Unavailable(format!("服务暂未就绪: {last_err}"))
+    ServiceStatus::Unavailable(format!("Service is not ready yet: {last_err}"))
 }
 
 impl ServiceManager {
@@ -491,7 +491,7 @@ impl ServiceManager {
 
     pub async fn init(&mut self) -> Result<()> {
         if let Err(e) = clash_verge_service_ipc::connect().await {
-            self.0 = ServiceStatus::Unavailable(format!("服务连接失败: {e}"));
+            self.0 = ServiceStatus::Unavailable(format!("Service connection failed: {e}"));
             return Err(e);
         }
         Ok(())
@@ -511,7 +511,7 @@ impl ServiceManager {
     /// 综合服务状态检查：等待就绪；仅版本不匹配才要求重装
     pub async fn check_service_comprehensive(&self) -> ServiceStatus {
         if !clash_verge_service_ipc::is_ipc_path_exists() {
-            return ServiceStatus::Unavailable("服务未安装".into());
+            return ServiceStatus::Unavailable("Service is not installed".into());
         }
         wait_for_service_probe().await
     }
@@ -530,8 +530,8 @@ impl ServiceManager {
                         Type::Service,
                         "本会话已尝试过自动重装，跳过并回退 Sidecar，避免重复要管理员密码"
                     );
-                    self.0 = ServiceStatus::Unavailable("服务需手动重装".into());
-                    return Err(anyhow::anyhow!("服务需手动重装"));
+                    self.0 = ServiceStatus::Unavailable("Service must be reinstalled manually".into());
+                    return Err(anyhow::anyhow!("Service must be reinstalled manually"));
                 }
                 logging!(info, Type::Service, "服务版本不匹配，执行重装流程");
                 reinstall_service()?;
@@ -555,7 +555,7 @@ impl ServiceManager {
             ServiceStatus::Unavailable(reason) => {
                 logging!(info, Type::Service, "服务不可用: {}，将使用Sidecar模式", reason);
                 self.0 = ServiceStatus::Unavailable(reason.clone());
-                return Err(anyhow::anyhow!("服务不可用: {}", reason));
+                return Err(anyhow::anyhow!("Service unavailable: {}", reason));
             }
         }
 

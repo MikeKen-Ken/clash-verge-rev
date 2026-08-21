@@ -33,7 +33,7 @@ export function SessionRulesPanel({ open, onClose }: Props) {
     try {
       await removeSessionRule(id);
       await refreshSessionRules();
-      showNotice.success("已删除临时规则");
+      showNotice.success("Temporary rule deleted");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       showNotice.error(message);
@@ -44,7 +44,7 @@ export function SessionRulesPanel({ open, onClose }: Props) {
     try {
       await clearSessionRules();
       await refreshSessionRules();
-      showNotice.success("已清空全部临时规则");
+      showNotice.success("All temporary rules cleared");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       showNotice.error(message);
@@ -54,22 +54,22 @@ export function SessionRulesPanel({ open, onClose }: Props) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 1 }}>
-        临时规则
+        Temporary rules
         <Typography variant="caption" display="block" color="text.secondary">
-          持久保存，需手动删除；仅在规则模式下生效
+          Persisted until manually deleted; active only in rule mode
         </Typography>
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
         {isLoading ? (
           <Box sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              加载中…
+              Loading…
             </Typography>
           </Box>
         ) : rules.length === 0 ? (
           <Box sx={{ p: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              暂无临时规则。在连接列表中右键连接可快速添加。
+              No temporary rules. Right-click a connection in the connections list to add one.
             </Typography>
           </Box>
         ) : (
@@ -81,7 +81,7 @@ export function SessionRulesPanel({ open, onClose }: Props) {
                 secondaryAction={
                   <IconButton
                     edge="end"
-                    aria-label="删除"
+                    aria-label="Delete"
                     onClick={() => onRemove(rule.id)}
                   >
                     <DeleteOutlineRounded fontSize="small" />
@@ -111,10 +111,10 @@ export function SessionRulesPanel({ open, onClose }: Props) {
           disabled={rules.length === 0}
           onClick={onClearAll}
         >
-          清空全部
+          Clear all
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Button onClick={onClose}>关闭</Button>
+        <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );
