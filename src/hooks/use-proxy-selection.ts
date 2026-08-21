@@ -35,7 +35,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
   const clearManualSelection = useCallback(
     async (groupName: string, skipConfigSave: boolean = false) => {
-      debugLog(`[ProxySelection] 清除手动选择: ${groupName}`);
+      debugLog(`[ProxySelection] Clearing manual selection: ${groupName}`);
       await clearProxyGroupManualSelection(groupName);
 
       if (!skipConfigSave && current) {
@@ -46,7 +46,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       }
 
       await syncTrayProxySelection().catch((err) => {
-        console.warn("[ProxySelection] clear syncTray 失败（非关键）", err);
+      console.warn("[ProxySelection] clear syncTray failed (non-critical)", err);
       });
       onSuccess?.();
       setTimeout(() => onSuccess?.(), 450);
@@ -62,7 +62,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       proxyName: string,
       skipConfigSave: boolean = false,
     ) => {
-      debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`);
+      debugLog(`[ProxySelection] Proxy switch: ${groupName} -> ${proxyName}`);
 
       // 标记手动选择节点，在此后 10 秒内不发送 fallback 切换通知
       markManualProxySelectionStarted();
@@ -104,7 +104,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => onSuccess?.(), 50);
           return result;
         }).catch((err) => {
-          console.error("=== [核心切换] selectNodeForGroup 调用失败 ===", {
+          console.error("=== [CoreSwitch] selectNodeForGroup call failed ===", {
             组名: groupName,
             节点名: proxyName,
             错误: err,
@@ -122,7 +122,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
             );
           })
           .catch((err) => {
-            console.error("[ProxySelection] doPatchCurrent 失败", err);
+          console.error("[ProxySelection] doPatchCurrent failed", err);
             throw err;
           }),
         syncTrayProxySelection()
@@ -135,14 +135,14 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
             parallelDoneAt.syncTray = Math.round(
               performance.now() - tParallel0,
             );
-            console.warn("[ProxySelection] syncTray 失败（非关键）", err);
+          console.warn("[ProxySelection] syncTray failed (non-critical)", err);
           }),
       ])
         .then(() => {
           const totalParallelMs = Math.round(
             performance.now() - tParallel0,
           );
-          console.log("[核心切换-前端] 并行阶段完成（含 profile 写入与托盘同步）", {
+          console.log("[CoreSwitch-Frontend] Parallel phase completed (profile write and tray sync included)", {
             组: groupName,
             节点: proxyName,
             各子项完成距起点_ms: { ...parallelDoneAt },
@@ -155,17 +155,17 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
           void closeConnectionsForProxyGroup(groupName).then((n) => {
             if (n > 0) {
-              debugLog(`[ProxySelection] 已关闭 ${n} 条经过组 ${groupName} 的连接`);
+              debugLog(`[ProxySelection] Closed ${n} connections through group ${groupName}`);
             }
           });
 
           const runRefresh = (label: string, delay: number) => {
-            debugLog(`[ProxySelection] ${label} 刷新代理列表`);
+              debugLog(`[ProxySelection] ${label} refreshed proxy list`);
             onSuccess?.();
           };
           // 仅刷新当前选中节点延迟（不触发全量 refreshProxy），若未提供则走全量刷新
           const runRefreshSelectedNodeOnly = (label: string, t: number) => {
-            debugLog(`[ProxySelection] ${label} 仅刷新选中节点延迟`);
+              debugLog(`[ProxySelection] ${label} refreshed selected-node delay only`);
             if (onRefreshSelectedNodeOnly) {
               void onRefreshSelectedNodeOnly(groupName, proxyName);
             } else {
@@ -184,7 +184,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
         })
         .catch((err) => {
-          console.error("=== [ProxySelection] 后端同步失败 ===", {
+          console.error("=== [ProxySelection] Backend synchronization failed ===", {
             错误: err,
             组名: groupName,
             目标节点: proxyName,

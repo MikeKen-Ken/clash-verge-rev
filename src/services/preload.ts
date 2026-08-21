@@ -71,7 +71,7 @@ export const preloadUiPreferences = async () => {
   try {
     await applyConnectionTableUiFromBackupFile();
   } catch (error) {
-    console.warn("[preload.ts] 无法加载 UI 偏好:", error);
+    console.warn("[preload.ts] Failed to load UI preferences:", error);
   }
 };
 

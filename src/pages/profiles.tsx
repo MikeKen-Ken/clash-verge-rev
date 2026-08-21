@@ -248,7 +248,7 @@ const ProfilePage = () => {
       switchingProfileRef.current = null;
       abortControllerRef.current = null;
       pendingRequestRef.current = null;
-      debugProfileSwitch("SWITCH_END", profile, `序列号: ${sequence}`);
+      debugProfileSwitch("SWITCH_END", profile, `Sequence: ${sequence}`);
     },
     [],
   );
@@ -439,7 +439,7 @@ const ProfilePage = () => {
 
           if (droppedCount > 0) {
             debugLog(
-              `[订阅合并] ${sourceDisplayName}：跳过 ${droppedCount} 个未匹配中文国家关键字的节点`,
+              `[ProfileMerge] ${sourceDisplayName}: skipped ${droppedCount} nodes without a matching country keyword`,
             );
           }
         }
@@ -486,7 +486,7 @@ const ProfilePage = () => {
         await updateProfile(uid);
         throttleMutate();
       } catch (err: any) {
-        console.error(`更新订阅 ${uid} 失败:`, err);
+        console.error(`Failed to update subscription ${uid}:`, err);
       } finally {
         setLoadingCache((cache) => ({ ...cache, [uid]: false }));
       }
@@ -509,7 +509,7 @@ const ProfilePage = () => {
 
   // 添加紧急恢复功能
   const onEmergencyRefresh = useLockFn(async () => {
-    debugLog("[紧急刷新] 开始强制刷新所有数据");
+    debugLog("[EmergencyRefresh] Starting forced refresh of all data");
 
     try {
       // 清除所有SWR缓存
@@ -531,7 +531,7 @@ const ProfilePage = () => {
         2000,
       );
     } catch (error) {
-      console.error("[紧急刷新] 失败:", error);
+      console.error("[EmergencyRefresh] Failed:", error);
       showNotice.error(
         "profiles.page.feedback.notices.emergencyRefreshFailed",
         { message: String(error) },
@@ -612,7 +612,7 @@ const ProfilePage = () => {
       await importProfile(url);
       await handleImportSuccess("shared.feedback.notifications.importSuccess");
     } catch (initialErr) {
-      console.warn("[订阅导入] 首次导入失败:", initialErr);
+      console.warn("[ProfileImport] Initial import failed:", initialErr);
 
       showNotice.info("profiles.page.feedback.notifications.importRetry");
       try {
@@ -645,7 +645,7 @@ const ProfilePage = () => {
 
     while (retryCount < maxRetries) {
       try {
-        debugLog(`[导入刷新] 第${retryCount + 1}次尝试刷新配置数据`);
+        debugLog(`[ImportRefresh] Refreshing profile data, attempt ${retryCount + 1}`);
 
         // 强制刷新，绕过所有缓存
         await mutateProfiles(undefined, {
@@ -661,7 +661,7 @@ const ProfilePage = () => {
         await onEnhance(false);
         return;
       } catch (error) {
-        console.error(`[导入刷新] 第${retryCount + 1}次刷新失败:`, error);
+        console.error(`[ImportRefresh] Refresh attempt ${retryCount + 1} failed:`, error);
         retryCount++;
         await new Promise((resolve) =>
           setTimeout(resolve, baseDelay * retryCount),
@@ -670,7 +670,7 @@ const ProfilePage = () => {
     }
 
     // 所有重试失败后的最后尝试
-    console.warn(`[导入刷新] 常规刷新失败，尝试清除缓存重新获取`);
+    console.warn(`[ImportRefresh] Regular refresh failed; clearing cache and retrying`);
     try {
       // 清除SWR缓存并重新获取
       await mutate("getProfiles", getProfiles(), { revalidate: true });
@@ -680,7 +680,7 @@ const ProfilePage = () => {
         3000,
       );
     } catch (finalError) {
-      console.error(`[导入刷新] 最终刷新尝试失败:`, finalError);
+      console.error(`[ImportRefresh] Final refresh attempt failed:`, finalError);
       showNotice.error(
         "profiles.page.feedback.notifications.importSuccess",
         5000,
@@ -711,7 +711,7 @@ const ProfilePage = () => {
           !abortController.signal.aborted
         ) {
           await activateSelected();
-          debugLog(`[Profile] 后台处理完成，序列号: ${sequence}`);
+          debugLog(`[Profile] Background processing completed, sequence: ${sequence}`);
         } else {
           debugProfileSwitch(
             "BACKGROUND_TASK_SKIPPED",
@@ -729,12 +729,12 @@ const ProfilePage = () => {
   const activateProfile = useCallback(
     async (profile: string, notifySuccess: boolean) => {
       if (profiles.current === profile && !notifySuccess) {
-        debugLog(`[Profile] 目标profile ${profile} 已经是当前配置，跳过切换`);
+        debugLog(`[Profile] Target profile ${profile} is already active; skipping switch`);
         return;
       }
 
       const currentSequence = ++requestSequenceRef.current;
-      debugProfileSwitch("NEW_REQUEST", profile, `序列号: ${currentSequence}`);
+      debugProfileSwitch("NEW_REQUEST", profile, `Sequence: ${currentSequence}`);
 
       // 处理中断逻辑
       const previousSwitching = switchingProfileRef.current;
@@ -750,7 +750,7 @@ const ProfilePage = () => {
 
       // 初始化切换状态
       switchingProfileRef.current = profile;
-      debugProfileSwitch("SWITCH_START", profile, `序列号: ${currentSequence}`);
+      debugProfileSwitch("SWITCH_START", profile, `Sequence: ${currentSequence}`);
 
       const currentAbortController = new AbortController();
       abortControllerRef.current = currentAbortController;
@@ -762,7 +762,7 @@ const ProfilePage = () => {
 
       try {
         debugLog(
-          `[Profile] 开始切换到: ${profile}，序列号: ${currentSequence}`,
+          `[Profile] Switching to ${profile}, sequence: ${currentSequence}`,
         );
 
         // 检查请求有效性
@@ -806,7 +806,7 @@ const ProfilePage = () => {
         }
 
         debugLog(
-          `[Profile] 切换到 ${profile} 完成，序列号: ${currentSequence}，开始后台处理`,
+          `[Profile] Switched to ${profile}, sequence: ${currentSequence}; starting background processing`,
         );
 
         // 延迟执行后台任务
@@ -832,7 +832,7 @@ const ProfilePage = () => {
           return;
         }
 
-        console.error(`[Profile] 切换失败:`, err);
+        console.error(`[Profile] Switch failed:`, err);
         showNotice.error(err, 4000);
       } finally {
         // 只有当前profile仍然是正在切换的profile且序列号匹配时才清理状态
@@ -894,7 +894,7 @@ const ProfilePage = () => {
   const onEnhance = useLockFn(async (notifySuccess: boolean) => {
     if (switchingProfileRef.current) {
       debugLog(
-        `[Profile] 有profile正在切换中(${switchingProfileRef.current})，跳过enhance操作`,
+        `[Profile] Profile switch already in progress (${switchingProfileRef.current}); skipping enhance`,
       );
       return;
     }
@@ -1048,20 +1048,20 @@ const ProfilePage = () => {
         const newProfileId = event.payload;
         const now = Date.now();
 
-        debugLog(`[Profile] 收到配置变更事件: ${newProfileId}`);
+        debugLog(`[Profile] Received profile change event: ${newProfileId}`);
 
         if (
           lastProfileId === newProfileId &&
           now - lastUpdateTime < debounceDelay
         ) {
-          debugLog(`[Profile] 重复事件被防抖，跳过`);
+          debugLog(`[Profile] Duplicate event suppressed`);
           return;
         }
 
         lastProfileId = newProfileId;
         lastUpdateTime = now;
 
-        debugLog(`[Profile] 执行配置数据刷新`);
+        debugLog(`[Profile] Refreshing profile data`);
 
         if (refreshTimer !== null) {
           window.clearTimeout(refreshTimer);
@@ -1070,7 +1070,7 @@ const ProfilePage = () => {
         // 使用异步调度避免阻塞事件处理
         refreshTimer = window.setTimeout(() => {
           mutateProfiles().catch((error) => {
-            console.error("[Profile] 配置数据刷新失败:", error);
+            console.error("[Profile] Failed to refresh profile data:", error);
           });
           refreshTimer = null;
         }, 0);

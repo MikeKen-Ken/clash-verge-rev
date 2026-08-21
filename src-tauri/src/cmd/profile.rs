@@ -26,7 +26,7 @@ static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub async fn get_profiles() -> CmdResult<SharedDraft<IProfiles>> {
-    logging!(debug, Type::Cmd, "获取配置文件列表");
+    logging!(debug, Type::Cmd, "Fetching profile list");
     let draft = Config::profiles().await;
     let data = draft.data_arc();
     Ok(data)
@@ -64,16 +64,16 @@ pub async fn enhance_profiles() -> CmdResult {
 /// 导入配置文件
 #[tauri::command]
 pub async fn import_profile(url: std::string::String, option: Option<PrfOption>) -> CmdResult {
-    logging!(info, Type::Cmd, "[导入订阅] 开始导入: {}", url);
+    logging!(info, Type::Cmd, "[ProfileImport] Starting import: {}", url);
 
     // 直接依赖 PrfItem::from_url 自身的超时/重试逻辑，不再使用 tokio::time::timeout 包裹
     let item = &mut match PrfItem::from_url(&url, None, None, option.as_ref()).await {
         Ok(it) => {
-            logging!(info, Type::Cmd, "[导入订阅] 下载完成，开始保存配置");
+            logging!(info, Type::Cmd, "[ProfileImport] Download completed; saving profile");
             it
         }
         Err(e) => {
-            logging!(error, Type::Cmd, "[导入订阅] 下载失败: {}", e);
+            logging!(error, Type::Cmd, "[ProfileImport] Download failed: {}", e);
             return Err(format!("导入订阅失败: {}", e).into());
         }
     };
@@ -81,14 +81,14 @@ pub async fn import_profile(url: std::string::String, option: Option<PrfOption>)
     match profiles_append_item_safe(item).await {
         Ok(_) => match profiles_save_file_safe().await {
             Ok(_) => {
-                logging!(info, Type::Cmd, "[导入订阅] 配置文件保存成功");
+                logging!(info, Type::Cmd, "[ProfileImport] Profile saved successfully");
             }
             Err(e) => {
-                logging!(error, Type::Cmd, "[导入订阅] 保存配置文件失败: {}", e);
+                logging!(error, Type::Cmd, "[ProfileImport] Failed to save profile: {}", e);
             }
         },
         Err(e) => {
-            logging!(error, Type::Cmd, "[导入订阅] 保存配置失败: {}", e);
+            logging!(error, Type::Cmd, "[ProfileImport] Failed to save profile: {}", e);
             return Err(format!("导入订阅失败: {}", e).into());
         }
     }
@@ -107,7 +107,7 @@ pub async fn import_profile(url: std::string::String, option: Option<PrfOption>)
         handle::Handle::notify_profile_changed(uid);
     }
 
-    logging!(info, Type::Cmd, "[导入订阅] 导入完成: {}", url);
+    logging!(info, Type::Cmd, "[ProfileImport] Import completed: {}", url);
     AutoBackupManager::trigger_backup(AutoBackupTrigger::ProfileChange);
     Ok(())
 }
@@ -117,13 +117,13 @@ pub async fn import_profile(url: std::string::String, option: Option<PrfOption>)
 pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
     match profiles_reorder_safe(&active_id, &over_id).await {
         Ok(_) => {
-            logging!(info, Type::Cmd, "重新排序配置文件");
+            logging!(info, Type::Cmd, "Reordering profiles");
             Config::profiles().await.apply();
             Ok(())
         }
         Err(err) => {
             Config::profiles().await.discard();
-            logging!(error, Type::Cmd, "重新排序配置文件失败: {}", err);
+            logging!(error, Type::Cmd, "Failed to reorder profiles: {}", err);
             Err(format!("重新排序配置文件失败: {}", err).into())
         }
     }
@@ -199,7 +199,7 @@ pub async fn delete_profile(index: String) -> CmdResult {
 
 /// 验证新配置文件的语法
 async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
-    logging!(info, Type::Cmd, "正在切换到新配置: {}", new_profile);
+    logging!(info, Type::Cmd, "Switching to new profile: {}", new_profile);
 
     // 获取目标配置文件路径
     let config_file_result = {
@@ -215,7 +215,7 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
                 }
             }
             Err(e) => {
-                logging!(error, Type::Cmd, "获取目标配置信息失败: {}", e);
+                logging!(error, Type::Cmd, "Failed to get target profile information: {}", e);
                 None
             }
         }
@@ -224,7 +224,7 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
     // 如果获取到文件路径，检查YAML语法
     if let Some(file_path) = config_file_result {
         if !file_path.exists() {
-            logging!(error, Type::Cmd, "目标配置文件不存在: {}", file_path.display());
+            logging!(error, Type::Cmd, "Target profile file does not exist: {}", file_path.display());
             handle::Handle::notice_message("config_validate::file_not_found", format!("{}", file_path.display()));
             return Err(());
         }
@@ -241,7 +241,7 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
 
                 match yaml_parse_result {
                     Ok(Ok(_)) => {
-                        logging!(info, Type::Cmd, "目标配置文件语法正确");
+                        logging!(info, Type::Cmd, "Target profile syntax is valid");
                         Ok(())
                     }
                     Ok(Err(err)) => {
@@ -278,7 +278,7 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
 
 /// 执行配置更新并处理结果
 async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
-    logging!(info, Type::Cmd, "尝试恢复到之前的配置: {}", prev_profile);
+    logging!(info, Type::Cmd, "Trying to restore the previous profile: {}", prev_profile);
     let restore_profiles = IProfiles {
         current: Some(prev_profile.to_owned()),
         items: None,
@@ -292,7 +292,7 @@ async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
             logging!(warn, Type::Cmd, "Warning: 异步保存恢复配置文件失败: {e}");
         }
     });
-    logging!(info, Type::Cmd, "成功恢复到之前的配置");
+    logging!(info, Type::Cmd, "Previous profile restored successfully");
     Ok(())
 }
 
@@ -313,7 +313,7 @@ async fn handle_success(current_value: Option<&String>) -> CmdResult<bool> {
     }
 
     if let Some(current) = current_value {
-        logging!(info, Type::Cmd, "向前端发送配置变更事件: {}", current);
+        logging!(info, Type::Cmd, "Sending profile change event to frontend: {}", current);
         handle::Handle::notify_profile_changed(current.to_owned());
     }
 
@@ -369,7 +369,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        logging!(info, Type::Cmd, "当前正在切换配置，放弃请求");
+        logging!(info, Type::Cmd, "A profile switch is already in progress; abandoning request");
         return Ok(false);
     }
 
@@ -379,7 +379,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
 
     // 保存当前配置，以便在验证失败时恢复
     let previous_profile = Config::profiles().await.data_arc().current.clone();
-    logging!(info, Type::Cmd, "当前配置: {:?}", previous_profile);
+    logging!(info, Type::Cmd, "Current profile: {:?}", previous_profile);
 
     // 如果要切换配置，先检查目标配置文件是否有语法错误
     if let Some(switch_to_profile) = target_profile
@@ -397,7 +397,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
 /// 根据profile name修改profiles
 #[tauri::command]
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<bool> {
-    logging!(info, Type::Cmd, "切换配置到: {}", profile_index);
+    logging!(info, Type::Cmd, "Switching profile to: {}", profile_index);
 
     let profiles = IProfiles {
         current: Some(profile_index),

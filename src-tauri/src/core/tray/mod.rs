@@ -154,7 +154,7 @@ impl Tray {
 
     pub async fn init(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘初始化");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray initialization");
             return Ok(());
         }
 
@@ -179,7 +179,7 @@ impl Tray {
     /// 更新托盘点击行为
     pub async fn update_click_behavior(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘点击行为更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray click behavior update");
             return Ok(());
         }
 
@@ -199,7 +199,7 @@ impl Tray {
     /// 更新托盘菜单
     pub async fn update_menu(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘菜单更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray menu update");
             return Ok(());
         }
         let app_handle = handle::Handle::app_handle();
@@ -241,7 +241,7 @@ impl Tray {
                     )
                     .await?,
                 ));
-                logging!(debug, Type::Tray, "托盘菜单更新成功");
+                logging!(debug, Type::Tray, "Tray menu updated successfully");
                 Ok(())
             }
             None => {
@@ -255,7 +255,7 @@ impl Tray {
     #[cfg(target_os = "macos")]
     pub async fn update_icon(&self, verge: &IVerge) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘图标更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray icon update");
             return Ok(());
         }
 
@@ -282,7 +282,7 @@ impl Tray {
     #[cfg(not(target_os = "macos"))]
     pub async fn update_icon(&self, verge: &IVerge) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘图标更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray icon update");
             return Ok(());
         }
 
@@ -305,7 +305,7 @@ impl Tray {
     /// 更新托盘提示
     pub async fn update_tooltip(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘提示更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray tooltip update");
             return Ok(());
         }
 
@@ -369,7 +369,7 @@ impl Tray {
 
     pub async fn update_part(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘局部更新");
+            logging!(debug, Type::Tray, "Application is exiting; skipping partial tray update");
             return Ok(());
         }
         let verge = Config::verge().await.data_arc();
@@ -381,11 +381,11 @@ impl Tray {
 
     async fn create_tray_from_handle(&self, app_handle: &AppHandle) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "应用正在退出，跳过托盘创建");
+            logging!(debug, Type::Tray, "Application is exiting; skipping tray creation");
             return Ok(());
         }
 
-        logging!(info, Type::Tray, "正在从AppHandle创建系统托盘");
+        logging!(info, Type::Tray, "Creating the system tray from AppHandle");
 
         let verge = Config::verge().await.data_arc();
 
@@ -950,7 +950,7 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
                 feat::change_clash_mode(mode.into()).await;
             }
             MenuIds::DASHBOARD => {
-                logging!(info, Type::Tray, "托盘菜单点击: 打开窗口");
+                logging!(info, Type::Tray, "Tray menu clicked: open window");
                 if !lightweight::exit_lightweight_mode().await {
                     WindowManager::show_main_window().await;
                 };
@@ -962,7 +962,7 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
                 feat::toggle_tun_mode(None).await;
             }
             MenuIds::CLOSE_ALL_CONNECTIONS => {
-                logging!(info, Type::Tray, "托盘菜单点击: 关闭所有连接");
+                logging!(info, Type::Tray, "Tray menu clicked: close all connections");
                 handle::Handle::notify_close_all_connections();
             }
             MenuIds::COPY_ENV => feat::copy_clash_env().await,

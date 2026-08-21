@@ -209,7 +209,7 @@ const Layout = () => {
       try {
         handleNoticeMessage(status, msg, t, navigate);
       } catch (error) {
-        console.error("[通知处理] 失败:", error);
+        console.error("[NotificationHandler] Failed:", error);
       }
     },
     [t, navigate],

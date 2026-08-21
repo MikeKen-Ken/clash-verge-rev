@@ -97,11 +97,11 @@ const LogPage = () => {
   }, [logData, logState, match]);
 
   useEffect(() => {
-    debugLog("[日志页] 状态", {
-      原始条数: logData?.length ?? 0,
-      过滤后条数: filterLogs.length,
-      采集开启: enableLog,
-      订阅错误: logSubscriptionError,
+    debugLog("[LogsPage] State", {
+      rawCount: logData?.length ?? 0,
+      filteredCount: filterLogs.length,
+      loggingEnabled: enableLog,
+      subscriptionError: logSubscriptionError,
     });
   }, [logData, filterLogs.length, enableLog, logSubscriptionError]);
 

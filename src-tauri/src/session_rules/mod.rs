@@ -58,7 +58,7 @@ fn load_from_disk() -> Vec<SessionRule> {
     let path = match storage_path() {
         Ok(path) => path,
         Err(err) => {
-            logging!(error, Type::File, "读取临时规则路径失败: {err}");
+            logging!(error, Type::File, "Failed to read temporary rules path: {err}");
             return Vec::new();
         }
     };
@@ -70,7 +70,7 @@ fn load_from_disk() -> Vec<SessionRule> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(err) => {
-            logging!(error, Type::File, "读取临时规则文件失败: {err}");
+            logging!(error, Type::File, "Failed to read temporary rules file: {err}");
             return Vec::new();
         }
     };
@@ -78,7 +78,7 @@ fn load_from_disk() -> Vec<SessionRule> {
     match serde_json::from_str::<RulesFile>(&raw) {
         Ok(file) => file.rules,
         Err(err) => {
-            logging!(error, Type::File, "解析临时规则文件失败: {err}");
+            logging!(error, Type::File, "Failed to parse temporary rules file: {err}");
             Vec::new()
         }
     }
@@ -93,7 +93,7 @@ fn persist_rules(rules: &[SessionRule]) {
     let path = match storage_path() {
         Ok(path) => path,
         Err(err) => {
-            logging!(error, Type::File, "保存临时规则路径失败: {err}");
+            logging!(error, Type::File, "Failed to save temporary rules path: {err}");
             return;
         }
     };
@@ -106,13 +106,13 @@ fn persist_rules(rules: &[SessionRule]) {
     let raw = match serde_json::to_string_pretty(&payload) {
         Ok(raw) => raw,
         Err(err) => {
-            logging!(error, Type::File, "序列化临时规则失败: {err}");
+            logging!(error, Type::File, "Failed to serialize temporary rules: {err}");
             return;
         }
     };
 
     if let Err(err) = std::fs::write(path, raw) {
-        logging!(error, Type::File, "写入临时规则文件失败: {err}");
+        logging!(error, Type::File, "Failed to write temporary rules file: {err}");
     }
 }
 

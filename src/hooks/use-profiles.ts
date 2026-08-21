@@ -21,7 +21,7 @@ export const useProfiles = () => {
     errorRetryInterval: 1000,
     refreshInterval: 0, // 完全由手动控制
     onError: (error) => {
-      console.error("[useProfiles] SWR错误:", error);
+      console.error("[useProfiles] SWR error:", error);
     },
     onSuccess: (data) => {
       debugLog(
@@ -68,22 +68,22 @@ export const useProfiles = () => {
   // 重新打开代理时清空手动选择，界面不显示「当前节点」；仅当用户手动选择后才显示
   const activateSelected = async () => {
     try {
-      debugLog("[ActivateSelected] 清空该 profile 的手动选择（重新打开代理）");
+      debugLog("[ActivateSelected] Clearing manual selections for the profile (reopening proxies)");
 
       const profileData = await getProfiles();
       if (!profileData?.current) {
-        debugLog("[ActivateSelected] 无当前 profile，跳过");
+        debugLog("[ActivateSelected] No current profile; skipping");
         return;
       }
 
       await patchProfile(profileData.current, { selected: [] });
-      debugLog("[ActivateSelected] 已清空 selected");
+      debugLog("[ActivateSelected] Cleared selected proxies");
       mutateProfiles();
       setTimeout(() => {
         mutate("getProxies", calcuProxies());
       }, 100);
     } catch (error: any) {
-      console.error("[ActivateSelected] 清空选择失败:", error.message);
+      console.error("[ActivateSelected] Failed to clear selections:", error.message);
     }
   };
 

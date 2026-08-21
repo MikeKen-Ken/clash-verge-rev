@@ -150,7 +150,7 @@ export const useRenderList = (
 
     // 设置组监听器，当有延迟更新时自动刷新
     const groupListener = () => {
-      debugLog("[ChainMode] 延迟更新，刷新UI");
+      debugLog("[ChainMode] Delay updated; refreshing UI");
       refreshProxy();
     };
 
@@ -161,7 +161,7 @@ export const useRenderList = (
         const timeout = 5000;
         const proxyNames = allProxies.map((proxy) => proxy.name);
 
-        debugLog(`[ChainMode] 开始计算 ${proxyNames.length} 个节点的延迟`);
+        debugLog(`[ChainMode] Calculating delay for ${proxyNames.length} nodes`);
 
         // 使用 delayManager 计算延迟，每个节点计算完成后会自动触发监听器刷新界面
         delayManager.checkListDelay(proxyNames, "chain-mode", timeout);

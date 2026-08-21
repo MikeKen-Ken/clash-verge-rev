@@ -336,13 +336,13 @@ impl IVerge {
 
         // 修正后保存配置
         if needs_fix {
-            logging!(info, Type::Config, "正在保存修正后的配置文件...");
+            logging!(info, Type::Config, "Saving the corrected configuration file...");
             help::save_yaml(&config_path, &config, Some("# Clash Verge Config")).await?;
-            logging!(info, Type::Config, "配置文件修正完成，需要重新加载配置");
+            logging!(info, Type::Config, "Configuration file correction completed; reload required");
 
             Self::reload_config_after_fix(config).await?;
         } else {
-            logging!(info, Type::Config, "clash_core配置验证通过: {:?}", config.clash_core);
+            logging!(info, Type::Config, "clash_core configuration validated: {:?}", config.clash_core);
         }
 
         Ok(())

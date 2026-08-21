@@ -132,9 +132,9 @@ impl Config {
     async fn generate_and_validate() -> Result<Option<(&'static str, String)>> {
         // 生成运行时配置
         if let Err(err) = Self::generate().await {
-            logging!(error, Type::Config, "生成运行时配置失败: {}", err);
+            logging!(error, Type::Config, "Failed to generate runtime configuration: {}", err);
         } else {
-            logging!(info, Type::Config, "生成运行时配置成功");
+            logging!(info, Type::Config, "Runtime configuration generated successfully");
         }
 
         // 生成运行时配置文件并验证
@@ -142,7 +142,7 @@ impl Config {
 
         if config_result.is_ok() {
             // 验证配置文件
-            logging!(info, Type::Config, "开始验证配置");
+            logging!(info, Type::Config, "Starting configuration validation");
 
             match CoreConfigValidator::global().validate_config().await {
                 Ok((is_valid, error_msg)) => {
@@ -158,14 +158,14 @@ impl Config {
                             .await?;
                         Ok(Some(("config_validate::boot_error", error_msg)))
                     } else {
-                        logging!(info, Type::Config, "配置验证成功");
+                        logging!(info, Type::Config, "Configuration validation succeeded");
                         // 前端没有必要知道验证成功的消息，也没有事件驱动
                         // Some(("config_validate::success", String::new()))
                         Ok(None)
                     }
                 }
                 Err(err) => {
-                    logging!(warn, Type::Config, "验证过程执行失败: {}", err);
+                    logging!(warn, Type::Config, "Configuration validation failed: {}", err);
                     CoreManager::global()
                         .use_default_config("config_validate::process_terminated", "")
                         .await?;
@@ -173,7 +173,7 @@ impl Config {
                 }
             }
         } else {
-            logging!(warn, Type::Config, "生成配置文件失败，使用默认配置");
+            logging!(warn, Type::Config, "Failed to generate configuration file; using default configuration");
             CoreManager::global()
                 .use_default_config("config_validate::error", "")
                 .await?;

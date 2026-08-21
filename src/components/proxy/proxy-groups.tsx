@@ -198,7 +198,7 @@ export const ProxyGroups = (props: Props) => {
           mutateProfiles();
         })
         .catch((err) => {
-          console.warn("[清理] 删除过期记录失败", err);
+          console.warn("[Cleanup] Failed to remove expired records", err);
         });
     }
   }, [groups, current?.selected, patchCurrent, mutateProfiles]);
@@ -301,7 +301,7 @@ export const ProxyGroups = (props: Props) => {
       onProxies();
     },
     onError: (error) => {
-      console.error("代理切换失败", error);
+      console.error("Failed to switch proxy", error);
       onProxies();
     },
     onRefreshSelectedNodeOnly: (groupName, proxyName) => {
@@ -559,7 +559,7 @@ export const ProxyGroups = (props: Props) => {
     }
     isDelayCheckingRef.current = true;
     clearDelayCheckManualOverrides();
-    debugLog(`[ProxyGroups] 开始测试所有分组延迟`);
+    debugLog(`[ProxyGroups] Starting delay tests for all groups`);
     delayCheckingNoticeIdRef.current = showNotice.info(
       `${t("proxies.page.tooltips.delayCheck")} in progress...`,
       0,
@@ -615,7 +615,7 @@ export const ProxyGroups = (props: Props) => {
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
         if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
-          debugLog(`[ProxyGroups] 跳过分组测速: ${groupName}`);
+          debugLog(`[ProxyGroups] Skipping delay test for group: ${groupName}`);
           continue;
         }
         const timeout = getGroupDelayTimeout(group, false);
@@ -733,10 +733,10 @@ export const ProxyGroups = (props: Props) => {
           );
         }
       }
-      debugLog(`[ProxyGroups] 所有分组延迟测试完成`);
+      debugLog(`[ProxyGroups] Delay tests for all groups completed`);
       pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
     } catch (error) {
-      console.error(`[ProxyGroups] 测试所有分组延迟出错`, error);
+      console.error(`[ProxyGroups] Delay tests for all groups failed`, error);
       const nid = delayCheckingNoticeIdRef.current;
       if (nid != null) {
         updateNotice(
@@ -750,11 +750,11 @@ export const ProxyGroups = (props: Props) => {
       try {
         // 处理 provider 健康检查（fire and forget）
         if (allProviders.size) {
-          debugLog(`[ProxyGroups] 发现提供者，数量: ${allProviders.size}`);
+          debugLog(`[ProxyGroups] Found providers, count: ${allProviders.size}`);
           Promise.allSettled(
             [...allProviders].map((p) => healthcheckProxyProvider(p)),
           ).then(() => {
-            debugLog(`[ProxyGroups] 提供者健康检查完成`);
+            debugLog(`[ProxyGroups] Provider health checks completed`);
             onProxies();
           });
         }
@@ -785,7 +785,7 @@ export const ProxyGroups = (props: Props) => {
             onProxies();
           })
           .catch((error) => {
-            console.error("[ProxyGroups] 关闭非 DIRECT 连接失败", error);
+            console.error("[ProxyGroups] Failed to close non-DIRECT connections", error);
           });
         onProxies();
         showNotice.success(

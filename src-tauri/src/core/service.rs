@@ -298,16 +298,16 @@ fn reinstall_service() -> Result<()> {
 
 /// 强制重装服务（UI修复按钮）
 fn force_reinstall_service() -> Result<()> {
-    logging!(info, Type::Service, "用户请求强制重装服务");
+    logging!(info, Type::Service, "User requested a forced service reinstall");
     reinstall_service().map_err(|err| {
-        logging!(error, Type::Service, "强制重装服务失败: {}", err);
+        logging!(error, Type::Service, "Forced service reinstall failed: {}", err);
         err
     })
 }
 
 /// 尝试使用服务启动core
 pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result<()> {
-    logging!(info, Type::Service, "尝试使用现有服务启动核心");
+    logging!(info, Type::Service, "Trying to start the core with the existing service");
 
     let verge_config = Config::verge().await;
     let clash_core = verge_config.latest_arc().get_valid_clash_core();
@@ -333,33 +333,33 @@ pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result
 
     if response.code > 0 {
         let err_msg = response.message;
-        logging!(error, Type::Service, "启动核心失败: {}", err_msg);
+        logging!(error, Type::Service, "Failed to start the core: {}", err_msg);
         bail!(err_msg);
     }
 
-    logging!(info, Type::Service, "服务成功启动核心");
+    logging!(info, Type::Service, "Service started the core successfully");
     Ok(())
 }
 
 // 以服务启动core
 pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
-    logging!(info, Type::Service, "正在尝试通过服务启动核心");
+    logging!(info, Type::Service, "Trying to start the core through the service");
 
     let mut manager = SERVICE_MANAGER.lock().await;
     let status = manager.check_service_comprehensive().await;
     manager.handle_service_status(&status).await?;
     drop(manager);
 
-    logging!(info, Type::Service, "服务已运行且版本匹配，直接使用");
+    logging!(info, Type::Service, "Service is running with a matching version; using it directly");
     start_with_existing_service(config_file).await
 }
 
 pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
-    logging!(info, Type::Service, "正在获取服务模式下的 Clash 日志");
+    logging!(info, Type::Service, "Fetching Clash logs through service mode");
 
     let logs = poll_clash_logs_by_service().await?;
 
-    logging!(info, Type::Service, "成功获取服务模式下的 Clash 日志");
+    logging!(info, Type::Service, "Fetched Clash logs through service mode successfully");
     Ok(logs)
 }
 
@@ -370,7 +370,7 @@ pub(super) async fn poll_clash_logs_by_service() -> Result<Vec<CompactString>> {
 
     if response.code > 0 {
         let err_msg = response.message;
-        logging!(error, Type::Service, "获取服务模式下的 Clash 日志失败: {}", err_msg);
+        logging!(error, Type::Service, "Failed to fetch Clash logs through service mode: {}", err_msg);
         bail!(err_msg);
     }
 
@@ -379,7 +379,7 @@ pub(super) async fn poll_clash_logs_by_service() -> Result<Vec<CompactString>> {
 
 /// 通过服务停止core
 pub(super) async fn stop_core_by_service() -> Result<()> {
-    logging!(info, Type::Service, "通过服务停止核心 (IPC)");
+    logging!(info, Type::Service, "Stopping the core through the service (IPC)");
 
     let response = clash_verge_service_ipc::stop_clash()
         .await
@@ -387,11 +387,11 @@ pub(super) async fn stop_core_by_service() -> Result<()> {
 
     if response.code > 0 {
         let err_msg = response.message;
-        logging!(error, Type::Service, "停止核心失败: {}", err_msg);
+        logging!(error, Type::Service, "Failed to stop the core: {}", err_msg);
         bail!(err_msg);
     }
 
-    logging!(info, Type::Service, "服务成功停止核心");
+    logging!(info, Type::Service, "Service stopped the core successfully");
     Ok(())
 }
 
@@ -520,7 +520,7 @@ impl ServiceManager {
     pub async fn handle_service_status(&mut self, status: &ServiceStatus) -> Result<()> {
         match status {
             ServiceStatus::Ready => {
-                logging!(info, Type::Service, "服务就绪，直接启动");
+                logging!(info, Type::Service, "Service is ready; starting directly");
                 self.0 = ServiceStatus::Ready;
             }
             ServiceStatus::NeedsReinstall | ServiceStatus::ReinstallRequired => {
@@ -533,27 +533,27 @@ impl ServiceManager {
                     self.0 = ServiceStatus::Unavailable("Service must be reinstalled manually".into());
                     return Err(anyhow::anyhow!("Service must be reinstalled manually"));
                 }
-                logging!(info, Type::Service, "服务版本不匹配，执行重装流程");
+                logging!(info, Type::Service, "Service version mismatch; starting reinstall flow");
                 reinstall_service()?;
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::ForceReinstallRequired => {
-                logging!(info, Type::Service, "服务需要强制重装，执行强制重装流程");
+                logging!(info, Type::Service, "Service requires a forced reinstall; starting forced reinstall flow");
                 force_reinstall_service()?;
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::InstallRequired => {
-                logging!(info, Type::Service, "需要安装服务，执行安装流程");
+                logging!(info, Type::Service, "Service installation required; starting installation flow");
                 install_service()?;
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::UninstallRequired => {
-                logging!(info, Type::Service, "服务需要卸载，执行卸载流程");
+                logging!(info, Type::Service, "Service uninstallation required; starting uninstallation flow");
                 uninstall_service()?;
                 self.0 = ServiceStatus::Unavailable("Service Uninstalled".into());
             }
             ServiceStatus::Unavailable(reason) => {
-                logging!(info, Type::Service, "服务不可用: {}，将使用Sidecar模式", reason);
+                logging!(info, Type::Service, "Service unavailable: {}; using Sidecar mode", reason);
                 self.0 = ServiceStatus::Unavailable(reason.clone());
                 return Err(anyhow::anyhow!("Service unavailable: {}", reason));
             }

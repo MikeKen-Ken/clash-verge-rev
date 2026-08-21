@@ -427,15 +427,15 @@ export async function getSystemProxy() {
 
 export async function getAutotemProxy() {
   try {
-    debugLog("[API] 开始调用 get_auto_proxy");
+    debugLog("[API] Calling get_auto_proxy");
     const result = await invoke<{
       enable: boolean;
       url: string;
     }>("get_auto_proxy");
-    debugLog("[API] get_auto_proxy 调用成功:", result);
+    debugLog("[API] get_auto_proxy call succeeded:", result);
     return result;
   } catch (error) {
-    console.error("[API] get_auto_proxy 调用失败:", error);
+    console.error("[API] get_auto_proxy call failed:", error);
     return {
       enable: false,
       url: "",
@@ -447,7 +447,7 @@ export async function getAutoLaunchStatus() {
   try {
     return await invoke<boolean>("get_auto_launch_status");
   } catch (error) {
-    console.error("获取自启动状态失败:", error);
+    console.error("Failed to get auto-start status:", error);
     return false;
   }
 }
@@ -726,7 +726,7 @@ export const isAdmin = async () => {
   try {
     return await invoke<boolean>("app_is_admin");
   } catch (error) {
-    console.error("检查管理员权限失败:", error);
+    console.error("Failed to check administrator privileges:", error);
     return false;
   }
 };
@@ -739,7 +739,7 @@ export const isPortInUse = async (port: number) => {
   try {
     return await invoke<boolean>("is_port_in_use", { port });
   } catch (error) {
-    console.error("检查端口使用状态失败:", error);
+    console.error("Failed to check port usage:", error);
     return false;
   }
 };

@@ -249,10 +249,10 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
         let shutdown = async move {
             tokio::select! {
                 _ = stop_rx => {
-                    logging!(info, Type::Network, "运行时配置局域网分享已手动停止");
+                    logging!(info, Type::Network, "Runtime configuration LAN sharing stopped manually");
                 }
                 _ = tokio::time::sleep(Duration::from_secs(ttl)) => {
-                    logging!(info, Type::Network, "运行时配置局域网分享已超时关闭");
+                    logging!(info, Type::Network, "Runtime configuration LAN sharing stopped after timeout");
                 }
             }
         };
@@ -269,7 +269,7 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
                 guard.take();
             }
         }
-        logging!(info, Type::Network, "局域网运行时配置 HTTP 服务已退出");
+        logging!(info, Type::Network, "LAN runtime configuration HTTP service exited");
     });
 
     let mut urls = collect_lan_urls(port, &token)?;

@@ -90,17 +90,17 @@ const resolveLocalVersion = async (): Promise<string> => {
     const runtime = await getVersion();
     const normalized = normalizeVersion(runtime);
     if (normalized) {
-      console.log("[fork-updater] 本地版本来源=getVersion()", runtime);
+      console.log("[fork-updater] Local version source=getVersion()", runtime);
       return normalized;
     }
   } catch (err) {
-    console.log("[fork-updater] getVersion() 失败，回退 package.json", err);
+    console.log("[fork-updater] getVersion() failed; falling back to package.json", err);
   }
   const fallback = normalizeVersion(packageVersion);
   if (!fallback) {
     throw new Error(`本地版本无法解析：package.json=${packageVersion}`);
   }
-  console.log("[fork-updater] 本地版本来源=package.json", packageVersion);
+  console.log("[fork-updater] Local version source=package.json", packageVersion);
   return fallback;
 };
 
@@ -116,11 +116,11 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
   for (const endpoint of FORK_UPDATE_ENDPOINTS) {
     try {
       manifest = await fetchManifest(endpoint);
-      console.log("[fork-updater] 清单拉取成功", endpoint);
+      console.log("[fork-updater] Manifest fetched successfully", endpoint);
       break;
     } catch (err) {
       lastError = err;
-      console.log("[fork-updater] 清单拉取失败，尝试下一源", endpoint, err);
+      console.log("[fork-updater] Manifest fetch failed; trying next source", endpoint, err);
     }
   }
 
@@ -168,7 +168,7 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
     available: true,
     downloadUrl,
     downloadAndInstall: async () => {
-      console.log("[fork-updater] 打开安装包下载", downloadUrl);
+  console.log("[fork-updater] Opening installer download", downloadUrl);
       await openWebUrl(downloadUrl);
     },
     close: async () => {},

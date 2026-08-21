@@ -382,7 +382,7 @@ export const AppDataProvider = ({
         );
         registerCleanup(unlistenProfile);
       } catch (error) {
-        console.error("[AppDataProvider] 监听 Profile 事件失败:", error);
+        console.error("[AppDataProvider] Failed to listen for profile events:", error);
       }
 
       try {
@@ -405,7 +405,7 @@ export const AppDataProvider = ({
           unlistenProxy();
         });
       } catch (error) {
-        console.warn("[AppDataProvider] 设置 Tauri 事件监听器失败:", error);
+        console.warn("[AppDataProvider] Failed to set up Tauri event listener:", error);
 
         const fallbackHandlers: Array<[string, EventListener]> = [
           ["verge://refresh-clash-config", handleRefreshClash],

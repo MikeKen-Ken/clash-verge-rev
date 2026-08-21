@@ -194,7 +194,7 @@ class DelayManager {
             listener(update);
           } catch (error) {
             console.error(
-              `[DelayManager] 通知节点延迟监听器失败: ${key}`,
+              `[DelayManager] Failed to notify delay listener for node: ${key}`,
               error,
             );
           }
@@ -232,7 +232,7 @@ class DelayManager {
           listener();
         } catch (error) {
           console.error(
-            `[DelayManager] 通知分组延迟监听器失败: ${group}`,
+            `[DelayManager] Failed to notify delay listener for group: ${group}`,
             error,
           );
         }
@@ -266,7 +266,7 @@ class DelayManager {
       try {
         this.globalListener?.();
       } catch (error) {
-        console.error("[DelayManager] 全局延迟刷新回调失败", error);
+        console.error("[DelayManager] Global delay refresh callback failed", error);
       }
     };
     if (typeof window !== "undefined" && window.setTimeout) {
@@ -359,14 +359,14 @@ class DelayManager {
   }
 
   setUrl(group: string, url: string) {
-    debugLog(`[DelayManager] 设置测试URL，组: ${group}, URL: ${url}`);
+    debugLog(`[DelayManager] Set test URL, group: ${group}, URL: ${url}`);
     this.urlMap.set(group, url);
   }
 
   getUrl(group: string) {
     const ui = this.urlMap.get(group)?.trim();
     if (ui) {
-      debugLog(`[DelayManager] 获取测试URL（UI），组: ${group}, URL: ${ui}`);
+      debugLog(`[DelayManager] Using UI test URL, group: ${group}, URL: ${ui}`);
       return ui;
     }
     const fromTopo = this.topoGroups
@@ -374,12 +374,12 @@ class DelayManager {
       ?.testUrl?.trim();
     if (fromTopo) {
       debugLog(
-        `[DelayManager] 获取测试URL（配置/核心），组: ${group}, URL: ${fromTopo}`,
+        `[DelayManager] Using configured/core test URL, group: ${group}, URL: ${fromTopo}`,
       );
       return fromTopo;
     }
     debugLog(
-      `[DelayManager] 获取默认测试URL（默认测速），组: ${group}, URL: ${DEFAULT_DELAY_TEST_URL}`,
+      `[DelayManager] Using default test URL, group: ${group}, URL: ${DEFAULT_DELAY_TEST_URL}`,
     );
     return DEFAULT_DELAY_TEST_URL;
   }
@@ -392,7 +392,7 @@ class DelayManager {
     const recUrl = this.topoRecords?.[outboundName]?.testUrl?.trim();
     if (recUrl) {
       debugLog(
-        `[DelayManager] 出站 ${outboundName} 使用 records.testUrl: ${recUrl}`,
+        `[DelayManager] Outbound ${outboundName} uses records.testUrl: ${recUrl}`,
       );
       return recUrl;
     }
@@ -401,7 +401,7 @@ class DelayManager {
       ?.testUrl?.trim();
     if (asGroupUrl) {
       debugLog(
-        `[DelayManager] 出站 ${outboundName} 使用 policy-group.testUrl: ${asGroupUrl}`,
+        `[DelayManager] Outbound ${outboundName} uses policy-group.testUrl: ${asGroupUrl}`,
       );
       return asGroupUrl;
     }
@@ -450,7 +450,7 @@ class DelayManager {
     meta?: { elapsed?: number; /** 为 true 时不触发全量刷新，仅通知该节点的监听器 */ silentGlobal?: boolean },
   ): DelayUpdate {
     debugLog(
-      `[DelayManager] 设置延迟（按出站名共享），代理: ${name}, 上下文组: ${group}, 延迟: ${delay}`,
+      `[DelayManager] Set delay (shared by outbound name), proxy: ${name}, context group: ${group}, delay: ${delay}`,
     );
     const update: DelayUpdate = {
       delay,
@@ -559,7 +559,7 @@ class DelayManager {
     options?: CheckDelayOptions,
   ): Promise<DelayUpdate> {
     debugLog(
-      `[DelayManager] 开始测试延迟，代理: ${name}, 组: ${group}, 超时: ${timeout}ms`,
+      `[DelayManager] Starting delay test, proxy: ${name}, group: ${group}, timeout: ${timeout}ms`,
     );
 
     const silent = options?.silentGlobal ?? false;
@@ -578,7 +578,7 @@ class DelayManager {
       const cached = reuseMap.get(reuseKey);
       if (cached !== undefined && cached.delay !== -2) {
         debugLog(
-          `[DelayManager] 复用同会话测速结果 代理:${name} 组:${group} delay:${cached.delay}`,
+          `[DelayManager] Reusing delay result from the same session, proxy:${name} group:${group} delay:${cached.delay}`,
         );
         return this.setDelay(name, group, cached.delay, {
           elapsed: cached.elapsed,
@@ -594,7 +594,7 @@ class DelayManager {
     const startTime = Date.now();
 
     try {
-      debugLog(`[DelayManager] 调用API测试延迟，代理: ${name}, URL: ${url}`);
+      debugLog(`[DelayManager] Calling delay test API, proxy: ${name}, URL: ${url}`);
       const result = await raceProxyDelayWithTimeout(name, url, timeout);
       if (cancelled()) {
         return (
@@ -607,10 +607,10 @@ class DelayManager {
       delay = result.delay;
       elapsed = Date.now() - startTime;
       debugLog(
-        `[DelayManager] API返回 代理:${name} 组:${group} 延迟:${delay}ms 耗时:${elapsed}ms timeout:${timeout}ms`,
+        `[DelayManager] API returned, proxy:${name} group:${group} delay:${delay}ms elapsed:${elapsed}ms timeout:${timeout}ms`,
       );
     } catch (error) {
-      console.error(`[DelayManager] 延迟测试出错，代理: ${name}`, error);
+      console.error(`[DelayManager] Delay test failed, proxy: ${name}`, error);
       delay = 1e6;
       elapsed = Date.now() - startTime;
     }
@@ -657,7 +657,7 @@ class DelayManager {
         names.length,
       );
     debugLog(
-      `[DelayManager] 批量测试开始 组:${group} 数量:${names.length} 并发:${actualConcurrency} fullBulk:${fullBulkMaxConcurrency} timeout:${timeout}ms`,
+      `[DelayManager] Batch test started, group:${group} count:${names.length} concurrency:${actualConcurrency} fullBulk:${fullBulkMaxConcurrency} timeout:${timeout}ms`,
     );
     const startTime = Date.now();
     const gen = this.bumpGroupCheckGeneration(group);
@@ -691,11 +691,11 @@ class DelayManager {
             isCancelled,
           });
           debugLog(
-            `[DelayManager] 单节点API 代理:${currName} 耗时:${Date.now() - nodeStart}ms`,
+            `[DelayManager] Single-node API completed, proxy:${currName} elapsed:${Date.now() - nodeStart}ms`,
           );
         } catch (error) {
           console.error(
-            `[DelayManager] 批量测试单个代理出错，代理: ${currName}`,
+            `[DelayManager] Batch test failed for proxy: ${currName}`,
             error,
           );
           if (!isCancelled()) {
@@ -714,7 +714,7 @@ class DelayManager {
 
       await Promise.all(promiseList);
       debugLog(
-        `[DelayManager] 批量测试完成 组:${group} 总耗时:${Date.now() - startTime}ms 节点:${names.length}`,
+        `[DelayManager] Batch test completed, group:${group} totalElapsed:${Date.now() - startTime}ms nodes:${names.length}`,
       );
     } finally {
       this.endBulkDelaySession();
@@ -801,7 +801,7 @@ class DelayManager {
         silentGlobal: true,
       });
       debugLog(
-        `[DelayManager] 复用同会话测速结果 代理:${name} 组:${groupName} delay:${c.delay}`,
+          `[DelayManager] Reusing delay result from the same session, proxy:${name} group:${groupName} delay:${c.delay}`,
       );
     }
     this.flushAfterBulkSilentWrites();
