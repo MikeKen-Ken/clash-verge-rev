@@ -43,8 +43,7 @@ import {
 import { handleNoticeMessage } from "./_layout/utils";
 import { navItems } from "./_routers";
 
-import "dayjs/locale/ru";
-import "dayjs/locale/zh-cn";
+import "dayjs/locale/en";
 
 export const portableFlag = false;
 

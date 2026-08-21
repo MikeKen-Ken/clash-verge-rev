@@ -58,7 +58,7 @@ export const preloadConfig = async () => {
   }
 };
 
-/** 仅中文：忽略本地缓存、配置与系统语言，始终加载 zh */
+/** English only: ignore cached, configured, and system languages. */
 export const preloadLanguage = async (
   _vergeConfig?: IVergeConfig | null,
   _loadConfig?: () => Promise<IVergeConfig | null>,

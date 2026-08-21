@@ -1,12 +1,12 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-/** 本分支仅使用简体中文：运行时与类型层面均不再解析为多语言代码 */
-export const supportedLanguages = ["zh"] as const;
+/** This branch uses English only; language switching is intentionally disabled. */
+export const supportedLanguages = ["en"] as const;
 
 export type SupportedLanguage = (typeof supportedLanguages)[number];
 
-export const FALLBACK_LANGUAGE: SupportedLanguage = "zh";
+export const FALLBACK_LANGUAGE: SupportedLanguage = "en";
 const LANGUAGE_STORAGE_KEY = "verge-language";
 
 export const resolveLanguage = (_language?: string): SupportedLanguage =>
@@ -49,7 +49,7 @@ type LocaleModule = {
   default: Record<string, unknown>;
 };
 
-const localeModules = import.meta.glob<LocaleModule>("@/locales/zh/index.ts");
+const localeModules = import.meta.glob<LocaleModule>("@/locales/en/index.ts");
 
 const localeLoaders = Object.entries(localeModules).reduce<
   Record<string, () => Promise<LocaleModule>>

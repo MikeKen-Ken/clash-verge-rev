@@ -83,7 +83,8 @@
     "profileItem": {
       "tooltips": {
         "showLast": "Click to show last update time",
-        "showNext": "Click to show next update"
+        "showNext": "Click to show next update",
+        "openDashboard": "Open Dashboard"
       },
       "status": {
         "lastUpdateFailed": "Last Update failed",
@@ -104,6 +105,7 @@
         "type": "Type",
         "description": "Descriptions",
         "subscriptionUrl": "Subscription URL",
+        "dashboard": "Dashboard",
         "httpTimeout": "HTTP Request Timeout",
         "updateInterval": "Update Interval",
         "useSystemProxy": "Use System Proxy",
