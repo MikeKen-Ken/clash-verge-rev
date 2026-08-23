@@ -11,7 +11,11 @@ import delayManager, {
 
 export type ProxyItemGroupInfo = Pick<
   IProxyGroupItem,
-  "name" | "type" | "timeout" | "selectedTimeout"
+  | "name"
+  | "type"
+  | "timeout"
+  | "selectedTimeout"
+  | "fixed"
 >;
 
 interface Props {

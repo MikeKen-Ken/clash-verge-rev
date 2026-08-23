@@ -47,8 +47,9 @@ const ProxyRenderInner = (props: RenderProps) => {
       type: group.type,
       timeout: group.timeout,
       selectedTimeout: group.selectedTimeout,
+      fixed: group.fixed,
     }),
-    [group.name, group.type, group.timeout, group.selectedTimeout],
+    [group.name, group.type, group.timeout, group.selectedTimeout, group.fixed],
   );
 
   const proxyColItemsMemo = useMemo(() => {
@@ -56,6 +57,7 @@ const ProxyRenderInner = (props: RenderProps) => {
 
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
+    const fixedName = group.fixed;
     return proxyCol.map((proxyItem) => {
       const name = proxyItem?.name ?? "unknown";
       const displayNameRaw = getDisplayNowForGroup?.(
@@ -71,11 +73,11 @@ const ProxyRenderInner = (props: RenderProps) => {
           proxy={proxyItem!}
           itemDisplayName={itemDisplayName}
           selected={selectedName != null ? selectedName === name : false}
-          showManualIcon={manualName != null && manualName === name}
+          showManualIcon={(fixedName ?? manualName) === name}
           showType={headState?.showType}
           onClick={() =>
             onChangeProxy(group, proxyItem!, {
-              isManualSelection: manualName != null && manualName === name,
+              isManualSelection: (fixedName ?? manualName) === name,
             })
           }
         />
@@ -119,6 +121,7 @@ const ProxyRenderInner = (props: RenderProps) => {
   if (type === 2) {
     const selectedName = getSelectedForGroup?.(group.name);
     const manualName = getManualSelectionForGroup?.(group.name);
+    const fixedName = group.fixed;
     const name = proxy?.name ?? "";
     const displayNameRaw = getDisplayNowForGroup?.(
       { name, now: proxy?.now },
@@ -132,12 +135,12 @@ const ProxyRenderInner = (props: RenderProps) => {
         proxy={proxy!}
         itemDisplayName={itemDisplayName}
         selected={selectedName != null ? selectedName === name : false}
-        showManualIcon={manualName != null && manualName === name}
+        showManualIcon={(fixedName ?? manualName) === name}
         showType={headState?.showType}
         sx={{ py: 0, pl: 2 }}
         onClick={() =>
           onChangeProxy(group, proxy!, {
-            isManualSelection: manualName != null && manualName === name,
+            isManualSelection: (fixedName ?? manualName) === name,
           })
         }
       />
