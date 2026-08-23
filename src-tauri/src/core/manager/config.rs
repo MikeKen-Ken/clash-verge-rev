@@ -3,11 +3,7 @@ use crate::{
     config::{Config, ConfigType, runtime::IRuntime},
     constants::timing,
     core::{handle, validate::CoreConfigValidator},
-    utils::{
-        dirs,
-        help,
-        notification::{notify_event, NotificationEvent},
-    },
+    utils::{dirs, help},
 };
 use anyhow::{Result, anyhow};
 use clash_verge_logging::{Type, logging};
@@ -146,7 +142,7 @@ impl CoreManager {
             Ok(_) => {
                 Self::apply_profile_selected_to_core().await;
                 Config::runtime().await.apply();
-                notify_event(NotificationEvent::RuntimeConfigUpdated).await;
+                handle::Handle::notice_message("runtime_config::updated", "Runtime configuration updated.");
                 logging!(info, Type::Core, "Configuration applied");
                 Ok(())
             }

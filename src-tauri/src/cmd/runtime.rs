@@ -5,7 +5,6 @@ use crate::{
     constants,
     core::{CoreManager, handle},
     enhance,
-    utils::notification::{notify_event, NotificationEvent},
 };
 use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging_error};
@@ -162,7 +161,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
                 Config::runtime().await.apply();
                 Config::generate_file(ConfigType::Run).await.stringify_err()?;
                 handle::Handle::refresh_clash_config_only();
-                notify_event(NotificationEvent::RuntimeConfigUpdated).await;
+                handle::Handle::notice_message("runtime_config::updated", "Runtime configuration updated.");
                 Ok(())
             }
             Err(e) => {
