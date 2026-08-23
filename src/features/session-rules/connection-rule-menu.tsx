@@ -54,7 +54,7 @@ export function ConnectionRuleMenu({ connection, position, onClose }: Props) {
         });
         await refreshSessionRules();
         showNotice.success(
-          `已添加临时规则：${candidate.ruleType},${candidate.payload},${target}`,
+          `Temporary rule added: ${candidate.ruleType},${candidate.payload},${formatPolicyLabel(target)}`,
         );
         onClose();
       } catch (err: unknown) {
@@ -77,8 +77,8 @@ export function ConnectionRuleMenu({ connection, position, onClose }: Props) {
     >
       <MenuItem disabled sx={{ opacity: 1 }}>
         <ListItemText
-          primary="添加到临时规则"
-          secondary="持久保存，需手动删除"
+          primary="Add to temporary rules"
+          secondary="Persisted until manually deleted"
           primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }}
           secondaryTypographyProps={{ fontSize: 12 }}
         />
@@ -87,7 +87,7 @@ export function ConnectionRuleMenu({ connection, position, onClose }: Props) {
       {candidates.length === 0 && (
         <MenuItem disabled>
           <Typography variant="body2" color="text.secondary">
-            该连接没有可用的匹配项
+            No matching fields are available for this connection
           </Typography>
         </MenuItem>
       )}
@@ -125,7 +125,7 @@ function PolicySubmenu({
         onClick={(event) => setAnchorEl(event.currentTarget)}
       >
         <ListItemText
-          primary={`${candidate.category}：${candidate.label}`}
+          primary={`${candidate.category}: ${candidate.label}`}
           secondary={candidate.ruleType}
           primaryTypographyProps={{ fontSize: 13 }}
           secondaryTypographyProps={{ fontSize: 11 }}

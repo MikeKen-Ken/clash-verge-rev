@@ -580,7 +580,7 @@ const ProxyPage = () => {
               }
             />
             <ToolbarControlTooltip
-              title="Filter nodes by region (excluding Selector groups)"
+              title="Filter nodes by country"
               panelOpen={regionSelectOpen}
             >
               <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -594,13 +594,13 @@ const ProxyPage = () => {
                   }}
                   sx={{ height: 32 }}
                   renderValue={(value) => {
-                    if (!value) return "Filter by region";
+                    if (!value) return "Country";
                     const label = REGION_FLAG_LABELS[value];
                     return label ? `${value} ${label}` : value;
                   }}
                 >
                   <MenuItem value="">
-                    <em>All regions</em>
+                    <em>All countries</em>
                   </MenuItem>
                   {availableRegions.map(({ flag, label }) => (
                     <MenuItem key={flag} value={flag}>

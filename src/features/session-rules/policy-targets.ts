@@ -19,7 +19,20 @@ export function buildPolicyTargets(
 }
 
 export function formatPolicyLabel(target: string): string {
-  if (target === "DIRECT") return "直连";
-  if (target === "REJECT") return "拒绝";
-  return target;
+  const builtInLabels: Record<string, string> = {
+    DIRECT: "Direct",
+    REJECT: "Reject",
+    "REJECT-DROP": "Reject (drop)",
+    PASS: "Pass",
+  };
+  if (builtInLabels[target]) return builtInLabels[target];
+
+  return target
+    .replaceAll("节点选择", "Proxy")
+    .replaceAll("自动选择", "Auto")
+    .replaceAll("故障转移", "Fallback")
+    .replaceAll("负载均衡", "Load Balance")
+    .replaceAll("手动选择", "Manual")
+    .replaceAll("直连", "Direct")
+    .replaceAll("拒绝", "Reject");
 }

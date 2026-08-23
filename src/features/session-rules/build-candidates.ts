@@ -14,7 +14,7 @@ export function buildRuleCandidates(
       ruleType: "PROCESS-NAME",
       payload: processName,
       label: processName,
-      category: "进程",
+      category: "Process",
     });
   }
 
@@ -24,7 +24,7 @@ export function buildRuleCandidates(
       ruleType: "PROCESS-PATH",
       payload: processPath,
       label: processPath,
-      category: "进程路径",
+      category: "Process path",
     });
   }
 
@@ -34,7 +34,7 @@ export function buildRuleCandidates(
       ruleType: "DOMAIN-SUFFIX",
       payload: host,
       label: host,
-      category: "域名",
+      category: "Domain",
     });
   }
 
@@ -44,7 +44,7 @@ export function buildRuleCandidates(
       ruleType: "SRC-IP-CIDR",
       payload: `${sourceIp}/32`,
       label: sourceIp,
-      category: "来源设备",
+      category: "Source device",
     });
   }
 
