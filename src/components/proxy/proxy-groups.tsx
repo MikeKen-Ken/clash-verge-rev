@@ -22,7 +22,10 @@ import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
-import { updateProxyChainConfigInRuntime } from "@/services/cmds";
+import {
+  applyManualConnectivityProxyOrder,
+  updateProxyChainConfigInRuntime,
+} from "@/services/cmds";
 import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
@@ -733,6 +736,7 @@ export const ProxyGroups = (props: Props) => {
           );
         }
       }
+      await applyManualConnectivityProxyOrder();
       debugLog(`[ProxyGroups] Delay tests for all groups completed`);
       pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
     } catch (error) {

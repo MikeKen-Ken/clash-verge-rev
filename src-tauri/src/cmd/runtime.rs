@@ -5,6 +5,7 @@ use crate::{
     constants,
     core::{CoreManager, handle},
     enhance,
+    utils::notification::{notify_event, NotificationEvent},
 };
 use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging_error};
@@ -110,6 +111,37 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
     Ok(())
 }
 
+/// Apply the latest delay-test connectivity score order to the generated runtime YAML and core.
+#[tauri::command]
+pub async fn apply_manual_connectivity_proxy_order() -> CmdResult<()> {
+    {
+        let runtime = Config::runtime().await;
+        let config = runtime
+            .latest_arc()
+            .config
+            .clone()
+            .ok_or_else(|| anyhow!("Runtime configuration is not ready"))?;
+        runtime.edit_draft(|draft| {
+            draft.config = Some(enhance::apply_manual_connectivity_proxy_order(config));
+        });
+    }
+
+    match CoreManager::global().apply_generate_config().await {
+        Ok((true, _)) => {
+            handle::Handle::refresh_clash_config_only();
+            Ok(())
+        }
+        Ok((false, message)) => {
+            Config::runtime().await.discard();
+            Err(message.into())
+        }
+        Err(error) => {
+            Config::runtime().await.discard();
+            Err(error.to_string().into())
+        }
+    }
+}
+
 /// 仅更新运行时配置并应用到核心，不写入 clash_config。
 #[tauri::command]
 pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
@@ -128,6 +160,7 @@ pub async fn patch_runtime_config(payload: Mapping) -> CmdResult<()> {
                 Config::runtime().await.apply();
                 Config::generate_file(ConfigType::Run).await.stringify_err()?;
                 handle::Handle::refresh_clash_config_only();
+                notify_event(NotificationEvent::RuntimeConfigUpdated).await;
                 Ok(())
             }
             Err(e) => {

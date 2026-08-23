@@ -66,6 +66,11 @@ export async function updateProfile(index: string, option?: IProfileOption) {
   return invoke<void>("update_profile", { index, option });
 }
 
+export async function applyManualConnectivityProxyOrder() {
+  await flushConnectivityPersistenceSync();
+  return invoke<void>("apply_manual_connectivity_proxy_order");
+}
+
 export async function deleteProfile(index: string) {
   return invoke<void>("delete_profile", { index });
 }

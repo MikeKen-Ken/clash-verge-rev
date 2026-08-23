@@ -5,6 +5,7 @@ use clash_verge_i18n;
 use tauri_plugin_notification::NotificationExt as _;
 
 pub enum NotificationEvent<'a> {
+    RuntimeConfigUpdated,
     DashboardToggled,
     ClashModeChanged {
         mode: &'a str,
@@ -36,6 +37,12 @@ fn notify(title: Cow<'_, str>, body: Cow<'_, str>) {
 
 pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
     match event {
+        NotificationEvent::RuntimeConfigUpdated => {
+            notify(
+                "Runtime Configuration Updated".into(),
+                "The running configuration has been applied successfully.".into(),
+            );
+        }
         NotificationEvent::DashboardToggled => {
             let title = clash_verge_i18n::t!("notifications.dashboardToggled.title");
             let body = clash_verge_i18n::t!("notifications.dashboardToggled.body");
