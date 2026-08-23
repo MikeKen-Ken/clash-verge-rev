@@ -206,7 +206,7 @@ export const ProviderButton = () => {
                         mb: "8px",
                         borderRadius: 2,
                         overflow: "hidden",
-                        transition: "all 0.2s",
+                        transition: "background-color 0.2s",
                       },
                       ({ palette: { mode, primary } }) => {
                         const bgcolor =

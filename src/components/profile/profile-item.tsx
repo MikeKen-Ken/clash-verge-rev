@@ -806,7 +806,7 @@ export const ProfileItem = (props: Props) => {
                       cursor: "pointer",
                       display: "inline-block",
                       borderBottom: "1px dashed transparent",
-                      transition: "all 0.2s",
+                      transition: "color 0.2s, border-color 0.2s",
                       "&:hover": {
                         borderBottomColor: "primary.main",
                         color: "primary.main",

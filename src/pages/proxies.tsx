@@ -51,6 +51,7 @@ import { useServiceUninstaller } from "@/hooks/use-service-uninstaller";
 import { useSystemState } from "@/hooks/use-system-state";
 import { useUpdate } from "@/hooks/use-update";
 import { useVerge } from "@/hooks/use-verge";
+import { useVisibility } from "@/hooks/use-visibility";
 import { useAppData } from "@/providers/app-data-context";
 import {
   openSystemNetworkProxySettings,
@@ -141,6 +142,8 @@ const ProxyPage = () => {
   );
 
   const modeList = useMemo(() => MODES, []);
+  const visible = useVisibility();
+  const wasVisibleRef = useRef(visible);
 
   // 前端自己记录当前模式，用于按钮选中状态，不依赖核心返回的 mode（核心在直连/全局时固定为 rule）
   const [uiMode, setUiMode] = useState<Mode>(() => {
@@ -211,8 +214,17 @@ const ProxyPage = () => {
 
   // 默认开启自动刷新，并固定 5 秒刷新一次（不再支持动态配置）
   useEffect(() => {
+    if (!visible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+
+    if (!wasVisibleRef.current) {
+      refreshProxy().catch(() => {});
+    }
+    wasVisibleRef.current = true;
     autoRefreshTimerRef.current = setInterval(() => {
-      refreshProxy().catch(() => { });
+      refreshProxy().catch(() => {});
     }, DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS * 1000);
     return () => {
       if (autoRefreshTimerRef.current) {
@@ -220,7 +232,7 @@ const ProxyPage = () => {
         autoRefreshTimerRef.current = null;
       }
     };
-  }, [refreshProxy]);
+  }, [refreshProxy, visible]);
 
   const { enable_tun_mode } = verge ?? {};
   const allowLan = clash?.["allow-lan"] ?? false;

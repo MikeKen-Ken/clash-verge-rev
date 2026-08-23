@@ -275,7 +275,7 @@ export const ProviderButton = () => {
                       mb: "8px",
                       borderRadius: 2,
                       overflow: "visible",
-                      transition: "all 0.2s",
+                      transition: "background-color 0.2s, border-color 0.2s",
                       display: "flex",
                       alignItems: "stretch",
                     },

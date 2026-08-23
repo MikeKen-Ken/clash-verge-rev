@@ -80,7 +80,25 @@ const filterLogsByLevel = (
 const appendLogs = (
   current: ILogItem[] | undefined,
   incoming: ILogItem[],
-): ILogItem[] => clampLogs([...(current ?? []), ...incoming]);
+): ILogItem[] => {
+  if (incoming.length >= MAX_LOG_NUM) {
+    return incoming.slice(-MAX_LOG_NUM);
+  }
+
+  const existing = current ?? [];
+  const keepExisting = Math.min(existing.length, MAX_LOG_NUM - incoming.length);
+  const result = new Array<ILogItem>(keepExisting + incoming.length);
+  const existingOffset = existing.length - keepExisting;
+
+  for (let index = 0; index < keepExisting; index += 1) {
+    result[index] = existing[existingOffset + index];
+  }
+  for (let index = 0; index < incoming.length; index += 1) {
+    result[keepExisting + index] = incoming[index];
+  }
+
+  return result;
+};
 
 function logItemKey(item: ILogItem): string {
   return `${item.time ?? ""}\0${item.type}\0${item.payload}`;
@@ -130,6 +148,7 @@ export const useLogData = () => {
     setupHandlers: ({ next, scheduleReconnect, isMounted }) => {
       let flushTimer: ReturnType<typeof setTimeout> | null = null;
       const buffer: ILogItem[] = [];
+      let batchTimestamp: string | null = null;
 
       const clearFlushTimer = () => {
         if (flushTimer) {
@@ -144,6 +163,7 @@ export const useLogData = () => {
           return;
         }
         const pendingLogs = buffer.splice(0, buffer.length);
+        batchTimestamp = null;
         next(null, (current) => appendLogs(current, pendingLogs));
         flushTimer = null;
       };
@@ -165,7 +185,8 @@ export const useLogData = () => {
             ) {
               return;
             }
-            parsed.time = dayjs().format("MM-DD HH:mm:ss");
+            batchTimestamp ??= dayjs().format("MM-DD HH:mm:ss");
+            parsed.time = batchTimestamp;
             // Extract process name from payload if not already present
             if (!parsed.processName && parsed.payload) {
               parsed.processName = extractProcessName(parsed.payload);
