@@ -4,7 +4,7 @@ use crate::{
     utils::dirs,
 };
 use anyhow::{Context as _, Result, bail};
-use clash_verge_logging::{Type, logging, logging_error};
+use clash_verge_logging::{Type, logging};
 use clash_verge_service_ipc::CoreConfig;
 use compact_str::CompactString;
 use once_cell::sync::Lazy;
@@ -12,13 +12,9 @@ use std::{
     env::current_exe,
     path::{Path, PathBuf},
     process::Command as StdCommand,
-    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 use tokio::sync::Mutex;
-
-/// 同一进程内自动重装最多一次，避免启动阶段连环弹管理员密码
-static AUTO_REINSTALL_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
 /// 服务刚拉起时 IPC 可能尚未就绪，先等待再决定是否重装
 const SERVICE_READY_ATTEMPTS: usize = 12;
@@ -37,6 +33,23 @@ pub enum ServiceStatus {
 
 #[derive(Clone)]
 pub struct ServiceManager(ServiceStatus);
+
+#[cfg(any(target_os = "macos", test))]
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn escape_applescript_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_admin_command(shell: &str, prompt: &str) -> String {
+    let shell = escape_applescript_string(shell);
+    let prompt = escape_applescript_string(prompt);
+    format!(r#"do shell script "{shell}" with administrator privileges with prompt "{prompt}""#)
+}
 
 #[cfg(target_os = "windows")]
 fn uninstall_service() -> Result<()> {
@@ -227,22 +240,22 @@ fn uninstall_service() -> Result<()> {
         bail!(format!("uninstaller not found: {uninstall_path:?}"));
     }
 
-    let uninstall_shell: String = uninstall_path.to_string_lossy().into_owned();
-
     // clash_verge_i18n::sync_locale(Config::verge().await.latest_arc().language.as_deref());
 
     let prompt = clash_verge_i18n::t!("service.adminUninstallPrompt");
-    let command =
-        format!(r#"do shell script "sudo '{uninstall_shell}'" with administrator privileges with prompt "{prompt}""#);
+    let uninstall_shell = shell_single_quote(&uninstall_path.to_string_lossy());
+    let command = macos_admin_command(&uninstall_shell, prompt.as_ref());
 
     // logging!(debug, Type::Service, "uninstall command: {}", command);
 
-    let status = StdCommand::new("osascript").args(vec!["-e", &command]).status()?;
+    let output = StdCommand::new("osascript").args(["-e", &command]).output()?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let details = String::from_utf8_lossy(&output.stderr);
         bail!(
-            "failed to uninstall service with status {}",
-            status.code().unwrap_or(-1)
+            "failed to uninstall service with status {}: {}",
+            output.status.code().unwrap_or(-1),
+            details.trim()
         );
     }
 
@@ -260,20 +273,23 @@ fn install_service() -> Result<()> {
         bail!(format!("installer not found: {install_path:?}"));
     }
 
-    let install_shell: String = install_path.to_string_lossy().into_owned();
-
     // clash_verge_i18n::sync_locale(Config::verge().await.latest_arc().language.as_deref());
 
     let gid = tauri_plugin_clash_verge_sysinfo::current_gid();
     let prompt = clash_verge_i18n::t!("service.adminInstallPrompt");
-    let command = format!(
-        r#"do shell script "sudo CLASH_VERGE_SERVICE_GID={gid} '{install_shell}'" with administrator privileges with prompt "{prompt}""#
-    );
+    let install_path = shell_single_quote(&install_path.to_string_lossy());
+    let install_shell = format!("CLASH_VERGE_SERVICE_GID={gid} {install_path}");
+    let command = macos_admin_command(&install_shell, prompt.as_ref());
 
-    let status = StdCommand::new("osascript").args(vec!["-e", &command]).status()?;
+    let output = StdCommand::new("osascript").args(["-e", &command]).output()?;
 
-    if !status.success() {
-        bail!("failed to install service with status {}", status.code().unwrap_or(-1));
+    if !output.status.success() {
+        let details = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "failed to install service with status {}: {}",
+            output.status.code().unwrap_or(-1),
+            details.trim()
+        );
     }
 
     Ok(())
@@ -282,16 +298,25 @@ fn install_service() -> Result<()> {
 fn reinstall_service() -> Result<()> {
     logging!(info, Type::Service, "reinstall service");
 
-    // 先卸载服务
-    if let Err(err) = uninstall_service() {
-        logging!(warn, Type::Service, "failed to uninstall service: {}", err);
-    }
+    // The macOS installer now stops and replaces the launchd daemon itself.
+    // Running the separate uninstaller first would only add a second admin
+    // prompt and another failure point to the version-mismatch recovery path.
+    #[cfg(target_os = "macos")]
+    return install_service().context("failed to replace macOS service");
 
-    // 再安装服务
-    match install_service() {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            bail!(format!("failed to install service: {err}"))
+    #[cfg(not(target_os = "macos"))]
+    {
+        // 先卸载服务
+        if let Err(err) = uninstall_service() {
+            logging!(warn, Type::Service, "failed to uninstall service: {}", err);
+        }
+
+        // 再安装服务
+        match install_service() {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                bail!(format!("failed to install service: {err}"))
+            }
         }
     }
 }
@@ -406,8 +431,14 @@ pub async fn is_service_available() -> Result<()> {
         }
         return Err(e.into());
     }
-    clash_verge_service_ipc::connect().await?;
-    Ok(())
+    match probe_service_version().await {
+        Ok(ServiceStatus::Ready) => Ok(()),
+        Ok(ServiceStatus::NeedsReinstall) => {
+            bail!("Service version mismatch; reinstall required")
+        }
+        Ok(status) => bail!("Service unavailable: {status:?}"),
+        Err(reason) => bail!("Service unavailable: {reason}"),
+    }
 }
 
 /// 安装/重装后等待服务 IPC 真正可用
@@ -504,7 +535,24 @@ impl ServiceManager {
     pub async fn refresh(&mut self) -> Result<()> {
         let status = self.check_service_comprehensive().await;
         self.0 = status.clone();
-        logging_error!(Type::Service, self.handle_service_status(&status).await);
+
+        match status {
+            ServiceStatus::Ready => {
+                logging!(info, Type::Service, "Service is ready");
+            }
+            ServiceStatus::NeedsReinstall => {
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service version mismatch; waiting for an explicit repair action"
+                );
+            }
+            ServiceStatus::Unavailable(reason) => {
+                logging!(info, Type::Service, "Service unavailable: {reason}");
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -523,17 +571,19 @@ impl ServiceManager {
                 logging!(info, Type::Service, "Service is ready; starting directly");
                 self.0 = ServiceStatus::Ready;
             }
-            ServiceStatus::NeedsReinstall | ServiceStatus::ReinstallRequired => {
-                if AUTO_REINSTALL_ATTEMPTED.swap(true, Ordering::SeqCst) {
-                    logging!(
-                        warn,
-                        Type::Service,
-                        "本会话已尝试过自动重装，跳过并回退 Sidecar，避免重复要管理员密码"
-                    );
-                    self.0 = ServiceStatus::Unavailable("Service must be reinstalled manually".into());
-                    return Err(anyhow::anyhow!("Service must be reinstalled manually"));
-                }
-                logging!(info, Type::Service, "Service version mismatch; starting reinstall flow");
+            ServiceStatus::NeedsReinstall => {
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service version mismatch; using Sidecar mode until the user repairs it"
+                );
+                self.0 = ServiceStatus::NeedsReinstall;
+                return Err(anyhow::anyhow!(
+                    "Service version mismatch; explicit repair required"
+                ));
+            }
+            ServiceStatus::ReinstallRequired => {
+                logging!(info, Type::Service, "User requested service reinstall");
                 reinstall_service()?;
                 wait_and_check_service_available(self).await?;
             }
@@ -566,3 +616,17 @@ impl ServiceManager {
 }
 
 pub static SERVICE_MANAGER: Lazy<Mutex<ServiceManager>> = Lazy::new(|| Mutex::new(ServiceManager::default()));
+
+#[cfg(test)]
+mod tests {
+    use super::{macos_admin_command, shell_single_quote};
+
+    #[test]
+    fn macos_service_path_is_safe_for_shell_and_applescript() {
+        let path = shell_single_quote("/Applications/Ken's App/service");
+        let command = macos_admin_command(&path, "Install \"Service\"");
+
+        assert!(command.contains(r#"'Ken'\"'\"'s App/service'"#));
+        assert!(command.contains(r#"prompt "Install \"Service\"""#));
+    }
+}

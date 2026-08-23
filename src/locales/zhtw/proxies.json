@@ -28,11 +28,13 @@
       "delayCheckReset": "測試延遲以取消固定",
       "autoRefresh": "自動更新",
       "autoRefreshInterval": "間隔（秒）",
-      "blockAds": "阻擋廣告"
+      "blockAds": "阻擋廣告",
+      "hideUnavailableNodes": "隱藏無法使用的節點"
     },
     "tooltips": {
       "locate": "目前節點",
       "delayCheck": "延遲測試",
+      "hideUnavailableNodes": "隱藏最近一次延遲測試逾時或失敗的節點；尚未測試的節點仍會顯示",
       "sortDefault": "預設排序",
       "sortDelay": "按延遲排序",
       "sortName": "按名稱排序",

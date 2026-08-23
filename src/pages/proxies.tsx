@@ -69,12 +69,14 @@ import {
   REGION_FLAG_LABELS,
 } from "@/services/proxy-region-sort";
 import { ConnectivityStatsDialog } from "@/components/proxy/connectivity-stats-dialog";
+import { HideUnavailableNodesControl } from "@/components/proxy/hide-unavailable-nodes-control";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProviderButton as RuleProviderButton } from "@/components/rule/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
 import { ProxyPageIpInfo } from "@/components/proxy/proxy-page-ip-info";
 import { ProxySiteTestButtons } from "@/components/proxy/proxy-site-test-buttons";
 import type { ProxySiteTestSelection } from "@/components/proxy/proxy-site-test-buttons";
+import { useHideUnavailableNodes } from "@/components/proxy/use-hide-unavailable-nodes";
 import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
 import parseTraffic from "@/utils/parse-traffic";
@@ -160,6 +162,8 @@ const ProxyPage = () => {
   const [siteTestSelection, setSiteTestSelection] =
     useState<ProxySiteTestSelection | null>(null);
   const [regionFilter, setRegionFilter] = useState("");
+  const { hideUnavailableNodes, setHideUnavailableNodes } =
+    useHideUnavailableNodes();
   const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serviceMenuAnchor, setServiceMenuAnchor] =
@@ -579,6 +583,10 @@ const ProxyPage = () => {
                 </Typography>
               }
             />
+            <HideUnavailableNodesControl
+              checked={hideUnavailableNodes}
+              onChange={setHideUnavailableNodes}
+            />
             <ToolbarControlTooltip
               title="Filter nodes by country"
               panelOpen={regionSelectOpen}
@@ -886,6 +894,7 @@ const ProxyPage = () => {
         isChainMode={false}
         chainConfigData={null}
         regionFilter={regionFilter || undefined}
+        hideUnavailableNodes={hideUnavailableNodes}
         onRegisterCheckAll={(runner) => {
           checkAllDelayRunnerRef.current = runner;
         }}

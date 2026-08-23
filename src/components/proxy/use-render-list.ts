@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 
 import { useRuntimeConfig } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
@@ -13,6 +13,8 @@ import {
   type HeadState,
 } from "./use-head-state";
 import { useWindowWidth } from "./use-window-width";
+
+const UNAVAILABLE_FILTER_DELAY_LISTENER = "proxy-unavailable-filter";
 
 // 定义代理项接口
 interface IProxyItem {
@@ -110,12 +112,29 @@ export const useRenderList = (
   isChainMode?: boolean,
   selectedGroup?: string | null,
   regionFilter?: string,
+  hideUnavailableNodes = false,
 ) => {
   // 使用全局数据提供者
   const { proxies: proxiesData, refreshProxy } = useAppData();
   const { verge } = useVerge();
   const { width } = useWindowWidth();
   const [headStates, setHeadState] = useHeadStateNew();
+  const [delayRevision, bumpDelayRevision] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
+
+  useEffect(() => {
+    if (!hideUnavailableNodes) return;
+
+    delayManager.setGroupListener(
+      UNAVAILABLE_FILTER_DELAY_LISTENER,
+      bumpDelayRevision,
+    );
+    return () => {
+      delayManager.removeGroupListener(UNAVAILABLE_FILTER_DELAY_LISTENER);
+    };
+  }, [hideUnavailableNodes]);
 
   // 获取运行时配置用于链式代理模式
   const { data: runtimeConfig } = useRuntimeConfig(!!isChainMode);
@@ -182,6 +201,8 @@ export const useRenderList = (
 
   // 处理渲染列表
   const renderList: IRenderItem[] = useMemo(() => {
+    // Rebuild the filtered list when a delay test changes availability.
+    void delayRevision;
     if (!proxiesData) return [];
 
     // 链式代理模式下，显示代理组和其节点
@@ -420,6 +441,7 @@ export const useRenderList = (
           },
           group.type,
           regionFilter,
+          hideUnavailableNodes,
         );
 
         ret.push({
@@ -475,6 +497,8 @@ export const useRenderList = (
     runtimeConfig,
     selectedGroup,
     regionFilter,
+    hideUnavailableNodes,
+    delayRevision,
   ]);
 
   return {

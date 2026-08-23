@@ -62,6 +62,7 @@ interface Props {
   isChainMode?: boolean;
   chainConfigData?: string | null;
   regionFilter?: string;
+  hideUnavailableNodes?: boolean;
   onRegisterCheckAll?: ((runner: (() => void) | null) => void) | null;
   onActiveSelectionChange?: (
     selection: {
@@ -100,6 +101,7 @@ export const ProxyGroups = (props: Props) => {
     isChainMode = false,
     chainConfigData,
     regionFilter,
+    hideUnavailableNodes = false,
     onRegisterCheckAll,
     onActiveSelectionChange,
   } = props;
@@ -286,6 +288,7 @@ export const ProxyGroups = (props: Props) => {
     isChainMode,
     activeSelectedGroup,
     regionFilter,
+    hideUnavailableNodes,
   );
 
   const getGroupHeadState = useCallback(

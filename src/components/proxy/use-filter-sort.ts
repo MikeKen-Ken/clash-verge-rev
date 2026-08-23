@@ -122,6 +122,7 @@ export function filterSort(
   searchState?: ProxySearchState,
   groupType?: string,
   regionFilter?: string,
+  hideUnavailableNodes = false,
 ) {
   const fp = filterProxies(
     proxies,
@@ -130,6 +131,8 @@ export function filterSort(
     searchState,
     groupType,
     regionFilter,
+    hideUnavailableNodes,
+    latencyTimeout ?? DEFAULT_GROUP_TIMEOUT_MS,
   );
   const sp = sortProxies(fp, groupName, sortType, latencyTimeout, groupType);
   return sp;
@@ -152,6 +155,8 @@ function filterProxies(
   searchState?: ProxySearchState,
   groupType?: string,
   regionFilter?: string,
+  hideUnavailableNodes = false,
+  latencyTimeout = DEFAULT_GROUP_TIMEOUT_MS,
 ) {
   let list = proxies;
 
@@ -162,6 +167,14 @@ function filterProxies(
     list = list.filter(
       (proxy) => resolveRegionFlag(proxy.name) === regionFilter,
     );
+  }
+
+  if (hideUnavailableNodes) {
+    const delayMap = delayManager.getDelaysForGroupFix(groupName, list);
+    list = list.filter((proxy) => {
+      const delay = delayMap.get(proxy.name) ?? -1;
+      return delay < 0 || (delay > 0 && delay < latencyTimeout);
+    });
   }
 
   const query = filterText.trim();
