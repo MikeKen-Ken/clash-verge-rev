@@ -12,11 +12,11 @@
     overflow: hidden;
 
     &__left {
-      flex: 1 0 200px;
+      flex: 1 0 224px;
       display: flex;
       height: 100%;
       width: 100%;
-      padding: 0 0 8px;
+      padding: 18px 0 12px;
       flex-direction: column;
       align-self: stretch;
       box-sizing: border-box;
@@ -26,6 +26,22 @@
       -ms-user-select: none;
       overflow: hidden;
       border-right: 1px solid var(--divider-color);
+
+      .sidebar-brand {
+        flex: 0 0 128px;
+        display: grid;
+        place-items: center;
+        margin: 0 20px 16px;
+        border-radius: 18px;
+        background: var(--background-color-alpha);
+
+        img {
+          width: 96px;
+          height: 96px;
+          object-fit: contain;
+          pointer-events: none;
+        }
+      }
 
       .the-logo {
         position: relative;
@@ -60,7 +76,7 @@
         flex: 1 1 80%;
         overflow-y: auto;
         margin-bottom: 0px;
-        padding-top: 4px;
+        padding: 4px 8px 0;
         scrollbar-width: none;
 
         &::-webkit-scrollbar {
@@ -132,6 +148,10 @@
       padding-bottom: 16px;
     }
 
+    .layout-content__left .sidebar-brand {
+      margin-top: 0;
+    }
+
     .layout-content__right .the-content {
       top: 5px;
     }
@@ -181,6 +201,19 @@
 
       .the-traffic {
         display: none !important;
+      }
+
+      .sidebar-brand {
+        flex: 0 0 56px !important;
+        width: 56px !important;
+        height: 56px !important;
+        margin: 8px auto 10px !important;
+        border-radius: 14px !important;
+
+        img {
+          width: 42px !important;
+          height: 42px !important;
+        }
       }
 
       > .MuiBox-root {

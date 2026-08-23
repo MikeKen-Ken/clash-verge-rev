@@ -63,13 +63,17 @@ export const LayoutItem = (props: Props) => {
         {...(dragHandleProps ?? {})}
         sx={[
           {
-            borderRadius: 2,
-            marginLeft: 1.25,
+            borderRadius: 2.5,
+            marginLeft: 0,
             paddingLeft: 1,
             paddingRight: 1,
-            marginRight: 1.25,
+            marginRight: 0,
             cursor: draggable ? "grab" : "pointer",
+            transition: "background-color 160ms ease, transform 160ms ease",
             "&:active": draggable ? { cursor: "grabbing" } : {},
+            "&:hover": {
+              transform: draggable ? undefined : "translateX(2px)",
+            },
             "& .MuiListItemText-primary": {
               color: "text.primary",
               fontWeight: "700",

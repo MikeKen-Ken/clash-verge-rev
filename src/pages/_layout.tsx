@@ -25,6 +25,7 @@ import { BaseErrorBoundary } from "@/components/base";
 import { LogDataProvider } from "@/providers/log-data-provider";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { NoticeManager } from "@/components/layout/notice-manager";
+import { SidebarBrand } from "@/components/layout/sidebar-brand";
 import { WindowControls } from "@/components/layout/window-controller";
 import { useCloseAllWithDelayCheck } from "@/hooks/use-close-all-with-delay-check";
 import { useFallbackSwitchNotify } from "@/hooks/use-fallback-switch-notify";
@@ -306,6 +307,7 @@ const Layout = () => {
 
           <div className="layout-content">
             <div className="layout-content__left">
+              <SidebarBrand />
 
               {menuUnlocked && (
                 <Box
