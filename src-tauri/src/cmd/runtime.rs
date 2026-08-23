@@ -120,9 +120,11 @@ pub async fn apply_manual_connectivity_proxy_order() -> CmdResult<()> {
             .latest_arc()
             .config
             .clone()
-            .ok_or_else(|| anyhow!("Runtime configuration is not ready"))?;
+            .ok_or_else(|| String::from("Runtime configuration is not ready"))?;
         runtime.edit_draft(|draft| {
-            draft.config = Some(enhance::apply_manual_connectivity_proxy_order(config));
+            draft.config = Some(
+                enhance::connectivity_order::apply_manual_connectivity_proxy_order(config),
+            );
         });
     }
 
