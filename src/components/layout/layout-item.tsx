@@ -125,13 +125,14 @@ export const LayoutItem = (props: Props) => {
         <ListItemText
           sx={{
             position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            top: "50%",
+            left: "50%",
+            flex: "none",
+            width: "max-content",
             margin: 0,
             textAlign: "center",
             pointerEvents: "none",
+            transform: "translate(-50%, -50%)",
           }}
           primary={children}
         />
