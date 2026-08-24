@@ -76,12 +76,17 @@
         flex: 1 1 80%;
         overflow-y: auto;
         margin-bottom: 0px;
-        padding: 4px 8px 0;
+        padding: 4px 0 0;
         scrollbar-width: none;
 
         &::-webkit-scrollbar {
           width: 0;
           height: 0;
+        }
+
+        .MuiListItem-root {
+          width: 100%;
+          max-width: 100%;
         }
       }
 
@@ -132,7 +137,8 @@
       width: 100%;
       display: flex;
       justify-content: flex-end;
-      padding: 10px;
+      align-items: center;
+      padding: 0 10px;
       box-sizing: border-box;
       height: 36px;
       border-bottom: 1px solid var(--divider-color);

@@ -49,12 +49,43 @@ export const LayoutItem = (props: Props) => {
     ? { ...(attributes ?? {}), ...(listeners ?? {}) }
     : undefined;
 
+  const showMonochromeIcon =
+    effectiveMenuIcon === "monochrome" || !effectiveMenuIcon;
+  const showColorfulIcon = effectiveMenuIcon === "colorful";
+  const iconSx = navCollapsed
+    ? {
+        color: "text.primary",
+        minWidth: "auto",
+        m: 0,
+        cursor: draggable ? "grab" : "inherit",
+      }
+    : {
+        color: "text.primary",
+        position: "absolute",
+        left: 12,
+        top: "50%",
+        zIndex: 1,
+        minWidth: 24,
+        width: 24,
+        m: 0,
+        justifyContent: "center",
+        transform: "translateY(-50%)",
+        cursor: draggable ? "grab" : "inherit",
+      };
+
   return (
     <ListItem
       ref={setNodeRef}
       style={style}
       sx={[
-        { py: 0.5, maxWidth: 250, mx: "auto", padding: "4px 0px" },
+        {
+          display: "block",
+          width: "100%",
+          maxWidth: 250,
+          mx: "auto",
+          py: 0.5,
+          px: 0,
+        },
         isDragging ? { opacity: 0.78 } : {},
       ]}
     >
@@ -65,16 +96,22 @@ export const LayoutItem = (props: Props) => {
           {
             borderRadius: 2.5,
             position: "relative",
+            display: "flex",
+            width: "100%",
+            minHeight: 44,
+            boxSizing: "border-box",
             justifyContent: "center",
-            marginLeft: 0,
-            paddingLeft: 1,
-            paddingRight: 1,
-            marginRight: 0,
+            alignItems: "center",
+            m: 0,
+            px: 0,
+            py: 1,
             cursor: draggable ? "grab" : "pointer",
-            transition: "background-color 160ms ease, transform 160ms ease",
+            transition: "background-color 160ms ease",
             "&:active": draggable ? { cursor: "grabbing" } : {},
-            "&:hover": {
-              transform: draggable ? undefined : "translateX(2px)",
+            "& .MuiListItemText-root": {
+              m: 0,
+              flex: "0 0 auto",
+              textAlign: "center",
             },
             "& .MuiListItemText-primary": {
               color: "text.primary",
@@ -98,44 +135,11 @@ export const LayoutItem = (props: Props) => {
         aria-label={navCollapsed ? children : undefined}
         onClick={() => navigate(to)}
       >
-        {(effectiveMenuIcon === "monochrome" || !effectiveMenuIcon) && (
-          <ListItemIcon
-            sx={{
-              color: "text.primary",
-              position: "absolute",
-              left: "14px",
-              marginLeft: "6px",
-              cursor: draggable ? "grab" : "inherit",
-            }}
-          >
-            {icon[0]}
-          </ListItemIcon>
+        {showMonochromeIcon && (
+          <ListItemIcon sx={iconSx}>{icon[0]}</ListItemIcon>
         )}
-        {effectiveMenuIcon === "colorful" && (
-          <ListItemIcon
-            sx={{
-              position: "absolute",
-              left: "20px",
-              cursor: draggable ? "grab" : "inherit",
-            }}
-          >
-            {icon[1]}
-          </ListItemIcon>
-        )}
-        <ListItemText
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            flex: "none",
-            width: "max-content",
-            margin: 0,
-            textAlign: "center",
-            pointerEvents: "none",
-            transform: "translate(-50%, -50%)",
-          }}
-          primary={children}
-        />
+        {showColorfulIcon && <ListItemIcon sx={iconSx}>{icon[1]}</ListItemIcon>}
+        <ListItemText primary={children} />
       </ListItemButton>
     </ListItem>
   );
