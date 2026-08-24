@@ -64,6 +64,8 @@ export const LayoutItem = (props: Props) => {
         sx={[
           {
             borderRadius: 2.5,
+            position: "relative",
+            justifyContent: "center",
             marginLeft: 0,
             paddingLeft: 1,
             paddingRight: 1,
@@ -100,6 +102,8 @@ export const LayoutItem = (props: Props) => {
           <ListItemIcon
             sx={{
               color: "text.primary",
+              position: "absolute",
+              left: "14px",
               marginLeft: "6px",
               cursor: draggable ? "grab" : "inherit",
             }}
@@ -108,14 +112,26 @@ export const LayoutItem = (props: Props) => {
           </ListItemIcon>
         )}
         {effectiveMenuIcon === "colorful" && (
-          <ListItemIcon sx={{ cursor: draggable ? "grab" : "inherit" }}>
+          <ListItemIcon
+            sx={{
+              position: "absolute",
+              left: "20px",
+              cursor: draggable ? "grab" : "inherit",
+            }}
+          >
             {icon[1]}
           </ListItemIcon>
         )}
         <ListItemText
           sx={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: 0,
             textAlign: "center",
-            marginLeft: effectiveMenuIcon === "disable" ? "" : "-35px",
+            pointerEvents: "none",
           }}
           primary={children}
         />
