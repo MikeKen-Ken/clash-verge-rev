@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { selectNodeForGroup } from "@/services/proxy-select-node";
+import { clearProxyGroupManualSelection } from "@/services/cmds";
 import { useTranslation } from "react-i18next";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
@@ -272,6 +273,7 @@ export const useCloseAllWithDelayCheck = () => {
               await selectNodeForGroup(group.name, firstSuccessProxy, {
                 reason: "connections-close-all-auto",
               });
+              await clearProxyGroupManualSelection(group.name);
               debugLog(`[CloseAll] Successfully switched group ${group.name} to ${firstSuccessProxy}`);
             } catch (error) {
               console.error(
@@ -288,6 +290,12 @@ export const useCloseAllWithDelayCheck = () => {
           debugLog(`[CloseAll] No success proxy found for group ${group.name}, skipping switch`);
         }
       }
+
+      await Promise.allSettled(
+        switchable.map((g: IProxyGroupItem) =>
+          clearProxyGroupManualSelection(g.name),
+        ),
+      );
 
       pingDelayCheckNotice("Closing active non-DIRECT connections...");
       // Close all connections except those using DIRECT
