@@ -60,7 +60,7 @@ mod app_init {
                     .protocol(tauri_plugin_mihomo::models::Protocol::LocalSocket)
                     .socket_path(crate::config::IClashTemp::guard_external_controller_ipc())
                     .pool_config(
-                        // 与全量节点测速并发上限 175 对齐；另预留通道给切节点，避免 delay 占死连接池
+                        // 节点测速与 IPC 调用共用连接池；预留通道给切节点，避免 delay 占死连接池
                         tauri_plugin_mihomo::IpcPoolConfigBuilder::new()
                             .min_connections(3)
                             .max_connections(175)

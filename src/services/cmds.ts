@@ -68,6 +68,7 @@ export async function updateProfile(index: string, option?: IProfileOption) {
 
 export async function applyManualConnectivityProxyOrder() {
   await flushConnectivityPersistenceSync();
+  // Backend persists YAML order only; it does not reload the core after delay tests.
   return invoke<void>("apply_manual_connectivity_proxy_order");
 }
 

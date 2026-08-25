@@ -680,7 +680,6 @@ export const ProxyGroups = (props: Props) => {
           delayManager.markGroupDelayTesting(groupName, names);
           await delayManager.checkListDelay(names, groupName, timeout, {
             bulkReuseMap,
-            fullBulkMaxConcurrency: true,
           });
         }
 
@@ -759,6 +758,8 @@ export const ProxyGroups = (props: Props) => {
           clearProxyGroupManualSelection(g.name),
         ),
       );
+      // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
+      // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
       await applyManualConnectivityProxyOrder();
       debugLog(`[ProxyGroups] Delay tests for all groups completed`);
       pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");

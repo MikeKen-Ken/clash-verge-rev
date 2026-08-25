@@ -110,7 +110,13 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
     Ok(())
 }
 
-/// Apply the latest delay-test connectivity score order to the generated runtime YAML and core.
+/// Persist delay-test connectivity score order into the runtime YAML snapshot
+/// without reloading the core.
+///
+/// A full `apply_generate_config` / `reload_config` after delay tests recreates
+/// outbound adapters (wiping LastDelay so every node shows timeout), suspends
+/// the tunnel, and can reset DNS while TUN is still up — traffic then stays
+/// broken until the app restarts.
 #[tauri::command]
 pub async fn apply_manual_connectivity_proxy_order() -> CmdResult<()> {
     {
@@ -127,14 +133,11 @@ pub async fn apply_manual_connectivity_proxy_order() -> CmdResult<()> {
         });
     }
 
-    match CoreManager::global().apply_generate_config().await {
-        Ok((true, _)) => {
+    match Config::generate_file(ConfigType::Run).await {
+        Ok(_) => {
+            Config::runtime().await.apply();
             handle::Handle::refresh_clash_config_only();
             Ok(())
-        }
-        Ok((false, message)) => {
-            Config::runtime().await.discard();
-            Err(message.into())
         }
         Err(error) => {
             Config::runtime().await.discard();

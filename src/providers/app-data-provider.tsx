@@ -185,9 +185,7 @@ export const AppDataProvider = ({
               .map((p) => (typeof p === "string" ? p : p.name))
               .filter((name): name is string => Boolean(name));
             delayManager.markGroupDelayTesting(g.name, names);
-            await delayManager.checkListDelay(names, g.name, timeout, {
-              fullBulkMaxConcurrency: true,
-            });
+            await delayManager.checkListDelay(names, g.name, timeout);
           }),
         );
       } finally {

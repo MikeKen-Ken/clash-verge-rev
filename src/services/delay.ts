@@ -77,11 +77,6 @@ export interface CheckDelayOptions {
 export interface CheckListDelayOptions {
   concurrency?: number;
   bulkReuseMap?: Map<string, DelayUpdate>;
-  /**
-   * 为 true 时：并行数取 {@link DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY} 与节点数，
-   * 不受代理页「测速数量步长」限制（用于测全部、全局大批量、关连接多组测速等）。
-   */
-  fullBulkMaxConcurrency?: boolean;
 }
 
 const CACHE_TTL = 30 * 60 * 1000;
@@ -91,9 +86,6 @@ const CACHE_MAX_SIZE = 4096;
 const CACHE_PRUNE_INTERVAL_MS = 60_000;
 const DELAY_CHECK_CONCURRENCY_STORAGE_KEY = "health_check_concurrency";
 export const DELAY_CHECK_CONCURRENCY_PRESETS = [30, 50, 100, 150, 200] as const;
-
-/** 全量/大批量节点级测速时与代理页「测速数量步长」解耦的并行上限 */
-export const DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY = 175;
 
 const DEFAULT_DELAY_CHECK_CONCURRENCY = 30;
 
@@ -646,18 +638,16 @@ class DelayManager {
         : maybeOptions ?? {};
     const concurrency = options.concurrency;
     const bulkReuseMap = options.bulkReuseMap;
-    const fullBulkMaxConcurrency = options.fullBulkMaxConcurrency === true;
 
     const names = nameList.filter(Boolean);
-    const actualConcurrency = fullBulkMaxConcurrency
-      ? Math.min(DELAY_CHECK_FULL_BULK_MAX_CONCURRENCY, names.length)
-      : Math.min(
-        concurrency ?? delayCheckConcurrency,
-        delayCheckConcurrency,
-        names.length,
-      );
+    // 与 Android 一致：全量测速也走代理页并发设置，不再硬编码 175。
+    const actualConcurrency = Math.min(
+      concurrency ?? delayCheckConcurrency,
+      delayCheckConcurrency,
+      names.length,
+    );
     debugLog(
-      `[DelayManager] Batch test started, group:${group} count:${names.length} concurrency:${actualConcurrency} fullBulk:${fullBulkMaxConcurrency} timeout:${timeout}ms`,
+      `[DelayManager] Batch test started, group:${group} count:${names.length} concurrency:${actualConcurrency} timeout:${timeout}ms`,
     );
     const startTime = Date.now();
     const gen = this.bumpGroupCheckGeneration(group);

@@ -180,7 +180,6 @@ export const useCloseAllWithDelayCheck = () => {
               timeout,
               {
                 bulkReuseMap,
-                fullBulkMaxConcurrency: true,
               },
             );
             debugLog(

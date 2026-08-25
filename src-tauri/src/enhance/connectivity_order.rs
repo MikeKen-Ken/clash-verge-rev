@@ -295,7 +295,8 @@ fn apply_manual_connectivity_proxy_order_inner(mut config: Mapping) -> Mapping {
 }
 
 /// Reorder every proxy group after the user explicitly completes a delay test.
-/// This affects only the generated runtime YAML, never the source profile.
+/// This affects only the generated runtime YAML snapshot, never the source
+/// profile and never a live core reload.
 pub fn apply_manual_connectivity_proxy_order(config: Mapping) -> Mapping {
     apply_manual_connectivity_proxy_order_inner(config)
 }
