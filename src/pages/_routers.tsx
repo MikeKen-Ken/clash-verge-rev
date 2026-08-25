@@ -2,7 +2,7 @@ import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
 import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
 import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
-import VpnLockRoundedIcon from "@mui/icons-material/VpnLockRounded";
+import VpnKeyRoundedIcon from "@mui/icons-material/VpnKeyRounded";
 import { createBrowserRouter, Navigate, RouteObject } from "react-router";
 
 import ConnectionsSvg from "@/assets/image/itemicon/connections.svg?react";
@@ -22,7 +22,7 @@ export const navItems = [
   {
     label: "layout.components.navigation.tabs.proxies",
     path: "/proxies",
-    icon: [<VpnLockRoundedIcon key="mui" />, <ProxiesSvg key="svg" />],
+    icon: [<VpnKeyRoundedIcon key="mui" />, <ProxiesSvg key="svg" />],
     Component: ProxiesPage,
   },
   {
