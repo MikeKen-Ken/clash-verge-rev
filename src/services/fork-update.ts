@@ -2,8 +2,9 @@ import { getVersion } from "@tauri-apps/api/app";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { openWebUrl } from "@/services/cmds";
 import {
-  compareVersions,
+  extractSemver,
   normalizeVersion,
+  shouldOfferForkUpdate,
 } from "@/services/update";
 import { version as packageVersion } from "@root/package.json";
 
@@ -66,12 +67,18 @@ const resolveDownloadUrl = (manifest: ForkUpdateManifest): string | null => {
  * 走 Tauri HTTP 插件（Rust 侧请求），绕过 WebView CORS。
  * 浏览器原生 fetch 访问 GitHub / 代理会因无 Access-Control-Allow-Origin 失败。
  */
+const withCacheBust = (endpoint: string): string => {
+  const sep = endpoint.includes("?") ? "&" : "?";
+  return `${endpoint}${sep}t=${Date.now()}`;
+};
+
 const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
-  const response = await tauriFetch(endpoint, {
+  const response = await tauriFetch(withCacheBust(endpoint), {
     method: "GET",
     headers: {
       Accept: "application/json",
       "Cache-Control": "no-store",
+      Pragma: "no-cache",
     },
   });
   if (!response.ok) {
@@ -88,7 +95,7 @@ const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
 const resolveLocalVersion = async (): Promise<string> => {
   try {
     const runtime = await getVersion();
-    const normalized = normalizeVersion(runtime);
+    const normalized = extractSemver(runtime) ?? normalizeVersion(runtime);
     if (normalized) {
       console.log("[fork-updater] Local version source=getVersion()", runtime);
       return normalized;
@@ -96,7 +103,7 @@ const resolveLocalVersion = async (): Promise<string> => {
   } catch (err) {
     console.log("[fork-updater] getVersion() failed; falling back to package.json", err);
   }
-  const fallback = normalizeVersion(packageVersion);
+  const fallback = extractSemver(packageVersion) ?? normalizeVersion(packageVersion);
   if (!fallback) {
     throw new Error(`本地版本无法解析：package.json=${packageVersion}`);
   }
@@ -132,27 +139,34 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
 
   const localVersion = await resolveLocalVersion();
   const remoteRaw = manifest.name;
-  const remoteVersion = normalizeVersion(remoteRaw);
+  const remoteVersion =
+    extractSemver(remoteRaw) ?? normalizeVersion(remoteRaw);
   if (!remoteVersion) {
     throw new Error(
       `远程版本无法解析：name=${remoteRaw == null ? "空" : String(remoteRaw)}`,
     );
   }
 
-  const comparison = compareVersions(remoteVersion, localVersion);
-  console.log(
-    "[fork-updater] 版本比较",
-    { local: localVersion, remote: remoteVersion, comparison },
+  const offer = shouldOfferForkUpdate(
+    remoteVersion,
+    localVersion,
+    manifest.pub_date,
   );
+  console.log("[fork-updater] 版本比较", {
+    local: localVersion,
+    remote: remoteVersion,
+    pub_date: manifest.pub_date,
+    offer,
+  });
 
   // 解析失败不得当成「已是最新」
-  if (comparison === null) {
+  if (offer === null) {
     throw new Error(
       `版本比较失败：local=${localVersion} remote=${remoteVersion}`,
     );
   }
 
-  if (comparison <= 0) {
+  if (!offer) {
     return null;
   }
 

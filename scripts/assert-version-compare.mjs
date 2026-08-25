@@ -157,6 +157,113 @@ if (buggyTreatsAsLatest(null) !== true) {
   console.log("PASS 确认旧逻辑会把 null 当成最新（已在 fork-update 修复）");
 }
 
+const inferAutobuildTime = (version, nowMs) => {
+  if (!version) return null;
+  const match = String(version).match(/\+ab\.(\d{8}|\d{4})(?:[.+]|$)/i);
+  if (!match) return null;
+  const stamp = match[1];
+  const shanghaiYmdToMs = (year, month, day) =>
+    new Date(
+      `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00+08:00`,
+    ).getTime();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(nowMs));
+  const num = (type) => Number(parts.find((part) => part.type === type)?.value);
+  let year;
+  let month;
+  let day;
+  if (stamp.length === 8) {
+    year = Number(stamp.slice(0, 4));
+    month = Number(stamp.slice(4, 6));
+    day = Number(stamp.slice(6, 8));
+  } else {
+    month = Number(stamp.slice(0, 2));
+    day = Number(stamp.slice(2, 4));
+    year = num("year");
+    if (shanghaiYmdToMs(year, month, day) > nowMs) year -= 1;
+  }
+  return shanghaiYmdToMs(year, month, day);
+};
+
+const shouldOfferForkUpdate = (remote, local, pubDate, nowMs) => {
+  const comparison = compareVersions(
+    normalizeVersion(remote),
+    normalizeVersion(local),
+  );
+  if (comparison === null) return null;
+  if (remote === local) return false;
+  if (comparison > 0) return true;
+  const remoteParts = splitVersion(remote);
+  const localParts = splitVersion(local);
+  if (!remoteParts || !localParts) return null;
+  const mainLen = Math.max(remoteParts.main.length, localParts.main.length);
+  for (let i = 0; i < mainLen; i += 1) {
+    const diff = (remoteParts.main[i] ?? 0) - (localParts.main[i] ?? 0);
+    if (diff < 0) return false;
+    if (diff > 0) break;
+  }
+  const localTime = inferAutobuildTime(local, nowMs);
+  const remoteInferred = inferAutobuildTime(remote, nowMs);
+  const remotePublished = pubDate ? Date.parse(pubDate) : Number.NaN;
+  const remoteTime = Number.isNaN(remotePublished)
+    ? remoteInferred
+    : remotePublished;
+  if (localTime != null && remoteTime != null && remoteTime > localTime) {
+    return true;
+  }
+  if (
+    localTime != null &&
+    remoteInferred != null &&
+    localTime === remoteInferred &&
+    remote !== local
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const now = Date.parse("2026-08-25T12:00:00+08:00");
+const offerCases = [
+  {
+    name: "跨年：去年 12 月本地不应挡住今年 8 月远程",
+    remote: "2.4.6+ab.0825.dc03999",
+    local: "2.4.6+ab.1225.aaaaaaa",
+    expect: true,
+  },
+  {
+    name: "同日不同 hash 应可更新",
+    remote: "2.4.6+ab.0825.bbbbbbb",
+    local: "2.4.6+ab.0825.aaaaaaa",
+    expect: true,
+  },
+  {
+    name: "完全相同则已是最新",
+    remote: "2.4.6+ab.0825.dc03999",
+    local: "2.4.6+ab.0825.dc03999",
+    expect: false,
+  },
+  {
+    name: "主版本更低不降级",
+    remote: "2.4.5+ab.0825.dc03999",
+    local: "2.4.6+ab.0101.aaaaaaa",
+    expect: false,
+  },
+];
+
+for (const c of offerCases) {
+  const got = shouldOfferForkUpdate(c.remote, c.local, undefined, now);
+  if (got !== c.expect) {
+    failed += 1;
+    console.error("FAIL", c.name, { expected: c.expect, got });
+  } else {
+    console.log("PASS", c.name, got);
+  }
+}
+
 if (failed > 0) {
   console.error(`\n${failed} 个断言失败`);
   process.exit(1);

@@ -141,6 +141,120 @@ export const compareVersions = (
   return compareVersionParts(partsA, partsB);
 };
 
+const AB_BUILD_STAMP_RE = /\+ab\.(\d{8}|\d{4})(?:[.+]|$)/i;
+
+const shanghaiYmdToMs = (year: number, month: number, day: number): number => {
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return new Date(`${year}-${mm}-${dd}T00:00:00+08:00`).getTime();
+};
+
+const shanghaiYmd = (ms: number): { year: number; month: number; day: number } => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(ms));
+  const num = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value);
+  return { year: num("year"), month: num("month"), day: num("day") };
+};
+
+const isValidYmd = (year: number, month: number, day: number): boolean => {
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const ms = shanghaiYmdToMs(year, month, day);
+  if (Number.isNaN(ms)) return false;
+  const roundTrip = shanghaiYmd(ms);
+  return (
+    roundTrip.year === year &&
+    roundTrip.month === month &&
+    roundTrip.day === day
+  );
+};
+
+/**
+ * 把 +ab.MMDD / +ab.YYYYMMDD 还原成时间戳。
+ * autobuild 常用 MMDD、不含年份，跨年时数字比较会把去年 12 月当成比今年 8 月更新。
+ */
+export const inferAutobuildTime = (
+  version: string | null | undefined,
+  nowMs: number = Date.now(),
+): number | null => {
+  if (!version) return null;
+  const match = version.match(AB_BUILD_STAMP_RE);
+  if (!match) return null;
+  const stamp = match[1];
+  let year: number;
+  let month: number;
+  let day: number;
+  if (stamp.length === 8) {
+    year = Number(stamp.slice(0, 4));
+    month = Number(stamp.slice(4, 6));
+    day = Number(stamp.slice(6, 8));
+  } else {
+    month = Number(stamp.slice(0, 2));
+    day = Number(stamp.slice(2, 4));
+    year = shanghaiYmd(nowMs).year;
+    const candidate = shanghaiYmdToMs(year, month, day);
+    if (!Number.isNaN(candidate) && candidate > nowMs) {
+      year -= 1;
+    }
+  }
+  if (!isValidYmd(year, month, day)) return null;
+  return shanghaiYmdToMs(year, month, day);
+};
+
+const mainLineCmp = (a: VersionParts, b: VersionParts): number => {
+  const length = Math.max(a.main.length, b.main.length);
+  for (let i = 0; i < length; i += 1) {
+    const diff = (a.main[i] ?? 0) - (b.main[i] ?? 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+};
+
+/**
+ * 是否应提示 fork 更新。null 表示版本无法比较。
+ * 在 semver/build 数字比较之外，用 +ab 日期纠正跨年误报，并用 pub_date 打破同日 hash 误序。
+ */
+export const shouldOfferForkUpdate = (
+  remoteVersion: string,
+  localVersion: string,
+  pubDate?: string | null,
+  nowMs: number = Date.now(),
+): boolean | null => {
+  const comparison = compareVersions(remoteVersion, localVersion);
+  if (comparison === null) return null;
+  if (remoteVersion === localVersion) return false;
+  if (comparison > 0) return true;
+
+  const remoteParts = splitVersion(remoteVersion);
+  const localParts = splitVersion(localVersion);
+  if (!remoteParts || !localParts) return null;
+  if (mainLineCmp(remoteParts, localParts) < 0) return false;
+
+  const localTime = inferAutobuildTime(localVersion, nowMs);
+  const remoteInferred = inferAutobuildTime(remoteVersion, nowMs);
+  const remotePublished = pubDate ? Date.parse(pubDate) : Number.NaN;
+  const remoteTime = !Number.isNaN(remotePublished)
+    ? remotePublished
+    : remoteInferred;
+
+  if (localTime != null && remoteTime != null && remoteTime > localTime) {
+    return true;
+  }
+  if (
+    localTime != null &&
+    remoteInferred != null &&
+    localTime === remoteInferred &&
+    remoteVersion !== localVersion
+  ) {
+    return true;
+  }
+  return false;
+};
+
 export const resolveRemoteVersion = (update: Update): string | null => {
   const raw = update.rawJson ?? {};
   

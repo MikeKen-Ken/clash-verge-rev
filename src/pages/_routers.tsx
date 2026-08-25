@@ -1,8 +1,8 @@
-import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
-import LanguageRoundedIcon from "@mui/icons-material/LanguageRounded";
-import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import SubjectRoundedIcon from "@mui/icons-material/SubjectRounded";
-import WifiRoundedIcon from "@mui/icons-material/WifiRounded";
+import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
+import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
+import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
+import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
+import VpnKeyRoundedIcon from "@mui/icons-material/VpnKeyRounded";
 import { createBrowserRouter, Navigate, RouteObject } from "react-router";
 
 import ConnectionsSvg from "@/assets/image/itemicon/connections.svg?react";
@@ -22,31 +22,31 @@ export const navItems = [
   {
     label: "layout.components.navigation.tabs.proxies",
     path: "/proxies",
-    icon: [<WifiRoundedIcon key="mui" />, <ProxiesSvg key="svg" />],
+    icon: [<VpnKeyRoundedIcon key="mui" />, <ProxiesSvg key="svg" />],
     Component: ProxiesPage,
   },
   {
     label: "layout.components.navigation.tabs.profiles",
     path: "/profile",
-    icon: [<DnsRoundedIcon key="mui" />, <ProfilesSvg key="svg" />],
+    icon: [<LayersRoundedIcon key="mui" />, <ProfilesSvg key="svg" />],
     Component: ProfilesPage,
   },
   {
     label: "layout.components.navigation.tabs.connections",
     path: "/connections",
-    icon: [<LanguageRoundedIcon key="mui" />, <ConnectionsSvg key="svg" />],
+    icon: [<PublicRoundedIcon key="mui" />, <ConnectionsSvg key="svg" />],
     Component: ConnectionsPage,
   },
   {
     label: "layout.components.navigation.tabs.logs",
     path: "/logs",
-    icon: [<SubjectRoundedIcon key="mui" />, <LogsSvg key="svg" />],
+    icon: [<ArticleRoundedIcon key="mui" />, <LogsSvg key="svg" />],
     Component: LogsPage,
   },
   {
     label: "layout.components.navigation.tabs.settings",
     path: "/settings",
-    icon: [<SettingsRoundedIcon key="mui" />, <SettingsSvg key="svg" />],
+    icon: [<BuildRoundedIcon key="mui" />, <SettingsSvg key="svg" />],
     Component: SettingsPage,
   },
 ];

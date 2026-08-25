@@ -24,6 +24,7 @@ import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import {
   applyManualConnectivityProxyOrder,
+  clearProxyGroupManualSelection,
   updateProxyChainConfigInRuntime,
 } from "@/services/cmds";
 import delayManager, {
@@ -717,12 +718,14 @@ export const ProxyGroups = (props: Props) => {
           );
           await selectNodeForGroup(groupName, firstSuccessProxy, {
             reason: "proxy-ui-delay-bulk-auto",
-          }).catch((err) => {
-            console.warn(
-              `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
-              err,
-            );
-          });
+          })
+            .then(() => clearProxyGroupManualSelection(groupName))
+            .catch((err) => {
+              console.warn(
+                `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
+                err,
+              );
+            });
         } else if (hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
             `${phaseLabel}: manual selection detected; skipping automatic switch for "${groupName}"`,
@@ -739,6 +742,23 @@ export const ProxyGroups = (props: Props) => {
           );
         }
       }
+      const manualDuringCheck = snapshotDelayCheckManualOverrides();
+      const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
+        const type = g.type?.toLowerCase();
+        return (
+          !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+          !manualDuringCheck.has(g.name) &&
+          (type === "selector" ||
+            type === "url-test" ||
+            type === "urltest" ||
+            type === "fallback")
+        );
+      });
+      await Promise.allSettled(
+        unpinGroups.map((g: IProxyGroupItem) =>
+          clearProxyGroupManualSelection(g.name),
+        ),
+      );
       await applyManualConnectivityProxyOrder();
       debugLog(`[ProxyGroups] Delay tests for all groups completed`);
       pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
@@ -767,8 +787,24 @@ export const ProxyGroups = (props: Props) => {
         }
 
         // 测速后清空各组手动选择记录；测速期间用户手动选过的组保留
+        const manualDuringCheck = snapshotDelayCheckManualOverrides();
+        const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
+          const type = g.type?.toLowerCase();
+          return (
+            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+            !manualDuringCheck.has(g.name) &&
+            (type === "selector" ||
+              type === "url-test" ||
+              type === "urltest" ||
+              type === "fallback")
+          );
+        });
+        await Promise.allSettled(
+          unpinGroups.map((g: IProxyGroupItem) =>
+            clearProxyGroupManualSelection(g.name),
+          ),
+        );
         if (current) {
-          const manualDuringCheck = snapshotDelayCheckManualOverrides();
           const allGroupNames = new Set(
             availableGroups.map((g: IProxyGroupItem) => g.name),
           );
