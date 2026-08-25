@@ -1,7 +1,7 @@
-import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
-import LanguageRoundedIcon from "@mui/icons-material/LanguageRounded";
+import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
+import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
+import PublicRoundedIcon from "@mui/icons-material/PublicRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import SubjectRoundedIcon from "@mui/icons-material/SubjectRounded";
 import WifiRoundedIcon from "@mui/icons-material/WifiRounded";
 import { createBrowserRouter, Navigate, RouteObject } from "react-router";
 
@@ -28,19 +28,19 @@ export const navItems = [
   {
     label: "layout.components.navigation.tabs.profiles",
     path: "/profile",
-    icon: [<DnsRoundedIcon key="mui" />, <ProfilesSvg key="svg" />],
+    icon: [<LayersRoundedIcon key="mui" />, <ProfilesSvg key="svg" />],
     Component: ProfilesPage,
   },
   {
     label: "layout.components.navigation.tabs.connections",
     path: "/connections",
-    icon: [<LanguageRoundedIcon key="mui" />, <ConnectionsSvg key="svg" />],
+    icon: [<PublicRoundedIcon key="mui" />, <ConnectionsSvg key="svg" />],
     Component: ConnectionsPage,
   },
   {
     label: "layout.components.navigation.tabs.logs",
     path: "/logs",
-    icon: [<SubjectRoundedIcon key="mui" />, <LogsSvg key="svg" />],
+    icon: [<ArticleRoundedIcon key="mui" />, <LogsSvg key="svg" />],
     Component: LogsPage,
   },
   {
