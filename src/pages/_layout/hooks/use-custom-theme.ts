@@ -1,4 +1,5 @@
 import { alpha, createTheme, Theme as MuiTheme, Shadows } from "@mui/material";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   getCurrentWebviewWindow,
   WebviewWindow,
@@ -26,6 +27,23 @@ const TOP_LEVEL_AT_RULES = [
   "@color-profile",
 ];
 let cssScopeSupport: boolean | null = null;
+
+const REMOTE_BACKGROUND = /^(url\(|https?:|data:|blob:|asset:)/i;
+
+const toBackgroundImageCss = (source: string): string => {
+  const trimmed = source.trim();
+  if (!trimmed) return "none";
+  if (REMOTE_BACKGROUND.test(trimmed)) {
+    return trimmed.startsWith("url(")
+      ? trimmed
+      : `url("${trimmed.replace(/"/g, "%22")}")`;
+  }
+  try {
+    return `url("${convertFileSrc(trimmed).replace(/"/g, "%22")}")`;
+  } catch {
+    return `url("${trimmed.replace(/"/g, "%22")}")`;
+  }
+};
 
 const canUseCssScope = () => {
   if (cssScopeSupport !== null) {
@@ -233,7 +251,7 @@ export const useCustomTheme = () => {
       );
       rootEle.style.setProperty(
         "--user-background-image",
-        hasUserBackground ? `url('${userBackgroundImage}')` : "none",
+        hasUserBackground ? toBackgroundImageCss(userBackgroundImage) : "none",
       );
       rootEle.style.setProperty(
         "--background-blend-mode",
@@ -246,6 +264,12 @@ export const useCustomTheme = () => {
           : "1",
       );
       rootEle.setAttribute("data-css-injection-root", "true");
+      rootEle.setAttribute("data-theme-mode", mode === "light" ? "light" : "dark");
+      if (hasUserBackground) {
+        rootEle.setAttribute("data-liquid-glass", "1");
+      } else {
+        rootEle.removeAttribute("data-liquid-glass");
+      }
     }
 
     let styleElement = document.querySelector("style#verge-theme");
@@ -276,30 +300,25 @@ export const useCustomTheme = () => {
           background-color: ${mode === "light" ? "#a1a1a1" : "#666666"};
         }
 
-        /* 背景图处理 */
+        /* 背景图由 html[data-liquid-glass] 的固定层绘制，避免把整页 opacity 套到 UI 上 */
         body {
-          background-color: var(--background-color);
-          ${hasUserBackground
-          ? `
-            background-image: var(--user-background-image);
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            background-blend-mode: var(--background-blend-mode);
-            opacity: var(--background-opacity);
-          `
-          : ""
-        }
+          background-color: ${hasUserBackground ? "transparent" : "var(--background-color)"};
         }
 
         /* 修复可能的白色边框 */
         .MuiPaper-root {
-          border-color: var(--window-border-color) !important;
+          border-color: ${hasUserBackground
+          ? "var(--glass-edge)"
+          : "var(--window-border-color)"} !important;
         }
 
-        /* 确保模态框和对话框也使用暗色主题 */
+        /* 液态玻璃开启时对话框走磨砂层，否则保持实色主题 */
         .MuiDialog-paper {
-          background-color: ${mode === "light" ? "#ffffff" : "#2E303D"} !important;
+          background-color: ${hasUserBackground
+          ? "transparent"
+          : mode === "light"
+            ? "#ffffff"
+            : "#2E303D"} !important;
         }
 
         /* 移除可能的白色点或线条 */

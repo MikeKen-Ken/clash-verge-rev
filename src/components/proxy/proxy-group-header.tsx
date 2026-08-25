@@ -52,6 +52,7 @@ export const ProxyGroupHeader = ({
   return (
     <ListItemButton
       dense
+      className="proxy-group-header"
       style={{
         background: itembackgroundcolor,
         minHeight: 56,

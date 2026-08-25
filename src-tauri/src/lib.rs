@@ -200,6 +200,8 @@ mod app_init {
             cmd::test_delay,
             cmd::get_app_dir,
             cmd::copy_icon_file,
+            cmd::copy_ui_background,
+            cmd::clear_ui_background,
             cmd::download_icon_cache,
             cmd::get_process_icon,
             cmd::get_process_icon_by_name,

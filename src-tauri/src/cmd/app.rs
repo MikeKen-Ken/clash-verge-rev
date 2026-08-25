@@ -284,6 +284,55 @@ pub async fn copy_icon_file(path: String, icon_info: IconInfo) -> CmdResult<Stri
     }
 }
 
+const UI_BACKGROUND_PREFIX: &str = "ui_background-";
+const UI_BACKGROUND_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp"];
+
+async fn remove_ui_background_files(home: &Path) -> CmdResult<()> {
+    let mut entries = fs::read_dir(home).await.stringify_err()?;
+    while let Some(entry) = entries.next_entry().await.stringify_err()? {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(UI_BACKGROUND_PREFIX) {
+            entry.path().remove_if_exists().await.unwrap_or_default();
+        }
+    }
+    Ok(())
+}
+
+/// Copy a wallpaper into the app home dir for the desktop liquid-glass chrome.
+#[tauri::command]
+pub async fn copy_ui_background(path: String) -> CmdResult<String> {
+    let src = Path::new(path.as_str());
+    if !src.exists() {
+        return Err("file not found".into());
+    }
+    let ext = src
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !UI_BACKGROUND_EXTS.iter().any(|allowed| *allowed == ext) {
+        return Err("unsupported image type".into());
+    }
+
+    let home = dirs::app_home_dir().stringify_err()?;
+    remove_ui_background_files(&home).await?;
+
+    let dest = home.join(format!(
+        "{UI_BACKGROUND_PREFIX}{}.{ext}",
+        chrono::Utc::now().timestamp_millis()
+    ));
+    fs::copy(src, &dest).await.stringify_err()?;
+    Ok(dest.to_string_lossy().into())
+}
+
+/// Remove copied wallpaper files used by the desktop liquid-glass chrome.
+#[tauri::command]
+pub async fn clear_ui_background() -> CmdResult<()> {
+    let home = dirs::app_home_dir().stringify_err()?;
+    remove_ui_background_files(&home).await
+}
+
 /// 通知UI已准备就绪
 #[tauri::command]
 pub fn notify_ui_ready() {

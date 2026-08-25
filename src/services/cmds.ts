@@ -601,6 +601,14 @@ export async function copyIconFile(
   return invoke<void>("copy_icon_file", { path, iconInfo });
 }
 
+export async function copyUiBackground(path: string) {
+  return invoke<string>("copy_ui_background", { path });
+}
+
+export async function clearUiBackground() {
+  return invoke<void>("clear_ui_background");
+}
+
 export async function downloadIconCache(url: string, name: string) {
   return invoke<string>("download_icon_cache", { url, name });
 }

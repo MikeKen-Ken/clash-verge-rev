@@ -213,7 +213,10 @@
           "errorColor": "Error Color",
           "successColor": "Success Color",
           "fontFamily": "Font Family",
-          "cssInjection": "CSS Injection"
+          "cssInjection": "CSS Injection",
+          "backgroundImage": "Background Image",
+          "backgroundImageNone": "No custom background; using the theme color",
+          "backgroundImageSet": "Custom image; tap Browse to replace"
         },
         "actions": {
           "editCss": "Edit CSS"

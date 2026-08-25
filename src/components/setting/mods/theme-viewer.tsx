@@ -8,6 +8,7 @@ import {
   TextField,
   useTheme,
 } from "@mui/material";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useLockFn } from "ahooks";
 import {
   useEffect,
@@ -23,6 +24,7 @@ import { BaseDialog, DialogRef } from "@/components/base";
 import { EditorViewer } from "@/components/profile/editor-viewer";
 import { useVerge } from "@/hooks/use-verge";
 import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
+import { clearUiBackground, copyUiBackground } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 
 export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
@@ -159,6 +161,65 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
             onChange={handleChange("font_family")}
             onKeyDown={(e) => e.key === "Enter" && onSave()}
           />
+        </Item>
+        <Item sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
+          <ListItemText
+            primary={t("settings.components.verge.theme.fields.backgroundImage")}
+            secondary={
+              theme.background_image
+                ? t("settings.components.verge.theme.fields.backgroundImageSet")
+                : t("settings.components.verge.theme.fields.backgroundImageNone")
+            }
+            sx={{ mr: 1, minWidth: 160 }}
+          />
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={async () => {
+              try {
+                const selected = await openDialog({
+                  directory: false,
+                  multiple: false,
+                  filters: [
+                    {
+                      name: t(
+                        "settings.components.verge.theme.fields.backgroundImage",
+                      ),
+                      extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+                    },
+                  ],
+                });
+                if (!selected) return;
+                const dest = await copyUiBackground(String(selected));
+                setTheme((current) => ({
+                  ...current,
+                  background_image: dest,
+                }));
+              } catch (err) {
+                showNotice.error(err);
+              }
+            }}
+          >
+            {t("settings.components.verge.basic.actions.browse")}
+          </Button>
+          {theme.background_image ? (
+            <Button
+              size="small"
+              onClick={async () => {
+                try {
+                  await clearUiBackground();
+                  setTheme((current) => ({
+                    ...current,
+                    background_image: "",
+                  }));
+                } catch (err) {
+                  showNotice.error(err);
+                }
+              }}
+            >
+              {t("shared.actions.clear")}
+            </Button>
+          ) : null}
         </Item>
         <Item>
           <ListItemText

@@ -288,6 +288,8 @@ pub struct IVergeTheme {
 
     pub font_family: Option<String>,
     pub css_injection: Option<String>,
+    /// Local wallpaper path for the desktop liquid-glass chrome.
+    pub background_image: Option<String>,
 }
 
 /// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名（与 Tauri `externalBin` 名称一致）。
