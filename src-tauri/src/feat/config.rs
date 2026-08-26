@@ -213,9 +213,7 @@ async fn process_terminated_flags(update_flags: UpdateFlags, patch: &IVerge) -> 
     if update_flags.contains(UpdateFlags::LAUNCH) {
         sysopt::Sysopt::global().update_launch().await?;
     }
-    if update_flags.contains(UpdateFlags::LANGUAGE)
-        && let Some(language) = &patch.language
-    {
+    if update_flags.contains(UpdateFlags::LANGUAGE) && patch.language.is_some() {
         clash_verge_i18n::set_locale("en");
     }
     if update_flags.contains(UpdateFlags::SYS_PROXY) {

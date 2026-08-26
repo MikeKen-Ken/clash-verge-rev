@@ -65,7 +65,6 @@ impl Config {
     pub async fn init_config() -> Result<()> {
         Self::ensure_default_profile_items().await?;
 
-        let verge = Self::verge().await.latest_arc();
         clash_verge_i18n::sync_locale(Some("en"));
 
         // init Tun mode

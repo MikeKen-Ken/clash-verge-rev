@@ -304,7 +304,7 @@ pub async fn create_backup() -> Result<(String, PathBuf), Error> {
                 let name = entry.file_name();
                 let name = name.to_string_lossy();
                 if path.is_file() && name.starts_with("ui_background-") {
-                    zip.start_file(name.as_ref(), options)?;
+                    zip.start_file(&*name, options)?;
                     zip.write_all(&fs::read(&path).await?)?;
                 }
             }
