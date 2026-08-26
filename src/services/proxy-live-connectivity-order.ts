@@ -91,7 +91,7 @@ export async function applyLiveConnectivityOrderForGroups(
 export async function switchGroupsAfterDelayTest(input: {
   groups: Array<{ name: string; type?: string; members: string[] }>;
   firstSuccessByGroup: Map<string, string>;
-  manualOverrides: Set<string>;
+  manualOverrides: { has(name: string): boolean };
   extraUnpinNames?: string[];
   selectReason: SelectNodeForGroupCallReason;
 }): Promise<Set<string>> {
