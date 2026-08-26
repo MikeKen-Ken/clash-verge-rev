@@ -5,7 +5,7 @@ import {
   WebviewWindow,
 } from "@tauri-apps/api/webviewWindow";
 import { Theme as TauriOsTheme } from "@tauri-apps/api/window";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useVerge } from "@/hooks/use-verge";
 import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
@@ -89,8 +89,50 @@ export const useCustomTheme = () => {
   const { theme_mode, theme_setting } = verge ?? {};
   const mode = useThemeMode();
   const setMode = useSetThemeMode();
-  const userBackgroundImage = theme_setting?.background_image || "";
-  const hasUserBackground = !!userBackgroundImage;
+  const wallpaperList = useMemo(() => {
+    const images = (theme_setting?.background_images ?? []).filter(Boolean);
+    if (images.length > 0) return images;
+    return theme_setting?.background_image ? [theme_setting.background_image] : [];
+  }, [theme_setting?.background_image, theme_setting?.background_images]);
+  const [activeWallpaper, setActiveWallpaper] = useState(
+    () => wallpaperList[0] || "",
+  );
+
+  useEffect(() => {
+    if (activeWallpaper && wallpaperList.includes(activeWallpaper)) return;
+    setActiveWallpaper(wallpaperList[0] || "");
+  }, [activeWallpaper, wallpaperList]);
+
+  useEffect(() => {
+    if (
+      theme_setting?.background_playback !== "random" ||
+      wallpaperList.length < 2
+    ) {
+      return;
+    }
+    const intervalMs =
+      Math.max(30, theme_setting.background_interval_seconds || 300) * 1000;
+    const timer = window.setInterval(() => {
+      setActiveWallpaper((prev) => {
+        if (wallpaperList.length < 2) return prev;
+        let next = prev;
+        let guard = 0;
+        while (next === prev && guard < 8) {
+          next = wallpaperList[Math.floor(Math.random() * wallpaperList.length)];
+          guard += 1;
+        }
+        return next;
+      });
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [
+    theme_setting?.background_interval_seconds,
+    theme_setting?.background_playback,
+    wallpaperList,
+  ]);
+
+  const userBackgroundImage = activeWallpaper || wallpaperList[0] || "";
+  const hasUserBackground = wallpaperList.length > 0;
 
   useEffect(() => {
     if (theme_mode === "light" || theme_mode === "dark") {

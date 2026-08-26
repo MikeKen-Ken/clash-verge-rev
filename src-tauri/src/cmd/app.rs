@@ -316,7 +316,7 @@ pub async fn copy_ui_background(path: String) -> CmdResult<String> {
     }
 
     let home = dirs::app_home_dir().stringify_err()?;
-    remove_ui_background_files(&home).await?;
+    // Keep previously copied wallpapers so the library can hold multiple images.
 
     let dest = home.join(format!(
         "{UI_BACKGROUND_PREFIX}{}.{ext}",
@@ -324,6 +324,22 @@ pub async fn copy_ui_background(path: String) -> CmdResult<String> {
     ));
     fs::copy(src, &dest).await.stringify_err()?;
     Ok(dest.to_string_lossy().into())
+}
+
+/// Remove one copied wallpaper file from the desktop liquid-glass chrome.
+#[tauri::command]
+pub async fn remove_ui_background(path: String) -> CmdResult<()> {
+    let target = PathBuf::from(path.as_str());
+    let home = dirs::app_home_dir().stringify_err()?;
+    if target.starts_with(&home)
+        && target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(UI_BACKGROUND_PREFIX))
+    {
+        target.remove_if_exists().await.unwrap_or_default();
+    }
+    Ok(())
 }
 
 /// Remove copied wallpaper files used by the desktop liquid-glass chrome.

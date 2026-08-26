@@ -297,6 +297,20 @@ pub async fn create_backup() -> Result<(String, PathBuf), Error> {
         logging!(warn, Type::Backup, "跳过 UI 偏好备份: {err:#?}");
     }
 
+    if let Ok(home) = dirs::app_home_dir() {
+        if let Ok(mut entries) = fs::read_dir(&home).await {
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if path.is_file() && name.starts_with("ui_background-") {
+                    zip.start_file(name.as_ref(), options)?;
+                    zip.write_all(&fs::read(&path).await?)?;
+                }
+            }
+        }
+    }
+
     zip.finish()?;
     Ok((zip_file_name, zip_path))
 }

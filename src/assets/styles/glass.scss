@@ -70,6 +70,29 @@ html[data-liquid-glass="1"] {
     box-sizing: border-box;
   }
 
+  .base-page > header {
+    @include glass-panel(var(--glass-blur));
+    border-radius: var(--glass-radius);
+    border-bottom-color: var(--glass-edge);
+    margin-bottom: 8px;
+    min-height: 58px;
+    height: auto;
+    flex-basis: auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .base-page > header .MuiButton-root,
+  .base-page > header .MuiButtonGroup-grouped,
+  .base-page > header .MuiSelect-select,
+  .base-page > header .MuiChip-root,
+  .base-page > header .MuiIconButton-root {
+    background-color: var(--glass-card-fill) !important;
+    border-color: var(--glass-edge) !important;
+    backdrop-filter: blur(var(--glass-card-blur));
+    -webkit-backdrop-filter: blur(var(--glass-card-blur));
+  }
+
   .base-container,
   .base-container > section {
     background-color: transparent !important;
@@ -109,6 +132,7 @@ html[data-liquid-glass="1"] {
 
     .layout-content__left,
     .base-container,
+    .base-page > header,
     .MuiDialog-paper,
     .proxy-group-header {
       backdrop-filter: none;

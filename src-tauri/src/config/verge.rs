@@ -290,6 +290,12 @@ pub struct IVergeTheme {
     pub css_injection: Option<String>,
     /// Local wallpaper path for the desktop liquid-glass chrome.
     pub background_image: Option<String>,
+    /// Extra wallpaper paths used by random rotation / WebDAV wallpaper pack.
+    pub background_images: Option<Vec<String>>,
+    /// `fixed` or `random`.
+    pub background_playback: Option<String>,
+    /// Random rotation interval in seconds.
+    pub background_interval_seconds: Option<u32>,
 }
 
 /// 将配置中的 core 标识解析为实际要启动的 sidecar 二进制名（与 Tauri `externalBin` 名称一致）。

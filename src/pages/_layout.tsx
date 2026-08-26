@@ -293,9 +293,11 @@ const Layout = () => {
           }}
           sx={[
             ({ palette }) => ({
-              bgcolor: verge?.theme_setting?.background_image
-                ? "transparent"
-                : palette.background.paper,
+              bgcolor:
+                verge?.theme_setting?.background_image ||
+                (verge?.theme_setting?.background_images?.length ?? 0) > 0
+                  ? "transparent"
+                  : palette.background.paper,
             }),
             OS === "linux"
               ? {

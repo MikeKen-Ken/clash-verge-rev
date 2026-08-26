@@ -214,9 +214,22 @@
           "successColor": "Success Color",
           "fontFamily": "Font Family",
           "cssInjection": "CSS Injection",
-          "backgroundImage": "Background Image",
+          "backgroundImage": "Background Images",
           "backgroundImageNone": "No custom background; using the theme color",
-          "backgroundImageSet": "Custom image; tap Browse to replace"
+          "backgroundImageSet": "Custom image; tap Browse to add more",
+          "backgroundImageCount": "{{count}} custom image(s); tap Browse to add more",
+          "backgroundPlayback": "Background Playback",
+          "playbackFixed": "Fixed",
+          "playbackRandom": "Random rotation",
+          "interval30s": "30 seconds",
+          "interval1m": "1 minute",
+          "interval5m": "5 minutes",
+          "interval15m": "15 minutes",
+          "interval1h": "1 hour",
+          "webdavUpload": "Upload",
+          "webdavDownload": "Download",
+          "webdavUploadOk": "Wallpaper library uploaded",
+          "webdavDownloadOk": "Wallpaper library downloaded"
         },
         "actions": {
           "editCss": "Edit CSS"

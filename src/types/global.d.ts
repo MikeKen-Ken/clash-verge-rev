@@ -995,6 +995,9 @@ interface IVergeConfig {
     font_family?: string;
     css_injection?: string;
     background_image?: string;
+    background_images?: string[];
+    background_playback?: "fixed" | "random" | string;
+    background_interval_seconds?: number;
     background_blend_mode?: string;
     background_opacity?: number;
   };

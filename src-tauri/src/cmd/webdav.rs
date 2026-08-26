@@ -48,3 +48,15 @@ pub async fn delete_webdav_backup(filename: String) -> CmdResult<()> {
 pub async fn restore_webdav_backup(filename: String) -> CmdResult<()> {
     feat::restore_webdav_backup(filename).await.stringify_err()
 }
+
+/// 上传壁纸库到 WebDAV
+#[tauri::command]
+pub async fn upload_ui_wallpapers_webdav() -> CmdResult<()> {
+    feat::upload_wallpaper_pack().await.stringify_err()
+}
+
+/// 从 WebDAV 下载壁纸库
+#[tauri::command]
+pub async fn download_ui_wallpapers_webdav() -> CmdResult<()> {
+    feat::download_wallpaper_pack().await.stringify_err()
+}

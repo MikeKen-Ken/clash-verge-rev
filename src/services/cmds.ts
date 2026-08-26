@@ -606,8 +606,20 @@ export async function copyUiBackground(path: string) {
   return invoke<string>("copy_ui_background", { path });
 }
 
+export async function removeUiBackground(path: string) {
+  return invoke<void>("remove_ui_background", { path });
+}
+
 export async function clearUiBackground() {
   return invoke<void>("clear_ui_background");
+}
+
+export async function uploadUiWallpapersWebdav() {
+  return invoke<void>("upload_ui_wallpapers_webdav");
+}
+
+export async function downloadUiWallpapersWebdav() {
+  return invoke<void>("download_ui_wallpapers_webdav");
 }
 
 export async function downloadIconCache(url: string, name: string) {

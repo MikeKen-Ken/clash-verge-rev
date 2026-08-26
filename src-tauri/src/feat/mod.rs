@@ -4,6 +4,7 @@ mod config;
 mod profile;
 mod proxy;
 mod ui_preferences;
+mod wallpapers;
 mod window;
 
 // Re-export all functions from modules
@@ -13,4 +14,5 @@ pub use config::*;
 pub use profile::*;
 pub use proxy::*;
 pub use ui_preferences::*;
+pub use wallpapers::*;
 pub use window::*;

@@ -1,9 +1,12 @@
 import { EditRounded } from "@mui/icons-material";
 import {
   Button,
+  FormControl,
   List,
   ListItem,
   ListItemText,
+  MenuItem,
+  Select,
   styled,
   TextField,
   useTheme,
@@ -24,7 +27,7 @@ import { BaseDialog, DialogRef } from "@/components/base";
 import { EditorViewer } from "@/components/profile/editor-viewer";
 import { useVerge } from "@/hooks/use-verge";
 import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
-import { clearUiBackground, copyUiBackground } from "@/services/cmds";
+import { clearUiBackground, copyUiBackground, downloadUiWallpapersWebdav, removeUiBackground, uploadUiWallpapersWebdav } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 
 export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
@@ -33,7 +36,7 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
 
   const [open, setOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const { verge, patchVerge } = useVerge();
+  const { verge, patchVerge, mutateVerge } = useVerge();
   const { theme_setting } = verge ?? {};
   const [theme, setTheme] = useState(theme_setting || {});
   // Latest theme ref to avoid stale closures when saving CSS
@@ -137,13 +140,34 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
     );
   };
 
+  const wallpaperList =
+    theme.background_images && theme.background_images.length > 0
+      ? theme.background_images
+      : theme.background_image
+        ? [theme.background_image]
+        : [];
+  const playback = theme.background_playback === "random" ? "random" : "fixed";
+  const intervalSeconds = theme.background_interval_seconds || 300;
+
+  const setWallpaperLibrary = (
+    images: string[],
+    extra?: Partial<typeof theme>,
+  ) => {
+    setTheme((current) => ({
+      ...current,
+      ...extra,
+      background_images: images,
+      background_image: images[0] || "",
+    }));
+  };
+
   return (
     <BaseDialog
       open={open}
       title={t("settings.components.verge.theme.title")}
       okBtn={t("shared.actions.save")}
       cancelBtn={t("shared.actions.cancel")}
-      contentSx={{ width: 400, maxHeight: 505, overflow: "auto", pb: 0 }}
+      contentSx={{ width: 420, maxHeight: 560, overflow: "auto", pb: 0 }}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onSave}
@@ -166,8 +190,11 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
           <ListItemText
             primary={t("settings.components.verge.theme.fields.backgroundImage")}
             secondary={
-              theme.background_image
-                ? t("settings.components.verge.theme.fields.backgroundImageSet")
+              wallpaperList.length > 0
+                ? t(
+                    "settings.components.verge.theme.fields.backgroundImageCount",
+                    { count: wallpaperList.length },
+                  )
                 : t("settings.components.verge.theme.fields.backgroundImageNone")
             }
             sx={{ mr: 1, minWidth: 160 }}
@@ -179,7 +206,7 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
               try {
                 const selected = await openDialog({
                   directory: false,
-                  multiple: false,
+                  multiple: true,
                   filters: [
                     {
                       name: t(
@@ -190,11 +217,12 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
                   ],
                 });
                 if (!selected) return;
-                const dest = await copyUiBackground(String(selected));
-                setTheme((current) => ({
-                  ...current,
-                  background_image: dest,
-                }));
+                const files = Array.isArray(selected) ? selected : [selected];
+                const dests: string[] = [];
+                for (const file of files) {
+                  dests.push(await copyUiBackground(String(file)));
+                }
+                setWallpaperLibrary([...wallpaperList, ...dests]);
               } catch (err) {
                 showNotice.error(err);
               }
@@ -202,16 +230,13 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
           >
             {t("settings.components.verge.basic.actions.browse")}
           </Button>
-          {theme.background_image ? (
+          {wallpaperList.length > 0 ? (
             <Button
               size="small"
               onClick={async () => {
                 try {
                   await clearUiBackground();
-                  setTheme((current) => ({
-                    ...current,
-                    background_image: "",
-                  }));
+                  setWallpaperLibrary([]);
                 } catch (err) {
                   showNotice.error(err);
                 }
@@ -220,7 +245,115 @@ export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
               {t("shared.actions.clear")}
             </Button>
           ) : null}
+          <Button
+            size="small"
+            onClick={async () => {
+              try {
+                await uploadUiWallpapersWebdav();
+                showNotice.success(
+                  t("settings.components.verge.theme.fields.webdavUploadOk"),
+                );
+              } catch (err) {
+                showNotice.error(err);
+              }
+            }}
+          >
+            {t("settings.components.verge.theme.fields.webdavUpload")}
+          </Button>
+          <Button
+            size="small"
+            onClick={async () => {
+              try {
+                await downloadUiWallpapersWebdav();
+                await mutateVerge();
+                showNotice.success(
+                  t("settings.components.verge.theme.fields.webdavDownloadOk"),
+                );
+                setOpen(false);
+              } catch (err) {
+                showNotice.error(err);
+              }
+            }}
+          >
+            {t("settings.components.verge.theme.fields.webdavDownload")}
+          </Button>
         </Item>
+        {wallpaperList.length > 0 ? (
+          <Item sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
+            <ListItemText
+              primary={t(
+                "settings.components.verge.theme.fields.backgroundPlayback",
+              )}
+              sx={{ mr: 1, minWidth: 160 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <Select
+                value={playback}
+                onChange={(event) =>
+                  setTheme((current) => ({
+                    ...current,
+                    background_playback: event.target.value as string,
+                  }))
+                }
+              >
+                <MenuItem value="fixed">
+                  {t("settings.components.verge.theme.fields.playbackFixed")}
+                </MenuItem>
+                <MenuItem value="random">
+                  {t("settings.components.verge.theme.fields.playbackRandom")}
+                </MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <Select
+                value={intervalSeconds}
+                onChange={(event) =>
+                  setTheme((current) => ({
+                    ...current,
+                    background_interval_seconds: Number(event.target.value),
+                  }))
+                }
+              >
+                <MenuItem value={30}>
+                  {t("settings.components.verge.theme.fields.interval30s")}
+                </MenuItem>
+                <MenuItem value={60}>
+                  {t("settings.components.verge.theme.fields.interval1m")}
+                </MenuItem>
+                <MenuItem value={300}>
+                  {t("settings.components.verge.theme.fields.interval5m")}
+                </MenuItem>
+                <MenuItem value={900}>
+                  {t("settings.components.verge.theme.fields.interval15m")}
+                </MenuItem>
+                <MenuItem value={3600}>
+                  {t("settings.components.verge.theme.fields.interval1h")}
+                </MenuItem>
+              </Select>
+            </FormControl>
+          </Item>
+        ) : null}
+        {wallpaperList.map((path) => (
+          <Item key={path} sx={{ gap: 1 }}>
+            <ListItemText
+              primary={path.split(/[/\\]/).pop()}
+              sx={{ mr: 1, minWidth: 160 }}
+            />
+            <Button
+              size="small"
+              onClick={async () => {
+                try {
+                  await removeUiBackground(path);
+                  setWallpaperLibrary(wallpaperList.filter((item) => item !== path));
+                } catch (err) {
+                  showNotice.error(err);
+                }
+              }}
+            >
+              {t("shared.actions.clear")}
+            </Button>
+          </Item>
+        ))}
         <Item>
           <ListItemText
             primary={t("settings.components.verge.theme.fields.cssInjection")}
