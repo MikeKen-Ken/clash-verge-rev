@@ -22,7 +22,16 @@ import {
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import delayManager, { setDefaultHealthCheck } from "@/services/delay";
 import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
-import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
+import {
+  buildConnectivityScoreContext,
+  hydrateConnectivityStatsFromDisk,
+} from "@/services/proxy-connectivity-stats";
+import {
+  applyStartupLiveConnectivityOrder,
+  createDelayTestEarlyPicker,
+  memberNamesFromGroupAll,
+  orderedMemberNamesByConnectivity,
+} from "@/services/proxy-live-connectivity-order";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -176,21 +185,42 @@ export const AppDataProvider = ({
     };
 
     const run = async () => {
+      const orderTargets = urlTestOrFallback.map((g) => ({
+        name: g.name,
+        type: g.type,
+        members: memberNamesFromGroupAll(g.all),
+      }));
+      await applyStartupLiveConnectivityOrder(orderTargets);
+      await refreshProxy().catch(() => {});
+
       delayManager.beginBulkDelaySession();
       try {
         await Promise.allSettled(
           urlTestOrFallback.map(async (g) => {
             const timeout = g.timeout ?? 5000;
-            const names = (g.all ?? [])
-              .map((p) => (typeof p === "string" ? p : p.name))
-              .filter((name): name is string => Boolean(name));
-            delayManager.markGroupDelayTesting(g.name, names);
-            await delayManager.checkListDelay(names, g.name, timeout);
+            const names = memberNamesFromGroupAll(g.all);
+            if (names.length === 0) return;
+            const scoreContext = buildConnectivityScoreContext();
+            const orderedNames = orderedMemberNamesByConnectivity(
+              names,
+              scoreContext,
+            );
+            const picker = createDelayTestEarlyPicker({
+              groupName: g.name,
+              orderedNames,
+              timeoutMs: timeout,
+            });
+            delayManager.markGroupDelayTesting(g.name, orderedNames);
+            await delayManager.checkListDelay(orderedNames, g.name, timeout, {
+              onNodeSettled: (proxyName, delay) =>
+                picker.onResult(proxyName, delay),
+            });
           }),
         );
       } finally {
         delayManager.endBulkDelaySession();
       }
+      await applyStartupLiveConnectivityOrder(orderTargets);
       await refreshProxy();
       pollingCountRef.current += 1;
       scheduleNextPoll();

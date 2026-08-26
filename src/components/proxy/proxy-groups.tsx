@@ -38,9 +38,12 @@ import {
   snapshotDelayCheckManualOverrides,
 } from "@/services/delay-check-manual-override";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
-import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
+import { buildConnectivityScoreContext, hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import {
+  applyLiveConnectivityOrderForGroups,
+  createDelayTestEarlyPicker,
   isAutoSelectGroupType,
+  orderedMemberNamesByConnectivity,
   switchGroupsAfterDelayTest,
 } from "@/services/proxy-live-connectivity-order";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
@@ -623,6 +626,30 @@ export const ProxyGroups = (props: Props) => {
           : "Preparing: no proxy groups with testable leaf nodes",
       );
 
+      await hydrateConnectivityStatsFromDisk();
+      const scoreContext = buildConnectivityScoreContext();
+      const liveOrderGroups = (availableGroups as IProxyGroupItem[])
+        .filter(
+          (g) =>
+            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+            isAutoSelectGroupType(g.type),
+        )
+        .map((g) => ({
+          name: g.name,
+          type: g.type,
+          members: ((g as { all?: IProxyItem[] }).all ?? [])
+            .filter((p) => !p.provider)
+            .map((p) => p.name)
+            .filter(
+              (n): n is string =>
+                Boolean(n) && n !== "DIRECT" && n !== "REJECT",
+            ),
+        }));
+      await applyLiveConnectivityOrderForGroups(liveOrderGroups);
+      await Promise.allSettled(
+        liveOrderGroups.map((g) => clearProxyGroupManualSelection(g.name)),
+      );
+
       let groupPhase = 0;
       const orderTargets: Array<{
         name: string;
@@ -671,6 +698,28 @@ export const ProxyGroups = (props: Props) => {
           `${phaseLabel}: testing "${groupName}" (${names.length} leaf nodes, timeout ${timeout}ms)`,
         );
 
+        const orderedNames = orderedMemberNamesByConnectivity(
+          testableNames,
+          scoreContext,
+        );
+        const earlyPicker =
+          isAutoSelectGroupType(group.type) &&
+          !hasDelayCheckManualOverride(groupName)
+            ? createDelayTestEarlyPicker({
+                groupName,
+                orderedNames,
+                timeoutMs: timeout,
+                isCancelled: () => hasDelayCheckManualOverride(groupName),
+              })
+            : null;
+        const feedEarlyPick = (proxyName: string) => {
+          const delay = delayManager.getDelayUpdate(proxyName, groupName)
+            ?.delay;
+          if (typeof delay === "number") {
+            earlyPicker?.onResult(proxyName, delay);
+          }
+        };
+
         // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
         // 全部命中缓存 → 只写 UI；否则统一走节点级 checkListDelay（与 Android healthCheckWithTimeout 一致）。
         if (testableNames.length > 0 && missingBulkReuse.length === 0) {
@@ -679,6 +728,7 @@ export const ProxyGroups = (props: Props) => {
             testableNames,
             bulkReuseMap,
           );
+          orderedNames.forEach(feedEarlyPick);
           debugLog(
             `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过节点级测速`,
           );
@@ -687,10 +737,18 @@ export const ProxyGroups = (props: Props) => {
             pingDelayCheckNotice(
               `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableNames.length})...`,
             );
+            delayManager.applyBulkReuseHitsForGroup(
+              groupName,
+              testableNames,
+              bulkReuseMap,
+            );
+            orderedNames.forEach(feedEarlyPick);
           }
           delayManager.markGroupDelayTesting(groupName, names);
-          await delayManager.checkListDelay(names, groupName, timeout, {
+          await delayManager.checkListDelay(orderedNames, groupName, timeout, {
             bulkReuseMap,
+            onNodeSettled: (proxyName, delay) =>
+              earlyPicker?.onResult(proxyName, delay),
           });
         }
 

@@ -77,6 +77,7 @@ export interface CheckDelayOptions {
 export interface CheckListDelayOptions {
   concurrency?: number;
   bulkReuseMap?: Map<string, DelayUpdate>;
+  onNodeSettled?: (name: string, delay: number) => void;
 }
 
 const CACHE_TTL = 30 * 60 * 1000;
@@ -656,14 +657,27 @@ class DelayManager {
 
     this.beginBulkDelaySession();
     try {
-      names.forEach((name) =>
-        this.setDelay(name, group, -2, { silentGlobal: true }),
-      );
+      const pending: string[] = [];
+      for (const name of names) {
+        const reuseKey = bulkReuseMap ? bulkDelayReuseKey(name) : undefined;
+        const cached =
+          reuseKey !== undefined ? bulkReuseMap?.get(reuseKey) : undefined;
+        if (cached !== undefined && cached.delay !== -2) {
+          this.setDelay(name, group, cached.delay, {
+            elapsed: cached.elapsed,
+            silentGlobal: true,
+          });
+          options.onNodeSettled?.(name, cached.delay);
+        } else {
+          this.setDelay(name, group, -2, { silentGlobal: true });
+          pending.push(name);
+        }
+      }
 
       let index = 0;
       const help = async (): Promise<void> => {
         if (isCancelled()) return;
-        const currName = names[index++];
+        const currName = pending[index++];
         if (!currName) return;
 
         const nodeStart = Date.now();
@@ -683,6 +697,11 @@ class DelayManager {
           debugLog(
             `[DelayManager] Single-node API completed, proxy:${currName} elapsed:${Date.now() - nodeStart}ms`,
           );
+          if (!isCancelled()) {
+            const settled =
+              this.getDelayUpdate(currName, group)?.delay ?? -1;
+            options.onNodeSettled?.(currName, settled);
+          }
         } catch (error) {
           console.error(
             `[DelayManager] Batch test failed for proxy: ${currName}`,
@@ -690,6 +709,7 @@ class DelayManager {
           );
           if (!isCancelled()) {
             this.setDelay(currName, group, 1e6, { silentGlobal: true });
+            options.onNodeSettled?.(currName, 1e6);
           }
         }
 
@@ -697,12 +717,14 @@ class DelayManager {
         return help();
       };
 
-      const promiseList: Promise<void>[] = [];
-      for (let i = 0; i < actualConcurrency; i++) {
-        promiseList.push(help());
+      if (pending.length > 0) {
+        const workerCount = Math.min(actualConcurrency, pending.length);
+        const promiseList: Promise<void>[] = [];
+        for (let i = 0; i < workerCount; i++) {
+          promiseList.push(help());
+        }
+        await Promise.all(promiseList);
       }
-
-      await Promise.all(promiseList);
       debugLog(
         `[DelayManager] Batch test completed, group:${group} totalElapsed:${Date.now() - startTime}ms nodes:${names.length}`,
       );

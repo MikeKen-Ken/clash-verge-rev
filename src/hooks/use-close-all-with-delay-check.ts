@@ -10,11 +10,14 @@ import delayManager, {
   type DelayUpdate,
 } from "@/services/delay";
 import {
+  applyStartupLiveConnectivityOrder,
+  createDelayTestEarlyPicker,
   isAutoSelectGroupType,
   memberNamesFromGroupAll,
+  orderedMemberNamesByConnectivity,
   switchGroupsAfterDelayTest,
 } from "@/services/proxy-live-connectivity-order";
-import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
+import { buildConnectivityScoreContext, hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
@@ -115,6 +118,21 @@ export const useCloseAllWithDelayCheck = () => {
           : "No proxy groups with testable leaf nodes",
       );
 
+      await hydrateConnectivityStatsFromDisk();
+      const scoreContext = buildConnectivityScoreContext();
+      const liveOrderGroups = (groups as IProxyGroupItem[])
+        .filter(
+          (g) =>
+            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+            isAutoSelectGroupType(g.type),
+        )
+        .map((g) => ({
+          name: g.name,
+          type: g.type,
+          members: memberNamesFromGroupAll(g.all),
+        }));
+      await applyStartupLiveConnectivityOrder(liveOrderGroups);
+
       let groupPhase = 0;
       delayManager.beginBulkDelaySession();
       try {
@@ -162,6 +180,25 @@ export const useCloseAllWithDelayCheck = () => {
           `${phaseLabel}: testing "${group.name}" (${groupProxyNames.length} leaf nodes, timeout ${timeout}ms)`,
         );
 
+        const orderedNames = orderedMemberNamesByConnectivity(
+          testableProxyNames,
+          scoreContext,
+        );
+        const earlyPicker = isAutoSelectGroupType(group.type)
+          ? createDelayTestEarlyPicker({
+              groupName: group.name,
+              orderedNames,
+              timeoutMs: timeout,
+            })
+          : null;
+        const feedEarlyPick = (proxyName: string) => {
+          const delay = delayManager.getDelayUpdate(proxyName, group.name)
+            ?.delay;
+          if (typeof delay === "number") {
+            earlyPicker?.onResult(proxyName, delay);
+          }
+        };
+
         try {
           if (testableProxyNames.length > 0 && missingBulkReuse.length === 0) {
             delayManager.applyBulkReuseHitsForGroup(
@@ -169,6 +206,7 @@ export const useCloseAllWithDelayCheck = () => {
               testableProxyNames,
               bulkReuseMap,
             );
+            orderedNames.forEach(feedEarlyPick);
             debugLog(
               `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过节点级测速`,
             );
@@ -177,14 +215,22 @@ export const useCloseAllWithDelayCheck = () => {
               pingDelayCheckNotice(
                 `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableProxyNames.length})...`,
               );
+              delayManager.applyBulkReuseHitsForGroup(
+                group.name,
+                testableProxyNames,
+                bulkReuseMap,
+              );
+              orderedNames.forEach(feedEarlyPick);
             }
             delayManager.markGroupDelayTesting(group.name, groupProxyNames);
             await delayManager.checkListDelay(
-              groupProxyNames,
+              orderedNames,
               group.name,
               timeout,
               {
                 bulkReuseMap,
+                onNodeSettled: (proxyName, delay) =>
+                  earlyPicker?.onResult(proxyName, delay),
               },
             );
             debugLog(
@@ -214,7 +260,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
 
-      const scoreContext = buildConnectivityScoreContext();
+      const scoreContextAfterTest = buildConnectivityScoreContext();
       const orderTargets: Array<{
         name: string;
         type?: string;
@@ -257,7 +303,7 @@ export const useCloseAllWithDelayCheck = () => {
             b.proxyName,
             a.index,
             b.index,
-            scoreContext,
+            scoreContextAfterTest,
           ),
         );
         const firstSuccessProxy = successCandidates[0]?.proxyName;

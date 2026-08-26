@@ -147,6 +147,33 @@ pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProvid
     })
 }
 
+/// PUT `/proxies/{group}` — select a node; `force` skips the extra URLTest in Set().
+pub async fn put_group_selected_proxy(
+    group_name: &str,
+    proxy_name: &str,
+    force: bool,
+) -> Result<()> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+    let encoded = encode_path_segment(group_name);
+    let url = format!("http://localhost/proxies/{encoded}");
+    let response = client
+        .request(Method::PUT, url)
+        .headers(headers)
+        .json(&serde_json::json!({ "name": proxy_name, "force": force }))
+        .send()
+        .await
+        .with_context(|| format!("send PUT /proxies/{{name}} for {group_name:?}"))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "PUT /proxies/{{name}} returned {} for group {:?}",
+            response.status(),
+            group_name
+        );
+    }
+    Ok(())
+}
+
 /// PUT `/group/{name}/order` — reorder a live url-test/fallback group's cached proxies.
 pub async fn put_group_proxy_order(group_name: &str, proxies: &[String]) -> Result<()> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;

@@ -187,6 +187,7 @@ mod app_init {
             cmd::sync_tray_proxy_selection,
             cmd::sync_connectivity_stats_file,
             cmd::read_connectivity_stats_file,
+            cmd::force_select_group_proxy,
             cmd::apply_group_proxy_order,
             cmd::clear_proxy_group_manual_selection,
             cmd::save_dns_config,

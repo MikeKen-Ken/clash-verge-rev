@@ -1,6 +1,7 @@
 import {
   applyGroupProxyOrder,
   clearProxyGroupManualSelection,
+  forceSelectGroupProxy,
 } from "@/services/cmds";
 import {
   buildConnectivityScoreContext,
@@ -36,6 +37,59 @@ export function memberNamesFromGroupAll(
   return names;
 }
 
+export function orderedMemberNamesByConnectivity(
+  names: string[],
+  scoreContext?: ConnectivityScoreContext,
+): string[] {
+  return sortProxiesByConnectivity(
+    names.filter(Boolean),
+    (name) => name,
+    scoreContext,
+  );
+}
+
+export function createDelayTestEarlyPicker(input: {
+  groupName: string;
+  orderedNames: string[];
+  timeoutMs: number;
+  isCancelled?: () => boolean;
+}) {
+  const passed = new Set<string>();
+  let best: string | null = null;
+  let queue: Promise<void> = Promise.resolve();
+
+  const pick = (name: string, delay: number) => {
+    if (input.isCancelled?.()) return;
+    if (!name || name === "DIRECT" || name === "REJECT") return;
+    if (!(delay > 0 && delay <= input.timeoutMs)) return;
+    passed.add(name);
+    let next: string | null = null;
+    for (const candidate of input.orderedNames) {
+      if (passed.has(candidate)) {
+        next = candidate;
+        break;
+      }
+    }
+    if (!next || next === best) return;
+    best = next;
+    const groupName = input.groupName;
+    const node = next;
+    queue = queue.then(async () => {
+      if (input.isCancelled?.() || best !== node) return;
+      try {
+        await forceSelectGroupProxy(groupName, node);
+      } catch (error) {
+        console.warn(
+          `[LiveConnectivityOrder] early pick failed: ${groupName} -> ${node}`,
+          error,
+        );
+      }
+    });
+  };
+
+  return { onResult: pick };
+}
+
 export async function applyLiveConnectivityOrderToGroup(
   groupName: string,
   memberNames: string[],
@@ -59,6 +113,27 @@ export async function applyLiveConnectivityOrderToGroup(
     );
     return false;
   }
+}
+
+/**
+ * 启动时按积分重排 url-test/fallback 并清钉，立刻走评分第一的节点，不必等测速。
+ */
+export async function applyStartupLiveConnectivityOrder(
+  groups: Array<{ name: string; type?: string; members: string[] }>,
+): Promise<void> {
+  const targets = groups.filter(
+    (group) =>
+      isAutoSelectGroupType(group.type) &&
+      group.name !== "Direct" &&
+      group.name !== "Final",
+  );
+  if (targets.length === 0) {
+    return;
+  }
+  await applyLiveConnectivityOrderForGroups(targets);
+  await Promise.allSettled(
+    targets.map((group) => clearProxyGroupManualSelection(group.name)),
+  );
 }
 
 export async function applyLiveConnectivityOrderForGroups(

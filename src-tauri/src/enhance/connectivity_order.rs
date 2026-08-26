@@ -272,7 +272,18 @@ fn sort_group_proxies_list(
     });
 }
 
-fn apply_manual_connectivity_proxy_order_inner(mut config: Mapping) -> Mapping {
+fn group_type_is_auto_select(group_map: &Mapping) -> bool {
+    group_map
+        .get("type")
+        .and_then(Value::as_str)
+        .map(|raw| {
+            let lower = raw.to_ascii_lowercase();
+            lower == "url-test" || lower == "fallback"
+        })
+        .unwrap_or(false)
+}
+
+fn apply_connectivity_proxy_order_inner(mut config: Mapping, all_groups: bool) -> Mapping {
     let stats = load_weighted_connectivity_stats();
     let prior_delay_ms = compute_prior_effective_delay_ms(&stats);
 
@@ -285,6 +296,9 @@ fn apply_manual_connectivity_proxy_order_inner(mut config: Mapping) -> Mapping {
             let Some(group_map) = group.as_mapping_mut() else {
                 continue;
             };
+            if !all_groups && !group_type_is_auto_select(group_map) {
+                continue;
+            }
             if let Some(Value::Sequence(list)) = group_map.get_mut("proxies") {
                 sort_group_proxies_list(list, &stats, prior_delay_ms);
             }
@@ -294,11 +308,16 @@ fn apply_manual_connectivity_proxy_order_inner(mut config: Mapping) -> Mapping {
     config
 }
 
+/// 启动/生成运行配置时按积分重排 url-test/fallback 组成员（select 保持配置顺序）。
+pub fn apply_connectivity_proxy_order(config: Mapping) -> Mapping {
+    apply_connectivity_proxy_order_inner(config, false)
+}
+
 /// Reorder every proxy group after the user explicitly completes a delay test.
 /// This affects only the generated runtime YAML snapshot, never the source
 /// profile and never a live core reload.
 pub fn apply_manual_connectivity_proxy_order(config: Mapping) -> Mapping {
-    apply_manual_connectivity_proxy_order_inner(config)
+    apply_connectivity_proxy_order_inner(config, true)
 }
 
 /// 前端同步联通统计 JSON 到数据目录（不触发 reload）。

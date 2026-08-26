@@ -19,6 +19,14 @@ pub async fn sync_tray_proxy_selection() -> CmdResult<()> {
     }
 }
 
+/// 立刻固定组当前节点（不额外 URLTest）。测速过程中按积分顺序提前切节点用。
+#[tauri::command]
+pub async fn force_select_group_proxy(group: String, name: String) -> CmdResult<()> {
+    crate::utils::mihomo_ipc::put_group_selected_proxy(&group, &name, true)
+        .await
+        .map_err(|e| e.to_string().into())
+}
+
 /// 按积分顺序重排运行中的 url-test/fallback 组节点列表（不 reload 核心）。
 #[tauri::command]
 pub async fn apply_group_proxy_order(group: String, proxies: Vec<String>) -> CmdResult<()> {
