@@ -142,6 +142,10 @@ export async function syncTrayProxySelection() {
   return invoke<void>("sync_tray_proxy_selection");
 }
 
+export async function applyGroupProxyOrder(group: string, proxies: string[]) {
+  return invoke<void>("apply_group_proxy_order", { group, proxies });
+}
+
 export async function clearProxyGroupManualSelection(group: string) {
   return invoke<void>("clear_proxy_group_manual_selection", { group });
 }

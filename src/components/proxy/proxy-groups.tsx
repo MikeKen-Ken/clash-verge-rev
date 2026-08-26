@@ -39,6 +39,10 @@ import {
 } from "@/services/delay-check-manual-override";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
+import {
+  isAutoSelectGroupType,
+  switchGroupsAfterDelayTest,
+} from "@/services/proxy-live-connectivity-order";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
@@ -600,6 +604,7 @@ export const ProxyGroups = (props: Props) => {
 
     const allProviders = new Set<string>();
     const bulkReuseMap = new Map<string, DelayUpdate>();
+    const keepPinned = new Set<string>();
 
     try {
       let plannedGroupCount = 0;
@@ -619,6 +624,12 @@ export const ProxyGroups = (props: Props) => {
       );
 
       let groupPhase = 0;
+      const orderTargets: Array<{
+        name: string;
+        type?: string;
+        members: string[];
+      }> = [];
+      const firstSuccessByGroup = new Map<string, string>();
       for (const group of availableGroups as IProxyGroupItem[]) {
         const groupName = group.name;
         if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
@@ -709,22 +720,38 @@ export const ProxyGroups = (props: Props) => {
           ),
         );
 
-        // 测速后优先切到该组中排序最靠前且测速成功的节点；测速期间用户已手动选择则跳过
+        if (isAutoSelectGroupType(group.type)) {
+          orderTargets.push({
+            name: groupName,
+            type: group.type,
+            members: names.filter(
+              (n) => n && n !== "DIRECT" && n !== "REJECT",
+            ),
+          });
+        }
+
+        // fallback/url-test：测速后按积分重排运行时列表再清钉，不能 PUT 后立刻清钉
+        // （清钉会让 Fallback 回到配置文件原序的第一个可用节点）。
         const firstSuccessProxy = successCandidates[0]?.proxyName;
         if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
-          pingDelayCheckNotice(
-            `${phaseLabel}: testing complete; asking the core to switch "${groupName}" → ${firstSuccessProxy}`,
-          );
-          await selectNodeForGroup(groupName, firstSuccessProxy, {
-            reason: "proxy-ui-delay-bulk-auto",
-          })
-            .then(() => clearProxyGroupManualSelection(groupName))
-            .catch((err) => {
+          if (isAutoSelectGroupType(group.type)) {
+            firstSuccessByGroup.set(groupName, firstSuccessProxy);
+            pingDelayCheckNotice(
+              `${phaseLabel}: testing complete; applying score order for "${groupName}" → ${firstSuccessProxy}`,
+            );
+          } else {
+            pingDelayCheckNotice(
+              `${phaseLabel}: testing complete; asking the core to switch "${groupName}" → ${firstSuccessProxy}`,
+            );
+            await selectNodeForGroup(groupName, firstSuccessProxy, {
+              reason: "proxy-ui-delay-bulk-auto",
+            }).catch((err) => {
               console.warn(
                 `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
                 err,
               );
             });
+          }
         } else if (hasDelayCheckManualOverride(groupName)) {
           pingDelayCheckNotice(
             `${phaseLabel}: manual selection detected; skipping automatic switch for "${groupName}"`,
@@ -742,22 +769,28 @@ export const ProxyGroups = (props: Props) => {
         }
       }
       const manualDuringCheck = snapshotDelayCheckManualOverrides();
-      const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
-        const type = g.type?.toLowerCase();
-        return (
-          !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-          !manualDuringCheck.has(g.name) &&
-          (type === "selector" ||
-            type === "url-test" ||
-            type === "urltest" ||
-            type === "fallback")
-        );
+      const extraUnpinNames = availableGroups
+        .filter((g: IProxyGroupItem) => {
+          const type = g.type?.toLowerCase();
+          return (
+            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+            !manualDuringCheck.has(g.name) &&
+            (type === "selector" ||
+              type === "url-test" ||
+              type === "urltest" ||
+              type === "fallback")
+          );
+        })
+        .map((g: IProxyGroupItem) => g.name);
+      pingDelayCheckNotice("Applying connectivity score order to live groups...");
+      const pinned = await switchGroupsAfterDelayTest({
+        groups: orderTargets,
+        firstSuccessByGroup,
+        manualOverrides: manualDuringCheck,
+        extraUnpinNames,
+        selectReason: "proxy-ui-delay-bulk-auto",
       });
-      await Promise.allSettled(
-        unpinGroups.map((g: IProxyGroupItem) =>
-          clearProxyGroupManualSelection(g.name),
-        ),
-      );
+      pinned.forEach((name) => keepPinned.add(name));
       // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
       // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
       await applyManualConnectivityProxyOrder();
@@ -794,6 +827,7 @@ export const ProxyGroups = (props: Props) => {
           return (
             !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
             !manualDuringCheck.has(g.name) &&
+            !keepPinned.has(g.name) &&
             (type === "selector" ||
               type === "url-test" ||
               type === "urltest" ||

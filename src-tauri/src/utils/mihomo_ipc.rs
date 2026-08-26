@@ -147,6 +147,29 @@ pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProvid
     })
 }
 
+/// PUT `/group/{name}/order` — reorder a live url-test/fallback group's cached proxies.
+pub async fn put_group_proxy_order(group_name: &str, proxies: &[String]) -> Result<()> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+    let encoded = encode_path_segment(group_name);
+    let url = format!("http://localhost/group/{encoded}/order");
+    let response = client
+        .request(Method::PUT, url)
+        .headers(headers)
+        .json(&serde_json::json!({ "proxies": proxies }))
+        .send()
+        .await
+        .with_context(|| format!("send PUT /group/{{name}}/order for {group_name:?}"))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "PUT /group/{{name}}/order returned {} for group {:?}",
+            response.status(),
+            group_name
+        );
+    }
+    Ok(())
+}
+
 /// DELETE `/proxies/{group}` — clear manual selection for URL-Test/Fallback groups.
 pub async fn delete_proxy_fixed(group_name: &str) -> Result<()> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;

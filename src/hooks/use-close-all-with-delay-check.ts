@@ -3,14 +3,19 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
-import { selectNodeForGroup } from "@/services/proxy-select-node";
-import { clearProxyGroupManualSelection } from "@/services/cmds";
 import { useTranslation } from "react-i18next";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
   type DelayUpdate,
 } from "@/services/delay";
+import {
+  isAutoSelectGroupType,
+  memberNamesFromGroupAll,
+  switchGroupsAfterDelayTest,
+} from "@/services/proxy-live-connectivity-order";
+import { buildConnectivityScoreContext } from "@/services/proxy-connectivity-stats";
+import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
@@ -201,44 +206,42 @@ export const useCloseAllWithDelayCheck = () => {
           !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
           g.all &&
           g.all.length > 0 &&
-          ["URLTest", "Fallback"].includes(g.type),
+          isAutoSelectGroupType(g.type),
       );
       if (switchable.length > 0) {
         pingDelayCheckNotice(
-          `Group tests complete; evaluating automatic switching for ${switchable.length} url-test/fallback groups...`,
+          `Group tests complete; applying score order for ${switchable.length} url-test/fallback groups...`,
         );
       }
 
-      // 自动切换到每个组第一个连接成功的节点（只处理 URLTest 和 Fallback，不处理 Selector）
-      let switchPhase = 0;
-      for (const group of groups) {
-        if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) continue;
-        if (!group.all || group.all.length === 0) continue;
-        if (!["URLTest", "Fallback"].includes(group.type)) continue;
-
+      const scoreContext = buildConnectivityScoreContext();
+      const orderTargets: Array<{
+        name: string;
+        type?: string;
+        members: string[];
+      }> = [];
+      const firstSuccessByGroup = new Map<string, string>();
+      for (const group of switchable) {
         const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
+        const members = memberNamesFromGroupAll(group.all);
+        orderTargets.push({
+          name: group.name,
+          type: group.type,
+          members,
+        });
 
-        // 按照组中节点的原始顺序（group.all）查找第一个连接成功的节点
-        // 这样可以确保选择的是排序最靠前的成功节点
-        let firstSuccessProxy: string | null = null;
-
-        for (const proxy of group.all) {
-          const proxyName = typeof proxy === "string" ? proxy : proxy.name;
-          if (!proxyName) continue;
-
-          // 跳过 DIRECT、REJECT 和 provider 节点
-          if (proxyName === "DIRECT" || proxyName === "REJECT") continue;
-          const proxyRecord = proxiesData.records?.[proxyName];
-          if (proxyRecord?.provider) continue;
-
-          // 检查该节点是否连接成功
-          const delayUpdate = delayManager.getDelayUpdate(proxyName, group.name);
-          if (delayUpdate) {
-            const delay = delayUpdate.delay;
+        const successCandidates = members
+          .map((proxyName, index) => {
+            const delayUpdate = delayManager.getDelayUpdate(
+              proxyName,
+              group.name,
+            );
+            return { proxyName, index, delay: delayUpdate?.delay };
+          })
+          .filter(({ delay }) => {
+            if (typeof delay !== "number") return false;
             const delayText = delayManager.formatDelay(delay, timeout);
-
-            // 判断是否连接成功：不是T、E、-、testing，且delay > 0
-            if (
+            return (
               delayText !== "T" &&
               delayText !== "E" &&
               delayText !== "-" &&
@@ -246,55 +249,33 @@ export const useCloseAllWithDelayCheck = () => {
               delay > 0 &&
               delay < timeout &&
               delay <= 1e5
-            ) {
-              // 找到第一个连接成功的节点（按原始顺序）
-              firstSuccessProxy = proxyName;
-              debugLog(
-                `[CloseAll] Found first success proxy for group ${group.name}: ${proxyName} (delay: ${delay}ms)`,
-              );
-              break;
-            }
-          }
-        }
-
-        // 如果找到连接成功的节点，且当前节点不是它，则切换
-        if (firstSuccessProxy) {
-          const currentProxy = group.now;
-          if (currentProxy !== firstSuccessProxy) {
-            try {
-              switchPhase += 1;
-              pingDelayCheckNotice(
-                `url-test/fallback switch ${switchPhase}: "${group.name}"${currentProxy ?? " (none)"} → ${firstSuccessProxy}`,
-              );
-              debugLog(
-                `[CloseAll] Auto-switching group ${group.name}: ${currentProxy || "none"} -> ${firstSuccessProxy}`,
-              );
-              await selectNodeForGroup(group.name, firstSuccessProxy, {
-                reason: "connections-close-all-auto",
-              });
-              await clearProxyGroupManualSelection(group.name);
-              debugLog(`[CloseAll] Successfully switched group ${group.name} to ${firstSuccessProxy}`);
-            } catch (error) {
-              console.error(
-                `[CloseAll] Failed to switch group ${group.name} to ${firstSuccessProxy}:`,
-                error,
-              );
-            }
-          } else {
-            debugLog(
-              `[CloseAll] Group ${group.name} already using first success proxy: ${firstSuccessProxy}`,
             );
-          }
-        } else {
-          debugLog(`[CloseAll] No success proxy found for group ${group.name}, skipping switch`);
+          });
+        successCandidates.sort((a, b) =>
+          compareProxyNamesByConnectivity(
+            a.proxyName,
+            b.proxyName,
+            a.index,
+            b.index,
+            scoreContext,
+          ),
+        );
+        const firstSuccessProxy = successCandidates[0]?.proxyName;
+        if (firstSuccessProxy) {
+          firstSuccessByGroup.set(group.name, firstSuccessProxy);
+          debugLog(
+            `[CloseAll] Score-first success proxy for ${group.name}: ${firstSuccessProxy}`,
+          );
         }
       }
 
-      await Promise.allSettled(
-        switchable.map((g: IProxyGroupItem) =>
-          clearProxyGroupManualSelection(g.name),
-        ),
-      );
+      await switchGroupsAfterDelayTest({
+        groups: orderTargets,
+        firstSuccessByGroup,
+        manualOverrides: new Set(),
+        extraUnpinNames: switchable.map((g: IProxyGroupItem) => g.name),
+        selectReason: "connections-close-all-auto",
+      });
 
       pingDelayCheckNotice("Closing active non-DIRECT connections...");
       // Close all connections except those using DIRECT
