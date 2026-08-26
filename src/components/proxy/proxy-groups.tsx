@@ -44,7 +44,9 @@ import {
   createDelayTestEarlyPicker,
   isAutoSelectGroupType,
   orderedMemberNamesByConnectivity,
+  stopDelayTestEarlyPickers,
   switchGroupsAfterDelayTest,
+  type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
@@ -607,7 +609,7 @@ export const ProxyGroups = (props: Props) => {
 
     const allProviders = new Set<string>();
     const bulkReuseMap = new Map<string, DelayUpdate>();
-    const keepPinned = new Set<string>();
+    const earlyPickers: DelayTestEarlyPicker[] = [];
 
     try {
       let plannedGroupCount = 0;
@@ -712,6 +714,7 @@ export const ProxyGroups = (props: Props) => {
                 isCancelled: () => hasDelayCheckManualOverride(groupName),
               })
             : null;
+        if (earlyPicker) earlyPickers.push(earlyPicker);
         const feedEarlyPick = (proxyName: string) => {
           const delay = delayManager.getDelayUpdate(proxyName, groupName)
             ?.delay;
@@ -751,6 +754,7 @@ export const ProxyGroups = (props: Props) => {
               earlyPicker?.onResult(proxyName, delay),
           });
         }
+        await earlyPicker?.flush();
 
         const successCandidates = names
           .map((proxyName, index) => {
@@ -788,8 +792,7 @@ export const ProxyGroups = (props: Props) => {
           });
         }
 
-        // fallback/url-test：测速后按积分重排运行时列表再清钉，不能 PUT 后立刻清钉
-        // （清钉会让 Fallback 回到配置文件原序的第一个可用节点）。
+        // fallback/url-test：测速过程中可提前固定以立刻走已通过节点；测速结束后必须清钉。
         const firstSuccessProxy = successCandidates[0]?.proxyName;
         if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
           if (isAutoSelectGroupType(group.type)) {
@@ -841,14 +844,14 @@ export const ProxyGroups = (props: Props) => {
         })
         .map((g: IProxyGroupItem) => g.name);
       pingDelayCheckNotice("Applying connectivity score order to live groups...");
-      const pinned = await switchGroupsAfterDelayTest({
+      await stopDelayTestEarlyPickers(earlyPickers);
+      await switchGroupsAfterDelayTest({
         groups: orderTargets,
         firstSuccessByGroup,
         manualOverrides: manualDuringCheck,
         extraUnpinNames,
         selectReason: "proxy-ui-delay-bulk-auto",
       });
-      pinned.forEach((name) => keepPinned.add(name));
       // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
       // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
       await applyManualConnectivityProxyOrder();
@@ -867,6 +870,7 @@ export const ProxyGroups = (props: Props) => {
     } finally {
       delayManager.endBulkDelaySession();
       try {
+        await stopDelayTestEarlyPickers(earlyPickers);
         // 处理 provider 健康检查（fire and forget）
         if (allProviders.size) {
           debugLog(`[ProxyGroups] Found providers, count: ${allProviders.size}`);
@@ -885,7 +889,6 @@ export const ProxyGroups = (props: Props) => {
           return (
             !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
             !manualDuringCheck.has(g.name) &&
-            !keepPinned.has(g.name) &&
             (type === "selector" ||
               type === "url-test" ||
               type === "urltest" ||

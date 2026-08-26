@@ -15,7 +15,9 @@ import {
   isAutoSelectGroupType,
   memberNamesFromGroupAll,
   orderedMemberNamesByConnectivity,
+  stopDelayTestEarlyPickers,
   switchGroupsAfterDelayTest,
+  type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
 import { buildConnectivityScoreContext, hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
@@ -135,6 +137,7 @@ export const useCloseAllWithDelayCheck = () => {
 
       let groupPhase = 0;
       delayManager.beginBulkDelaySession();
+      const earlyPickers: DelayTestEarlyPicker[] = [];
       try {
       // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
       for (const group of groups as IProxyGroupItem[]) {
@@ -191,6 +194,7 @@ export const useCloseAllWithDelayCheck = () => {
               timeoutMs: timeout,
             })
           : null;
+        if (earlyPicker) earlyPickers.push(earlyPicker);
         const feedEarlyPick = (proxyName: string) => {
           const delay = delayManager.getDelayUpdate(proxyName, group.name)
             ?.delay;
@@ -237,6 +241,7 @@ export const useCloseAllWithDelayCheck = () => {
               `[CloseAll] 节点级测速完成 ${group.name}，共 ${groupProxyNames.length} 个叶子`,
             );
           }
+          await earlyPicker?.flush();
           debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
         } catch (error) {
           console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
@@ -244,6 +249,7 @@ export const useCloseAllWithDelayCheck = () => {
       }
       } finally {
         delayManager.endBulkDelaySession();
+        await stopDelayTestEarlyPickers(earlyPickers);
       }
       debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
 

@@ -9,10 +9,6 @@ import {
   type ConnectivityScoreContext,
 } from "@/services/proxy-connectivity-stats";
 import { sortProxiesByConnectivity } from "@/services/proxy-region-sort";
-import {
-  selectNodeForGroup,
-  type SelectNodeForGroupCallReason,
-} from "@/services/proxy-select-node";
 
 export function isAutoSelectGroupType(type?: string): boolean {
   const normalized = type?.toLowerCase();
@@ -48,18 +44,25 @@ export function orderedMemberNamesByConnectivity(
   );
 }
 
+export type DelayTestEarlyPicker = {
+  onResult: (name: string, delay: number) => void;
+  stop: () => void;
+  flush: () => Promise<void>;
+};
+
 export function createDelayTestEarlyPicker(input: {
   groupName: string;
   orderedNames: string[];
   timeoutMs: number;
   isCancelled?: () => boolean;
-}) {
+}): DelayTestEarlyPicker {
   const passed = new Set<string>();
   let best: string | null = null;
   let queue: Promise<void> = Promise.resolve();
+  let stopped = false;
 
   const pick = (name: string, delay: number) => {
-    if (input.isCancelled?.()) return;
+    if (stopped || input.isCancelled?.()) return;
     if (!name || name === "DIRECT" || name === "REJECT") return;
     if (!(delay > 0 && delay <= input.timeoutMs)) return;
     passed.add(name);
@@ -75,7 +78,7 @@ export function createDelayTestEarlyPicker(input: {
     const groupName = input.groupName;
     const node = next;
     queue = queue.then(async () => {
-      if (input.isCancelled?.() || best !== node) return;
+      if (stopped || input.isCancelled?.() || best !== node) return;
       try {
         await forceSelectGroupProxy(groupName, node);
       } catch (error) {
@@ -87,7 +90,28 @@ export function createDelayTestEarlyPicker(input: {
     });
   };
 
-  return { onResult: pick };
+  return {
+    onResult: pick,
+    stop() {
+      stopped = true;
+    },
+    flush() {
+      return queue;
+    },
+  };
+}
+
+/** 停止提前切节点，并等已发出的固定请求结束，避免测速清钉后又被钉回去。 */
+export async function stopDelayTestEarlyPickers(
+  pickers: Array<DelayTestEarlyPicker | null | undefined>,
+): Promise<void> {
+  await Promise.all(
+    pickers.map(async (picker) => {
+      if (!picker) return;
+      picker.stop();
+      await picker.flush();
+    }),
+  );
 }
 
 export async function applyLiveConnectivityOrderToGroup(
@@ -161,44 +185,29 @@ export async function applyLiveConnectivityOrderForGroups(
 /**
  * 测速后先把运行中的 url-test/fallback 组按积分重排，再清钉。
  * 清钉后 Fallback 会选重排列表里第一个当前可用节点。
- * 重排失败时才 PUT 固定到积分最高的成功节点，且不再清钉。
+ * 测速期间用户手动选过的组不清钉；其余组测速结束后必须取消固定。
  */
 export async function switchGroupsAfterDelayTest(input: {
   groups: Array<{ name: string; type?: string; members: string[] }>;
-  firstSuccessByGroup: Map<string, string>;
+  firstSuccessByGroup?: Map<string, string>;
   manualOverrides: { has(name: string): boolean };
   extraUnpinNames?: string[];
-  selectReason: SelectNodeForGroupCallReason;
-}): Promise<Set<string>> {
-  const keepPinned = new Set<string>();
-  const orderTargets = input.groups.filter(
-    (group) => !input.manualOverrides.has(group.name),
+  selectReason?: string;
+}): Promise<void> {
+  const { groups, manualOverrides, extraUnpinNames } = input;
+  const orderTargets = groups.filter(
+    (group) => !manualOverrides.has(group.name),
   );
-  const orderResults = await applyLiveConnectivityOrderForGroups(orderTargets);
+  await applyLiveConnectivityOrderForGroups(orderTargets);
 
-  for (const [groupName, node] of input.firstSuccessByGroup) {
-    if (input.manualOverrides.has(groupName)) continue;
-    if (orderResults.get(groupName) === true) continue;
-    try {
-      await selectNodeForGroup(groupName, node, { reason: input.selectReason });
-      keepPinned.add(groupName);
-    } catch (error) {
-      console.warn(
-        `[LiveConnectivityOrder] fallback pin failed: ${groupName} -> ${node}`,
-        error,
-      );
-    }
-  }
-
-  const unpinNames = new Set<string>(input.extraUnpinNames ?? []);
-  for (const group of input.groups) {
+  const unpinNames = new Set<string>(extraUnpinNames ?? []);
+  for (const group of groups) {
     unpinNames.add(group.name);
   }
   const toUnpin = [...unpinNames].filter(
-    (name) => !input.manualOverrides.has(name) && !keepPinned.has(name),
+    (name) => !manualOverrides.has(name),
   );
   await Promise.allSettled(
     toUnpin.map((name) => clearProxyGroupManualSelection(name)),
   );
-  return keepPinned;
 }

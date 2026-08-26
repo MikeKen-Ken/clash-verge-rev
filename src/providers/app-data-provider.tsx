@@ -31,6 +31,8 @@ import {
   createDelayTestEarlyPicker,
   memberNamesFromGroupAll,
   orderedMemberNamesByConnectivity,
+  stopDelayTestEarlyPickers,
+  type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
@@ -194,6 +196,7 @@ export const AppDataProvider = ({
       await refreshProxy().catch(() => {});
 
       delayManager.beginBulkDelaySession();
+      const pickers: DelayTestEarlyPicker[] = [];
       try {
         await Promise.allSettled(
           urlTestOrFallback.map(async (g) => {
@@ -210,15 +213,18 @@ export const AppDataProvider = ({
               orderedNames,
               timeoutMs: timeout,
             });
+            pickers.push(picker);
             delayManager.markGroupDelayTesting(g.name, orderedNames);
             await delayManager.checkListDelay(orderedNames, g.name, timeout, {
               onNodeSettled: (proxyName, delay) =>
                 picker.onResult(proxyName, delay),
             });
+            await picker.flush();
           }),
         );
       } finally {
         delayManager.endBulkDelaySession();
+        await stopDelayTestEarlyPickers(pickers);
       }
       await applyStartupLiveConnectivityOrder(orderTargets);
       await refreshProxy();
