@@ -122,12 +122,23 @@ export const ProxyItem = (props: Props) => {
   });
 
   const delayValue = delayState.delay;
+  const delayText =
+    delayValue > 0 ? delayManager.formatDelay(delayValue, timeout) : "";
+  const isSuccess =
+    delayText !== "" &&
+    delayText !== "T" &&
+    delayText !== "E" &&
+    delayText !== "-" &&
+    delayText !== "testing";
 
   return (
     <ListItem sx={sx}>
       <ListItemButton
         dense
+        className="proxy-card"
         selected={selected}
+        data-selected={selected ? "1" : "0"}
+        data-success={isSuccess ? "1" : "0"}
         onClick={() => onClick?.(proxy.name)}
         sx={[
           { borderRadius: 1, position: "relative" },
@@ -135,20 +146,6 @@ export const ProxyItem = (props: Props) => {
             const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
             const selectColor = mode === "light" ? primary.main : primary.light;
             const showDelay = delayValue > 0;
-
-            // 判断节点是否测试成功（不是 T 或 E）
-            const delayText =
-              delayValue > 0
-                ? delayManager.formatDelay(delayValue, timeout)
-                : "";
-            const isSuccess =
-              delayText !== "T" &&
-              delayText !== "E" &&
-              delayText !== "-" &&
-              delayText !== "testing" &&
-              delayText !== "";
-
-            // 成功的节点使用浅绿色背景
             const finalBgcolor = isSuccess
               ? alpha(success.main, 0.15)
               : bgcolor;
@@ -175,6 +172,18 @@ export const ProxyItem = (props: Props) => {
               backgroundColor: finalBgcolor,
               marginBottom: "8px",
               height: "40px",
+              "html[data-liquid-glass='1'] &": {
+                backgroundColor: isSuccess
+                  ? "rgba(6, 148, 61, 0.18)"
+                  : "var(--glass-card-fill)",
+                border: "1px solid var(--glass-edge)",
+                backdropFilter: "blur(var(--glass-card-blur))",
+                WebkitBackdropFilter: "blur(var(--glass-card-blur))",
+                color: "var(--glass-text)",
+              },
+              "html[data-liquid-glass='1'] &.Mui-selected": {
+                backgroundColor: alpha(primary.main, 0.16),
+              },
             };
           },
         ]}

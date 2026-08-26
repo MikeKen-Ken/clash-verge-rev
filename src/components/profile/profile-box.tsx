@@ -54,5 +54,13 @@ export const ProfileBox = styled(Box)(({
     borderRadius: "8px",
     color,
     "& h2": { color: h2color },
+    "html[data-liquid-glass='1'] &": {
+      backgroundColor: "var(--glass-card-fill)",
+      border: "1px solid var(--glass-edge)",
+      backdropFilter: "blur(var(--glass-card-blur))",
+      WebkitBackdropFilter: "blur(var(--glass-card-blur))",
+      color: "var(--glass-text)",
+      "& h2": { color: "var(--glass-text)" },
+    },
   };
 });

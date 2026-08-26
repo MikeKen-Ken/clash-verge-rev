@@ -220,8 +220,12 @@ export const useCustomTheme = () => {
           warning: { main: setting.warning_color || dt.warning_color },
           success: { main: setting.success_color || dt.success_color },
           text: {
-            primary: setting.primary_text || dt.primary_text,
-            secondary: setting.secondary_text || dt.secondary_text,
+            primary: hasUserBackground
+              ? "#1c1c1c"
+              : setting.primary_text || dt.primary_text,
+            secondary: hasUserBackground
+              ? "rgba(28, 28, 28, 0.72)"
+              : setting.secondary_text || dt.secondary_text,
           },
           background: {
             paper: dt.background_color,
@@ -249,7 +253,12 @@ export const useCustomTheme = () => {
           error: { main: dt.error_color },
           warning: { main: dt.warning_color },
           success: { main: dt.success_color },
-          text: { primary: dt.primary_text, secondary: dt.secondary_text },
+          text: {
+            primary: hasUserBackground ? "#1c1c1c" : dt.primary_text,
+            secondary: hasUserBackground
+              ? "rgba(28, 28, 28, 0.72)"
+              : dt.secondary_text,
+          },
           background: {
             paper: dt.background_color,
             default: dt.background_color,

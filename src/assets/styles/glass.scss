@@ -1,17 +1,21 @@
 // Desktop liquid glass, matching kanban KanbanGlassSurface:
 // wallpaper behind, BackdropFilter-equivalent blur, low-density tint, highlight edge.
+// Glass stays light so body copy uses dark ink, including timeout / settings / profile cards.
 
 html[data-liquid-glass="1"] {
   --glass-blur: 24px;
   --glass-card-blur: 18px;
   --glass-radius: 12px;
-  --glass-fill-top: rgba(245, 245, 245, 0.3);
-  --glass-fill-middle: rgba(245, 245, 245, 0.2);
-  --glass-fill-bottom: rgba(245, 245, 245, 0.14);
+  --glass-fill-top: rgba(245, 245, 245, 0.42);
+  --glass-fill-middle: rgba(245, 245, 245, 0.32);
+  --glass-fill-bottom: rgba(245, 245, 245, 0.24);
   --glass-edge: rgba(255, 255, 255, 0.62);
-  --glass-card-fill: rgba(245, 245, 245, 0.3);
+  --glass-card-fill: rgba(245, 245, 245, 0.38);
+  --glass-text: #1c1c1c;
+  --glass-text-muted: rgba(28, 28, 28, 0.72);
 
   position: relative;
+  color: var(--glass-text);
 
   &::before {
     content: "";
@@ -30,15 +34,8 @@ html[data-liquid-glass="1"] {
     position: relative;
     z-index: 1;
     background: transparent;
+    color: var(--glass-text);
   }
-}
-
-html[data-liquid-glass="1"][data-theme-mode="dark"] {
-  --glass-fill-top: rgba(46, 48, 61, 0.24);
-  --glass-fill-middle: rgba(46, 48, 61, 0.17);
-  --glass-fill-bottom: rgba(46, 48, 61, 0.12);
-  --glass-edge: rgba(255, 255, 255, 0.18);
-  --glass-card-fill: rgba(46, 48, 61, 0.24);
 }
 
 @mixin glass-panel($blur: var(--glass-blur)) {
@@ -54,20 +51,31 @@ html[data-liquid-glass="1"][data-theme-mode="dark"] {
   -webkit-backdrop-filter: blur($blur);
 }
 
+@mixin glass-card($blur: var(--glass-card-blur)) {
+  background-color: var(--glass-card-fill) !important;
+  background-image: none;
+  border: 1px solid var(--glass-edge) !important;
+  backdrop-filter: blur($blur);
+  -webkit-backdrop-filter: blur($blur);
+}
+
 html[data-liquid-glass="1"] {
   .layout.MuiPaper-root {
     background-color: transparent !important;
     background-image: none !important;
+    color: var(--glass-text);
   }
 
   .layout-content__left {
     @include glass-panel(var(--glass-blur));
     border-right-color: var(--glass-edge);
+    color: var(--glass-text);
   }
 
   .base-page {
     padding: 8px 12px 12px 8px;
     box-sizing: border-box;
+    color: var(--glass-text);
   }
 
   .base-page > header {
@@ -80,6 +88,7 @@ html[data-liquid-glass="1"] {
     flex-basis: auto;
     padding-top: 8px;
     padding-bottom: 8px;
+    color: var(--glass-text);
   }
 
   .base-page > header .MuiButton-root,
@@ -87,10 +96,8 @@ html[data-liquid-glass="1"] {
   .base-page > header .MuiSelect-select,
   .base-page > header .MuiChip-root,
   .base-page > header .MuiIconButton-root {
-    background-color: var(--glass-card-fill) !important;
-    border-color: var(--glass-edge) !important;
-    backdrop-filter: blur(var(--glass-card-blur));
-    -webkit-backdrop-filter: blur(var(--glass-card-blur));
+    @include glass-card;
+    color: var(--glass-text) !important;
   }
 
   .base-container,
@@ -102,24 +109,72 @@ html[data-liquid-glass="1"] {
     @include glass-panel(var(--glass-blur));
     border-radius: var(--glass-radius);
     overflow: hidden;
+    color: var(--glass-text);
   }
 
   .MuiDialog-paper {
     @include glass-panel(var(--glass-blur));
     background-color: transparent !important;
     border: 1px solid var(--glass-edge) !important;
+    color: var(--glass-text);
   }
 
-  .the-content .MuiPaper-root {
-    background-color: var(--glass-card-fill) !important;
-    border: 1px solid var(--glass-edge) !important;
+  .the-content .MuiPaper-root,
+  .setting-panel,
+  .profile-card {
+    @include glass-card;
+    color: var(--glass-text);
   }
 
-  .proxy-group-header {
-    background: var(--glass-card-fill) !important;
-    border: 1px solid var(--glass-edge);
-    backdrop-filter: blur(var(--glass-card-blur));
-    -webkit-backdrop-filter: blur(var(--glass-card-blur));
+  .proxy-group-header,
+  .proxy-card,
+  button[data-success],
+  .MuiListItemButton-root[data-success] {
+    @include glass-card;
+    color: var(--glass-text);
+  }
+
+  .proxy-card[data-success="1"],
+  button[data-success="1"],
+  .MuiListItemButton-root[data-success="1"] {
+    background-color: rgba(6, 148, 61, 0.18) !important;
+  }
+
+  .proxy-card[data-selected="1"],
+  button[data-selected="1"],
+  .MuiListItemButton-root[data-selected="1"] {
+    border-left: 3px solid var(--primary-main, #007aff) !important;
+  }
+
+  .MuiTypography-root,
+  .MuiListItemText-primary,
+  .MuiListSubheader-root,
+  .MuiButton-root,
+  .MuiIconButton-root,
+  .MuiFormControlLabel-label,
+  .MuiInputBase-input,
+  .MuiSelect-select,
+  .MuiChip-label,
+  .MuiTab-root,
+  .MuiListItemIcon-root {
+    color: var(--glass-text);
+  }
+
+  .MuiListItemText-secondary,
+  .MuiFormHelperText-root {
+    color: var(--glass-text-muted);
+  }
+
+  .Mui-selected .MuiListItemText-primary {
+    color: var(--glass-text) !important;
+  }
+
+  [data-tone="error"] {
+    color: #c62828 !important;
+  }
+
+  [data-tone="success"] {
+    color: #2e7d32 !important;
   }
 }
 
@@ -134,16 +189,14 @@ html[data-liquid-glass="1"] {
     .base-container,
     .base-page > header,
     .MuiDialog-paper,
-    .proxy-group-header {
+    .proxy-group-header,
+    .proxy-card,
+    .profile-card,
+    .setting-panel,
+    button[data-success],
+    .MuiListItemButton-root[data-success] {
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
     }
-  }
-
-  html[data-liquid-glass="1"][data-theme-mode="dark"] {
-    --glass-fill-top: rgba(46, 48, 61, 0.92);
-    --glass-fill-middle: rgba(46, 48, 61, 0.9);
-    --glass-fill-bottom: rgba(46, 48, 61, 0.88);
-    --glass-card-fill: rgba(46, 48, 61, 0.92);
   }
 }

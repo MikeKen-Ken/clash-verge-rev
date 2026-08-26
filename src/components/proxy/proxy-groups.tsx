@@ -767,14 +767,14 @@ export const ProxyGroups = (props: Props) => {
               delay <= timeout,
           );
 
-        const scoreContext = buildConnectivityScoreContext();
+        const postTestScoreContext = buildConnectivityScoreContext();
         successCandidates.sort((a, b) =>
           compareProxyNamesByConnectivity(
             a.proxyName,
             b.proxyName,
             a.index,
             b.index,
-            scoreContext,
+            postTestScoreContext,
           ),
         );
 

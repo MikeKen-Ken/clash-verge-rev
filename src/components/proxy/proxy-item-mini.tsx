@@ -114,6 +114,7 @@ function ProxyItemMiniInner(props: Props) {
   return (
     <CellButton
       type="button"
+      className="proxy-card"
       data-selected={selected ? "1" : "0"}
       data-success={isSuccess ? "1" : "0"}
       data-has-delay={showDelay ? "1" : "0"}
@@ -260,6 +261,19 @@ const CellButton = styled("button")(({ theme }) => {
       borderLeft: `3px solid ${selectColor}`,
       backgroundColor:
         mode === "light" ? alpha(primary.main, 0.15) : alpha(primary.main, 0.35),
+    },
+    "html[data-liquid-glass='1'] &": {
+      backgroundColor: "var(--glass-card-fill)",
+      border: "1px solid var(--glass-edge)",
+      backdropFilter: "blur(var(--glass-card-blur))",
+      WebkitBackdropFilter: "blur(var(--glass-card-blur))",
+      color: "var(--glass-text)",
+    },
+    "html[data-liquid-glass='1'] &[data-success='1']": {
+      backgroundColor: "rgba(6, 148, 61, 0.18)",
+    },
+    "html[data-liquid-glass='1'] &[data-selected='1']": {
+      backgroundColor: alpha(primary.main, 0.16),
     },
     "& .the-check": { display: "none" },
     "&[data-has-delay='0']:hover .the-check": { display: "block" },

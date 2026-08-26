@@ -598,6 +598,7 @@ export const ProfileItem = (props: Props) => {
       }}
     >
       <ProfileBox
+        className="profile-card"
         aria-selected={selected}
         onClick={(e) => {
           if (activating || !allowProfileSelect) {

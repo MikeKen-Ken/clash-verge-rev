@@ -128,6 +128,13 @@ export const LayoutItem = (props: Props) => {
               "&.Mui-selected": { bgcolor },
               "&.Mui-selected:hover": { bgcolor },
               "&.Mui-selected .MuiListItemText-primary": { color },
+              "html[data-liquid-glass='1'] & .MuiListItemText-primary": {
+                color: "var(--glass-text)",
+              },
+              "html[data-liquid-glass='1'] &.Mui-selected .MuiListItemText-primary":
+                {
+                  color: "var(--glass-text)",
+                },
             };
           },
         ]}
