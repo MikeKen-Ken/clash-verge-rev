@@ -93,11 +93,15 @@ html[data-liquid-glass="1"] {
 
   .base-page > header .MuiButton-root,
   .base-page > header .MuiButtonGroup-grouped,
-  .base-page > header .MuiSelect-select,
+  .base-page > header .MuiOutlinedInput-root,
   .base-page > header .MuiChip-root,
   .base-page > header .MuiIconButton-root {
     @include glass-card;
     color: var(--glass-text) !important;
+  }
+
+  .base-page > header .MuiOutlinedInput-notchedOutline {
+    border-color: transparent !important;
   }
 
   .base-container,

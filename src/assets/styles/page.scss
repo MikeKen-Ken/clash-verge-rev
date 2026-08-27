@@ -16,6 +16,15 @@
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--divider-color);
+
+    // Toolbar Selects: drop the outlined fieldset so it blends with the header.
+    .MuiOutlinedInput-notchedOutline {
+      border-color: transparent;
+    }
+    .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline,
+    .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+      border-color: transparent;
+    }
   }
 
   .base-container {

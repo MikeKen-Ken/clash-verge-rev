@@ -16,4 +16,13 @@ export const BaseStyledSelect = styled((props: SelectProps<string>) => {
   );
 })(({ theme }) => ({
   background: theme.palette.mode === "light" ? "#fff" : undefined,
+  "& .MuiOutlinedInput-notchedOutline": {
+    borderColor: "transparent",
+  },
+  "&:hover .MuiOutlinedInput-notchedOutline": {
+    borderColor: "transparent",
+  },
+  "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+    borderColor: "transparent",
+  },
 }));
