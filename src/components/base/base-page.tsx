@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const BasePage: React.FC<Props> = (props) => {
-  const { title, header, contentStyle, full, children } = props;
+  const { header, contentStyle, full, children } = props;
   const theme = useTheme();
 
   const isDark = theme.palette.mode === "dark";
@@ -20,11 +20,11 @@ export const BasePage: React.FC<Props> = (props) => {
   return (
     <BaseErrorBoundary>
       <div className="base-page">
-        {(title || header) && (
+        {header ? (
           <header data-tauri-drag-region="true" style={{ userSelect: "none" }}>
             {header}
           </header>
-        )}
+        ) : null}
 
         <div
           className={full ? "base-container no-padding" : "base-container"}
