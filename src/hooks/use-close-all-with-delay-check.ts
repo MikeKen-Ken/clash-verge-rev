@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
-import { useTranslation } from "react-i18next";
+import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, {
   DEFAULT_GROUP_TIMEOUT_MS,
   type DelayUpdate,
 } from "@/services/delay";
+import {
+  beginDelayCheckManualOverrideTracking,
+  hasDelayCheckManualOverride,
+} from "@/services/delay-check-manual-override";
+import {
+  hideNotice,
+  showNotice,
+  updateNotice,
+} from "@/services/notice-service";
+import {
+  buildConnectivityScoreContext,
+  hydrateConnectivityStatsFromDisk,
+} from "@/services/proxy-connectivity-stats";
 import {
   applyStartupLiveConnectivityOrder,
   createDelayTestEarlyPicker,
@@ -19,12 +33,9 @@ import {
   switchGroupsAfterDelayTest,
   type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
-import { buildConnectivityScoreContext, hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
-import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
-import { debugLog } from "@/utils/debug";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
-import { markCloseConnectionsStarted } from "@/hooks/use-fallback-switch-notify";
+import { debugLog } from "@/utils/debug";
 
 const SKIP_DELAY_CHECK_GROUPS = new Set(["Direct", "Final"]);
 
@@ -40,6 +51,7 @@ export const useCloseAllWithDelayCheck = () => {
   const handleCloseAllWithDelayCheck = useCallback(async () => {
     // 标记关闭连接开始，在此后 10 秒内禁用 fallback 切换通知
     markCloseConnectionsStarted();
+    const endManualOverrideTracking = beginDelayCheckManualOverrideTracking();
 
     delayCheckingNoticeIdRef.current = showNotice.info(
       `${t("proxies.page.tooltips.delayCheck")} in progress...`,
@@ -57,8 +69,12 @@ export const useCloseAllWithDelayCheck = () => {
 
     try {
       if (!proxiesData?.groups) {
-        pingDelayCheckNotice("No proxy group data; closing non-DIRECT connections...");
-        debugLog("[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)");
+        pingDelayCheckNotice(
+          "No proxy group data; closing non-DIRECT connections...",
+        );
+        debugLog(
+          "[CloseAll] No proxy groups available, closing connections directly (excluding DIRECT)",
+        );
         await closeConnectionsExcludingDirect();
         showNotice.success(
           `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
@@ -66,7 +82,9 @@ export const useCloseAllWithDelayCheck = () => {
         return;
       }
 
-      debugLog(`[CloseAll] Starting delay checks for ${proxiesData.groups.length} groups`);
+      debugLog(
+        `[CloseAll] Starting delay checks for ${proxiesData.groups.length} groups`,
+      );
 
       const groups = proxiesData.groups;
       const bulkReuseMap = new Map<string, DelayUpdate>();
@@ -87,14 +105,20 @@ export const useCloseAllWithDelayCheck = () => {
 
       // Check provider delays
       if (allProviders.size > 0) {
-        debugLog(`[CloseAll] Checking delays for ${allProviders.size} providers`);
+        debugLog(
+          `[CloseAll] Checking delays for ${allProviders.size} providers`,
+        );
         pingDelayCheckNotice(
           `Running health checks for ${allProviders.size} providers (preparing leaf-node tests in parallel)...`,
         );
         await Promise.allSettled(
-          [...allProviders].map((provider) => healthcheckProxyProvider(provider)),
+          [...allProviders].map((provider) =>
+            healthcheckProxyProvider(provider),
+          ),
         );
-        pingDelayCheckNotice("Provider health checks complete; starting group tests...");
+        pingDelayCheckNotice(
+          "Provider health checks complete; starting group tests...",
+        );
       }
 
       let plannedGroupCount = 0;
@@ -102,7 +126,9 @@ export const useCloseAllWithDelayCheck = () => {
         if (SKIP_DELAY_CHECK_GROUPS.has(g.name)) continue;
         if (!g.all || g.all.length === 0) continue;
         const groupProxyNames = g.all
-          .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
+          .map((proxy: IProxyItem | string) =>
+            typeof proxy === "string" ? proxy : proxy.name,
+          )
           .filter((proxyName: string | undefined): proxyName is string => {
             if (!proxyName) return false;
             const proxy = proxiesData.records?.[proxyName];
@@ -133,125 +159,144 @@ export const useCloseAllWithDelayCheck = () => {
           type: g.type,
           members: memberNamesFromGroupAll(g.all),
         }));
-      await applyStartupLiveConnectivityOrder(liveOrderGroups);
+      await applyStartupLiveConnectivityOrder(liveOrderGroups, {
+        has: hasDelayCheckManualOverride,
+      });
 
       let groupPhase = 0;
       delayManager.beginBulkDelaySession();
       const earlyPickers: DelayTestEarlyPicker[] = [];
       try {
-      // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
-      for (const group of groups as IProxyGroupItem[]) {
-        if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) {
-          debugLog(`[CloseAll] Skip delay check group: ${group.name}`);
-          continue;
-        }
-        if (!group.all || group.all.length === 0) continue;
-
-        const groupProxyNames = group.all
-          .map((proxy: IProxyItem | string) => typeof proxy === "string" ? proxy : proxy.name)
-          .filter((proxyName: string | undefined): proxyName is string => {
-            if (!proxyName) return false;
-            const proxy = proxiesData.records?.[proxyName];
-            return (
-              !proxy?.provider &&
-              proxyName !== "DIRECT" &&
-              proxyName !== "REJECT"
-            );
-          });
-
-        if (groupProxyNames.length === 0) continue;
-
-        groupPhase += 1;
-        const phaseLabel =
-          plannedGroupCount > 0
-            ? `Group ${groupPhase}/${plannedGroupCount}`
-            : `Group "${group.name}"`;
-
-        const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
-        const testableProxyNames = groupProxyNames.filter(
-          (n) => n && n !== "DIRECT" && n !== "REJECT",
-        );
-        const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
-          testableProxyNames,
-          bulkReuseMap,
-        );
-        debugLog(
-          `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies, 未命中同会话缓存: ${missingBulkReuse.length}/${testableProxyNames.length}`,
-        );
-
-        pingDelayCheckNotice(
-          `${phaseLabel}: testing "${group.name}" (${groupProxyNames.length} leaf nodes, timeout ${timeout}ms)`,
-        );
-
-        const orderedNames = orderedMemberNamesByConnectivity(
-          testableProxyNames,
-          scoreContext,
-        );
-        const earlyPicker = isAutoSelectGroupType(group.type)
-          ? createDelayTestEarlyPicker({
-              groupName: group.name,
-              orderedNames,
-              timeoutMs: timeout,
-            })
-          : null;
-        if (earlyPicker) earlyPickers.push(earlyPicker);
-        const feedEarlyPick = (proxyName: string) => {
-          const delay = delayManager.getDelayUpdate(proxyName, group.name)
-            ?.delay;
-          if (typeof delay === "number") {
-            earlyPicker?.onResult(proxyName, delay);
+        // 顺序测速；同一会话内同一出站名复用首轮结果（含嵌套组被多个父 selector 引用）
+        for (const group of groups as IProxyGroupItem[]) {
+          if (SKIP_DELAY_CHECK_GROUPS.has(group.name)) {
+            debugLog(`[CloseAll] Skip delay check group: ${group.name}`);
+            continue;
           }
-        };
+          if (!group.all || group.all.length === 0) continue;
 
-        try {
-          if (testableProxyNames.length > 0 && missingBulkReuse.length === 0) {
-            delayManager.applyBulkReuseHitsForGroup(
-              group.name,
-              testableProxyNames,
-              bulkReuseMap,
-            );
-            orderedNames.forEach(feedEarlyPick);
-            debugLog(
-              `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过节点级测速`,
-            );
-          } else if (testableProxyNames.length > 0) {
-            if (missingBulkReuse.length < testableProxyNames.length) {
-              pingDelayCheckNotice(
-                `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableProxyNames.length})...`,
+          const groupProxyNames = group.all
+            .map((proxy: IProxyItem | string) =>
+              typeof proxy === "string" ? proxy : proxy.name,
+            )
+            .filter((proxyName: string | undefined): proxyName is string => {
+              if (!proxyName) return false;
+              const proxy = proxiesData.records?.[proxyName];
+              return (
+                !proxy?.provider &&
+                proxyName !== "DIRECT" &&
+                proxyName !== "REJECT"
               );
+            });
+
+          if (groupProxyNames.length === 0) continue;
+
+          groupPhase += 1;
+          const phaseLabel =
+            plannedGroupCount > 0
+              ? `Group ${groupPhase}/${plannedGroupCount}`
+              : `Group "${group.name}"`;
+
+          const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
+          const testableProxyNames = groupProxyNames.filter(
+            (n) => n && n !== "DIRECT" && n !== "REJECT",
+          );
+          const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
+            testableProxyNames,
+            bulkReuseMap,
+          );
+          debugLog(
+            `[CloseAll] Checking delays for group ${group.name}, ${groupProxyNames.length} proxies, 未命中同会话缓存: ${missingBulkReuse.length}/${testableProxyNames.length}`,
+          );
+
+          pingDelayCheckNotice(
+            `${phaseLabel}: testing "${group.name}" (${groupProxyNames.length} leaf nodes, timeout ${timeout}ms)`,
+          );
+
+          const orderedNames = orderedMemberNamesByConnectivity(
+            testableProxyNames,
+            scoreContext,
+          );
+          const earlyPicker =
+            isAutoSelectGroupType(group.type) &&
+            !hasDelayCheckManualOverride(group.name)
+              ? createDelayTestEarlyPicker({
+                  groupName: group.name,
+                  orderedNames,
+                  timeoutMs: timeout,
+                  isCancelled: () => hasDelayCheckManualOverride(group.name),
+                })
+              : null;
+          if (earlyPicker) earlyPickers.push(earlyPicker);
+          const feedEarlyPick = (proxyName: string) => {
+            const delay = delayManager.getDelayUpdate(
+              proxyName,
+              group.name,
+            )?.delay;
+            if (typeof delay === "number") {
+              earlyPicker?.onResult(proxyName, delay);
+            }
+          };
+
+          try {
+            if (
+              testableProxyNames.length > 0 &&
+              missingBulkReuse.length === 0
+            ) {
               delayManager.applyBulkReuseHitsForGroup(
                 group.name,
                 testableProxyNames,
                 bulkReuseMap,
               );
               orderedNames.forEach(feedEarlyPick);
+              debugLog(
+                `[CloseAll] 分组 ${group.name} 可测叶子全部命中同会话缓存，跳过节点级测速`,
+              );
+            } else if (testableProxyNames.length > 0) {
+              if (missingBulkReuse.length < testableProxyNames.length) {
+                pingDelayCheckNotice(
+                  `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableProxyNames.length})...`,
+                );
+                delayManager.applyBulkReuseHitsForGroup(
+                  group.name,
+                  testableProxyNames,
+                  bulkReuseMap,
+                );
+                orderedNames.forEach(feedEarlyPick);
+              }
+              delayManager.markGroupDelayTesting(group.name, groupProxyNames);
+              await delayManager.checkListDelay(
+                orderedNames,
+                group.name,
+                timeout,
+                {
+                  bulkReuseMap,
+                  onNodeSettled: (proxyName, delay) =>
+                    earlyPicker?.onResult(proxyName, delay),
+                },
+              );
+              debugLog(
+                `[CloseAll] 节点级测速完成 ${group.name}，共 ${groupProxyNames.length} 个叶子`,
+              );
             }
-            delayManager.markGroupDelayTesting(group.name, groupProxyNames);
-            await delayManager.checkListDelay(
-              orderedNames,
-              group.name,
-              timeout,
-              {
-                bulkReuseMap,
-                onNodeSettled: (proxyName, delay) =>
-                  earlyPicker?.onResult(proxyName, delay),
-              },
-            );
+            await earlyPicker?.flush();
             debugLog(
-              `[CloseAll] 节点级测速完成 ${group.name}，共 ${groupProxyNames.length} 个叶子`,
+              `[CloseAll] Completed delay check for group ${group.name}`,
+            );
+          } catch (error) {
+            console.error(
+              `[CloseAll] Delay check error for group ${group.name}:`,
+              error,
             );
           }
-          await earlyPicker?.flush();
-          debugLog(`[CloseAll] Completed delay check for group ${group.name}`);
-        } catch (error) {
-          console.error(`[CloseAll] Delay check error for group ${group.name}:`, error);
         }
-      }
       } finally {
         delayManager.endBulkDelaySession();
         await stopDelayTestEarlyPickers(earlyPickers);
       }
-      debugLog("[CloseAll] All delay checks completed, closing connections (excluding DIRECT)");
+      debugLog(
+        "[CloseAll] All delay checks completed, closing connections (excluding DIRECT)",
+      );
 
       const switchable = groups.filter(
         (g: IProxyGroupItem) =>
@@ -324,7 +369,7 @@ export const useCloseAllWithDelayCheck = () => {
       await switchGroupsAfterDelayTest({
         groups: orderTargets,
         firstSuccessByGroup,
-        manualOverrides: new Set(),
+        manualOverrides: { has: hasDelayCheckManualOverride },
         extraUnpinNames: switchable.map((g: IProxyGroupItem) => g.name),
         selectReason: "connections-close-all-auto",
       });
@@ -333,7 +378,9 @@ export const useCloseAllWithDelayCheck = () => {
       // Close all connections except those using DIRECT
       await closeConnectionsExcludingDirect();
 
-      pingDelayCheckNotice("Connection cleanup complete; sending completion event...");
+      pingDelayCheckNotice(
+        "Connection cleanup complete; sending completion event...",
+      );
       // 发送完成通知
       try {
         await invoke("notify_close_all_completed");
@@ -355,6 +402,7 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
     } finally {
+      endManualOverrideTracking();
       const noticeId = delayCheckingNoticeIdRef.current;
       if (noticeId != null) {
         delayCheckingNoticeIdRef.current = null;
@@ -373,7 +421,9 @@ export const useCloseAllWithDelayCheck = () => {
           debugLog("[CloseAll] Received close all connections event");
           void handleCloseAllWithDelayCheck();
         });
-        debugLog("[CloseAll] Listener registered for close all connections event");
+        debugLog(
+          "[CloseAll] Listener registered for close all connections event",
+        );
       } catch (error) {
         console.error("[CloseAll] Failed to register listener:", error);
       }

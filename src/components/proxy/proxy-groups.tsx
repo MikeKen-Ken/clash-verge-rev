@@ -14,9 +14,6 @@ import { useTranslation } from "react-i18next";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
-import { selectNodeForGroup } from "@/services/proxy-select-node";
-
-import { BaseEmpty } from "@/components/base";
 import { markManualDelayCheckStarted } from "@/hooks/use-fallback-switch-notify";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
@@ -32,13 +29,20 @@ import delayManager, {
   type DelayUpdate,
 } from "@/services/delay";
 import {
-  clearDelayCheckManualOverrides,
+  beginDelayCheckManualOverrideTracking,
   hasDelayCheckManualOverride,
+  isDelayCheckManualOverrideTracking,
   markDelayCheckManualOverride,
-  snapshotDelayCheckManualOverrides,
 } from "@/services/delay-check-manual-override";
-import { hideNotice, showNotice, updateNotice } from "@/services/notice-service";
-import { buildConnectivityScoreContext, hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
+import {
+  hideNotice,
+  showNotice,
+  updateNotice,
+} from "@/services/notice-service";
+import {
+  buildConnectivityScoreContext,
+  hydrateConnectivityStatsFromDisk,
+} from "@/services/proxy-connectivity-stats";
 import {
   applyLiveConnectivityOrderForGroups,
   createDelayTestEarlyPicker,
@@ -49,6 +53,7 @@ import {
   type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
+import { selectNodeForGroup } from "@/services/proxy-select-node";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -56,15 +61,15 @@ import { ScrollTopButton } from "../layout/scroll-top-button";
 
 import { ProxyChain } from "./proxy-chain";
 import {
-  buildGroupNowMap,
-  resolveLeafProxyName,
-  resolvePrimaryGroupName,
-} from "./resolve-leaf-proxy";
-import {
   DEFAULT_HOVER_DELAY,
   ProxyGroupNavigator,
 } from "./proxy-group-navigator";
 import { ProxyVirtuosoList } from "./proxy-virtuoso-list";
+import {
+  buildGroupNowMap,
+  resolveLeafProxyName,
+  resolvePrimaryGroupName,
+} from "./resolve-leaf-proxy";
 import { useRenderList } from "./use-render-list";
 
 interface Props {
@@ -180,7 +185,7 @@ export const ProxyGroups = (props: Props) => {
         ),
     );
     return map;
-  }, [groups, current?.selected]);
+  }, [groups]);
 
   // 用 ref 存最新 map，保证传给 Virtuoso 的回调引用稳定，减少子组件重渲染
   const selectedByGroupRef = useRef<Map<string, string>>(new Map());
@@ -192,7 +197,7 @@ export const ProxyGroups = (props: Props) => {
     if (!current?.selected?.length || !groups?.length) return;
 
     const validGroupNames = new Set(
-      (groups as any[]).map((g: any) => g.name).filter(Boolean)
+      (groups as any[]).map((g: any) => g.name).filter(Boolean),
     );
     const invalidGroups = (current.selected ?? [])
       .map((s: any) => s.name)
@@ -204,8 +209,8 @@ export const ProxyGroups = (props: Props) => {
       if (lastCleanupRef.current === cleanupKey) return;
       lastCleanupRef.current = cleanupKey;
 
-      const validSelected = (current.selected ?? []).filter(
-        (s: any) => validGroupNames.has(s.name)
+      const validSelected = (current.selected ?? []).filter((s: any) =>
+        validGroupNames.has(s.name),
       );
       // 异步清理，不阻塞渲染
       patchCurrent({ selected: validSelected })
@@ -230,8 +235,7 @@ export const ProxyGroups = (props: Props) => {
       group: { name: string; now?: string | null },
       _useNameAsLabel?: boolean,
     ): string => {
-      if (group.now == null || group.now === "")
-        return group.name ?? "";
+      if (group.now == null || group.now === "") return group.name ?? "";
       const map = selectedByGroupRef.current;
       let current: string = group.now;
       while (map.has(current)) {
@@ -301,16 +305,6 @@ export const ProxyGroups = (props: Props) => {
     hideUnavailableNodes,
   );
 
-  const getGroupHeadState = useCallback(
-    (groupName: string) => {
-      const headItem = renderList.find(
-        (item) => item.type === 1 && item.group?.name === groupName,
-      );
-      return headItem?.headState;
-    },
-    [renderList],
-  );
-
   // 统代理选择
   const { handleProxyGroupChange } = useProxySelection({
     onSuccess: () => {
@@ -321,7 +315,9 @@ export const ProxyGroups = (props: Props) => {
       onProxies();
     },
     onRefreshSelectedNodeOnly: (groupName, proxyName) => {
-      const group = groups?.find((g: { name?: string }) => g.name === groupName);
+      const group = groups?.find(
+        (g: { name?: string }) => g.name === groupName,
+      );
       const timeout = getGroupDelayTimeout(group ?? null, true) || 5000;
       void delayManager.checkDelay(proxyName, groupName, timeout, {
         silentGlobal: true,
@@ -430,11 +426,13 @@ export const ProxyGroups = (props: Props) => {
       return;
     }
 
-    const groupNowMap = buildGroupNowMap(groups as Array<{ name?: string; now?: string | null }>);
+    const groupNowMap = buildGroupNowMap(
+      groups as Array<{ name?: string; now?: string | null }>,
+    );
     const targetGroupName =
       mode === "global"
         ? "GLOBAL"
-        : activeSelectedGroup ?? defaultRuleGroup ?? null;
+        : (activeSelectedGroup ?? defaultRuleGroup ?? null);
 
     if (!targetGroupName) {
       onActiveSelectionChange(null);
@@ -538,7 +536,7 @@ export const ProxyGroups = (props: Props) => {
         return;
       }
 
-      if (isDelayCheckingRef.current) {
+      if (isDelayCheckingRef.current || isDelayCheckManualOverrideTracking()) {
         markDelayCheckManualOverride(group.name, proxy.name);
       }
 
@@ -565,398 +563,418 @@ export const ProxyGroups = (props: Props) => {
   );
 
   // 测全部延迟：按组顺序测试；同一会话内同一出站名复用首轮测速（含嵌套组出现在多个父 selector）
-  const handleCheckAll = useCallback(async (_groupName: string) => {
-    if (isDelayCheckingRef.current) {
-      setDelayCheckBusyWarning({
-        open: true,
-        message: `${t("proxies.page.tooltips.delayCheck")} in progress; please try again later`,
-      });
-      return;
-    }
-    isDelayCheckingRef.current = true;
-    let delayTestFailed = false;
-    clearDelayCheckManualOverrides();
-    debugLog(`[ProxyGroups] Starting delay tests for all groups`);
-    delayCheckingNoticeIdRef.current = showNotice.info(
-      `${t("proxies.page.tooltips.delayCheck")} in progress...`,
-      0,
-    );
-    const pingDelayCheckNotice = (detail: string) => {
-      const nid = delayCheckingNoticeIdRef.current;
-      if (nid == null) return;
-      updateNotice(
-        nid,
-        `${t("proxies.page.tooltips.delayCheck")} in progress\n${detail}`,
+  const handleCheckAll = useCallback(
+    async (_groupName: string) => {
+      if (isDelayCheckingRef.current) {
+        setDelayCheckBusyWarning({
+          open: true,
+          message: `${t("proxies.page.tooltips.delayCheck")} in progress; please try again later`,
+        });
+        return;
+      }
+      isDelayCheckingRef.current = true;
+      const endManualOverrideTracking = beginDelayCheckManualOverrideTracking();
+      let delayTestFailed = false;
+      debugLog(`[ProxyGroups] Starting delay tests for all groups`);
+      delayCheckingNoticeIdRef.current = showNotice.info(
+        `${t("proxies.page.tooltips.delayCheck")} in progress...`,
         0,
       );
-    };
-    markManualDelayCheckStarted();
-    delayManager.beginBulkDelaySession();
+      const pingDelayCheckNotice = (detail: string) => {
+        const nid = delayCheckingNoticeIdRef.current;
+        if (nid == null) return;
+        updateNotice(
+          nid,
+          `${t("proxies.page.tooltips.delayCheck")} in progress\n${detail}`,
+          0,
+        );
+      };
+      markManualDelayCheckStarted();
+      delayManager.beginBulkDelaySession();
 
-    // 测速前清空所有组的手动选择
-    if (current) {
-      const autoGroupNames = new Set(
-        availableGroups
-          .filter(
-            (g: IProxyGroupItem) =>
-              isAutoSelectGroupType(g.type) &&
-              !SKIP_DELAY_CHECK_GROUPS.has(g.name),
-          )
-          .map((g: IProxyGroupItem) => g.name),
-      );
-      const next = (current.selected ?? []).filter((s) => {
-        const name = s.name;
-        if (!name) return true;
-        return !autoGroupNames.has(name);
-      });
-      if (next.length !== (current.selected ?? []).length) {
-        patchCurrent({ selected: next }).catch(() => { });
-      }
-    }
-
-    const allProviders = new Set<string>();
-    const bulkReuseMap = new Map<string, DelayUpdate>();
-    const earlyPickers: DelayTestEarlyPicker[] = [];
-
-    try {
-      let plannedGroupCount = 0;
-      for (const g of availableGroups as IProxyGroupItem[]) {
-        if (SKIP_DELAY_CHECK_GROUPS.has(g.name)) continue;
-        const plist: IProxyItem[] = (g as any).all ?? [];
-        const n = plist
-          .filter((p) => !p.provider)
-          .map((p) => p.name)
-          .filter(Boolean).length;
-        if (n > 0) plannedGroupCount += 1;
-      }
-      pingDelayCheckNotice(
-        plannedGroupCount > 0
-          ? `Preparing: testing ${plannedGroupCount} proxy groups in sequence`
-          : "Preparing: no proxy groups with testable leaf nodes",
-      );
-
-      await hydrateConnectivityStatsFromDisk();
-      const scoreContext = buildConnectivityScoreContext();
-      const liveOrderGroups = (availableGroups as IProxyGroupItem[])
-        .filter(
-          (g) =>
-            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-            isAutoSelectGroupType(g.type),
-        )
-        .map((g) => ({
-          name: g.name,
-          type: g.type,
-          members: ((g as { all?: IProxyItem[] }).all ?? [])
-            .map((p) => p.name)
+      // 测速前清空所有组的手动选择
+      if (current) {
+        const autoGroupNames = new Set(
+          availableGroups
             .filter(
-              (n): n is string =>
-                Boolean(n) && n !== "DIRECT" && n !== "REJECT",
-            ),
-        }));
-      await applyLiveConnectivityOrderForGroups(liveOrderGroups);
-      await Promise.allSettled(
-        liveOrderGroups.map((g) => clearProxyGroupManualSelection(g.name)),
-      );
-
-      let groupPhase = 0;
-      const orderTargets: Array<{
-        name: string;
-        type?: string;
-        members: string[];
-      }> = [];
-      const firstSuccessByGroup = new Map<string, string>();
-      for (const group of availableGroups as IProxyGroupItem[]) {
-        const groupName = group.name;
-        if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
-          debugLog(`[ProxyGroups] Skipping delay test for group: ${groupName}`);
-          continue;
-        }
-        const timeout = getGroupDelayTimeout(group, false);
-        const proxies: IProxyItem[] = (group as any).all ?? [];
-
-        proxies.forEach((p) => {
-          if (p.provider) allProviders.add(p.provider);
+              (g: IProxyGroupItem) =>
+                isAutoSelectGroupType(g.type) &&
+                !SKIP_DELAY_CHECK_GROUPS.has(g.name),
+            )
+            .map((g: IProxyGroupItem) => g.name),
+        );
+        const next = (current.selected ?? []).filter((s) => {
+          const name = s.name;
+          if (!name) return true;
+          return !autoGroupNames.has(name);
         });
+        if (next.length !== (current.selected ?? []).length) {
+          patchCurrent({ selected: next }).catch(() => {});
+        }
+      }
 
-        const names = proxies
-          .filter((p) => !p.provider)
-          .map((p) => p.name)
-          .filter(Boolean);
+      const allProviders = new Set<string>();
+      const bulkReuseMap = new Map<string, DelayUpdate>();
+      const earlyPickers: DelayTestEarlyPicker[] = [];
 
-        if (names.length === 0) continue;
-
-        groupPhase += 1;
-        const phaseLabel =
-          plannedGroupCount > 0
-            ? `Group ${groupPhase}/${plannedGroupCount}`
-            : `Group "${groupName}"`;
-
-        const testableNames = names.filter(
-          (n): n is string => Boolean(n) && n !== "DIRECT" && n !== "REJECT",
-        );
-        const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
-          testableNames,
-          bulkReuseMap,
-        );
-        debugLog(
-          `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, 可测叶子: ${testableNames.length}, 未命中同会话缓存: ${missingBulkReuse.length}, timeout: ${timeout}ms`,
-        );
-
+      try {
+        let plannedGroupCount = 0;
+        for (const g of availableGroups as IProxyGroupItem[]) {
+          if (SKIP_DELAY_CHECK_GROUPS.has(g.name)) continue;
+          const plist: IProxyItem[] = (g as any).all ?? [];
+          const n = plist
+            .filter((p) => !p.provider)
+            .map((p) => p.name)
+            .filter(Boolean).length;
+          if (n > 0) plannedGroupCount += 1;
+        }
         pingDelayCheckNotice(
-          `${phaseLabel}: testing "${groupName}" (${names.length} leaf nodes, timeout ${timeout}ms)`,
+          plannedGroupCount > 0
+            ? `Preparing: testing ${plannedGroupCount} proxy groups in sequence`
+            : "Preparing: no proxy groups with testable leaf nodes",
         );
 
-        const orderedNames = orderedMemberNamesByConnectivity(
-          testableNames,
+        await hydrateConnectivityStatsFromDisk();
+        const scoreContext = buildConnectivityScoreContext();
+        const liveOrderGroups = (availableGroups as IProxyGroupItem[])
+          .filter(
+            (g) =>
+              !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+              isAutoSelectGroupType(g.type),
+          )
+          .map((g) => ({
+            name: g.name,
+            type: g.type,
+            members: ((g as { all?: IProxyItem[] }).all ?? [])
+              .map((p) => p.name)
+              .filter(
+                (n): n is string =>
+                  Boolean(n) && n !== "DIRECT" && n !== "REJECT",
+              ),
+          }));
+        await applyLiveConnectivityOrderForGroups(
+          liveOrderGroups,
           scoreContext,
+          { has: hasDelayCheckManualOverride },
         );
-        const earlyPicker =
-          isAutoSelectGroupType(group.type) &&
-          !hasDelayCheckManualOverride(groupName)
-            ? createDelayTestEarlyPicker({
-                groupName,
-                orderedNames,
-                timeoutMs: timeout,
-                isCancelled: () => hasDelayCheckManualOverride(groupName),
-              })
-            : null;
-        if (earlyPicker) earlyPickers.push(earlyPicker);
-        const feedEarlyPick = (proxyName: string) => {
-          const delay = delayManager.getDelayUpdate(proxyName, groupName)
-            ?.delay;
-          if (typeof delay === "number") {
-            earlyPicker?.onResult(proxyName, delay);
-          }
-        };
+        await Promise.allSettled(
+          liveOrderGroups.map(async (g) => {
+            if (hasDelayCheckManualOverride(g.name)) return;
+            await clearProxyGroupManualSelection(g.name);
+          }),
+        );
 
-        // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
-        // 全部命中缓存 → 只写 UI；否则统一走节点级 checkListDelay（与 Android healthCheckWithTimeout 一致）。
-        if (testableNames.length > 0 && missingBulkReuse.length === 0) {
-          delayManager.applyBulkReuseHitsForGroup(
-            groupName,
+        let groupPhase = 0;
+        const orderTargets: Array<{
+          name: string;
+          type?: string;
+          members: string[];
+        }> = [];
+        const firstSuccessByGroup = new Map<string, string>();
+        for (const group of availableGroups as IProxyGroupItem[]) {
+          const groupName = group.name;
+          if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
+            debugLog(
+              `[ProxyGroups] Skipping delay test for group: ${groupName}`,
+            );
+            continue;
+          }
+          const timeout = getGroupDelayTimeout(group, false);
+          const proxies: IProxyItem[] = (group as any).all ?? [];
+
+          proxies.forEach((p) => {
+            if (p.provider) allProviders.add(p.provider);
+          });
+
+          const names = proxies
+            .filter((p) => !p.provider)
+            .map((p) => p.name)
+            .filter(Boolean);
+
+          if (names.length === 0) continue;
+
+          groupPhase += 1;
+          const phaseLabel =
+            plannedGroupCount > 0
+              ? `Group ${groupPhase}/${plannedGroupCount}`
+              : `Group "${groupName}"`;
+
+          const testableNames = names.filter(
+            (n): n is string => Boolean(n) && n !== "DIRECT" && n !== "REJECT",
+          );
+          const missingBulkReuse = delayManager.listNamesMissingBulkReuse(
             testableNames,
             bulkReuseMap,
           );
-          orderedNames.forEach(feedEarlyPick);
           debugLog(
-            `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过节点级测速`,
+            `[ProxyGroups] 测试分组: ${groupName}, 节点数: ${names.length}, 可测叶子: ${testableNames.length}, 未命中同会话缓存: ${missingBulkReuse.length}, timeout: ${timeout}ms`,
           );
-        } else if (testableNames.length > 0) {
-          if (missingBulkReuse.length < testableNames.length) {
-            pingDelayCheckNotice(
-              `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableNames.length})...`,
-            );
+
+          pingDelayCheckNotice(
+            `${phaseLabel}: testing "${groupName}" (${names.length} leaf nodes, timeout ${timeout}ms)`,
+          );
+
+          const orderedNames = orderedMemberNamesByConnectivity(
+            testableNames,
+            scoreContext,
+          );
+          const earlyPicker =
+            isAutoSelectGroupType(group.type) &&
+            !hasDelayCheckManualOverride(groupName)
+              ? createDelayTestEarlyPicker({
+                  groupName,
+                  orderedNames,
+                  timeoutMs: timeout,
+                  isCancelled: () => hasDelayCheckManualOverride(groupName),
+                })
+              : null;
+          if (earlyPicker) earlyPickers.push(earlyPicker);
+          const feedEarlyPick = (proxyName: string) => {
+            const delay = delayManager.getDelayUpdate(
+              proxyName,
+              groupName,
+            )?.delay;
+            if (typeof delay === "number") {
+              earlyPicker?.onResult(proxyName, delay);
+            }
+          };
+
+          // 同会话复用（与旧 checkListDelay 路径一致）：嵌套组多父 selector 共用出站名时，后续组可跳过已测叶子。
+          // 全部命中缓存 → 只写 UI；否则统一走节点级 checkListDelay（与 Android healthCheckWithTimeout 一致）。
+          if (testableNames.length > 0 && missingBulkReuse.length === 0) {
             delayManager.applyBulkReuseHitsForGroup(
               groupName,
               testableNames,
               bulkReuseMap,
             );
             orderedNames.forEach(feedEarlyPick);
+            debugLog(
+              `[ProxyGroups] 分组 ${groupName} 可测叶子全部命中同会话缓存，跳过节点级测速`,
+            );
+          } else if (testableNames.length > 0) {
+            if (missingBulkReuse.length < testableNames.length) {
+              pingDelayCheckNotice(
+                `${phaseLabel}: reusing results for some nodes; testing the rest (${missingBulkReuse.length}/${testableNames.length})...`,
+              );
+              delayManager.applyBulkReuseHitsForGroup(
+                groupName,
+                testableNames,
+                bulkReuseMap,
+              );
+              orderedNames.forEach(feedEarlyPick);
+            }
+            delayManager.markGroupDelayTesting(groupName, names);
+            await delayManager.checkListDelay(
+              orderedNames,
+              groupName,
+              timeout,
+              {
+                bulkReuseMap,
+                onNodeSettled: (proxyName, delay) =>
+                  earlyPicker?.onResult(proxyName, delay),
+              },
+            );
           }
-          delayManager.markGroupDelayTesting(groupName, names);
-          await delayManager.checkListDelay(orderedNames, groupName, timeout, {
-            bulkReuseMap,
-            onNodeSettled: (proxyName, delay) =>
-              earlyPicker?.onResult(proxyName, delay),
-          });
-        }
-        await earlyPicker?.flush();
+          await earlyPicker?.flush();
 
-        const successCandidates = names
-          .map((proxyName, index) => {
-            const delayUpdate = delayManager.getDelayUpdate(proxyName, groupName);
-            const delay = delayUpdate?.delay;
-            return { proxyName, index, delay };
-          })
-          .filter(
-            ({ proxyName, delay }) =>
-              proxyName !== "DIRECT" &&
-              proxyName !== "REJECT" &&
-              typeof delay === "number" &&
-              delay > 0 &&
-              delay < timeout,
+          const successCandidates = names
+            .map((proxyName, index) => {
+              const delayUpdate = delayManager.getDelayUpdate(
+                proxyName,
+                groupName,
+              );
+              const delay = delayUpdate?.delay;
+              return { proxyName, index, delay };
+            })
+            .filter(
+              ({ proxyName, delay }) =>
+                proxyName !== "DIRECT" &&
+                proxyName !== "REJECT" &&
+                typeof delay === "number" &&
+                delay > 0 &&
+                delay < timeout,
+            );
+
+          const postTestScoreContext = buildConnectivityScoreContext();
+          successCandidates.sort((a, b) =>
+            compareProxyNamesByConnectivity(
+              a.proxyName,
+              b.proxyName,
+              a.index,
+              b.index,
+              postTestScoreContext,
+            ),
           );
 
-        const postTestScoreContext = buildConnectivityScoreContext();
-        successCandidates.sort((a, b) =>
-          compareProxyNamesByConnectivity(
-            a.proxyName,
-            b.proxyName,
-            a.index,
-            b.index,
-            postTestScoreContext,
-          ),
-        );
-
-        if (isAutoSelectGroupType(group.type)) {
-          orderTargets.push({
-            name: groupName,
-            type: group.type,
-            members: names.filter(
-              (n) => n && n !== "DIRECT" && n !== "REJECT",
-            ),
-          });
-        }
-
-        // fallback/url-test：测速过程中可提前固定以立刻走已通过节点；测速结束后必须清钉。
-        const firstSuccessProxy = successCandidates[0]?.proxyName;
-        if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
           if (isAutoSelectGroupType(group.type)) {
-            firstSuccessByGroup.set(groupName, firstSuccessProxy);
+            orderTargets.push({
+              name: groupName,
+              type: group.type,
+              members: names.filter(
+                (n) => n && n !== "DIRECT" && n !== "REJECT",
+              ),
+            });
+          }
+
+          // fallback/url-test：测速过程中可提前固定以立刻走已通过节点；测速结束后必须清钉。
+          const firstSuccessProxy = successCandidates[0]?.proxyName;
+          if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
+            if (isAutoSelectGroupType(group.type)) {
+              firstSuccessByGroup.set(groupName, firstSuccessProxy);
+              pingDelayCheckNotice(
+                `${phaseLabel}: testing complete; applying score order for "${groupName}" → ${firstSuccessProxy}`,
+              );
+            } else {
+              pingDelayCheckNotice(
+                `${phaseLabel}: testing complete; asking the core to switch "${groupName}" → ${firstSuccessProxy}`,
+              );
+              await selectNodeForGroup(groupName, firstSuccessProxy, {
+                reason: "proxy-ui-delay-bulk-auto",
+              }).catch((err) => {
+                console.warn(
+                  `[ProxyGroups] Failed to auto-select the first successful node: ${groupName} -> ${firstSuccessProxy}`,
+                  err,
+                );
+              });
+            }
+          } else if (hasDelayCheckManualOverride(groupName)) {
             pingDelayCheckNotice(
-              `${phaseLabel}: testing complete; applying score order for "${groupName}" → ${firstSuccessProxy}`,
+              `${phaseLabel}: manual selection detected; skipping automatic switch for "${groupName}"`,
+            );
+            debugLog(
+              `[ProxyGroups] 分组 ${groupName} 测速期间用户已手动选择，跳过自动切换`,
             );
           } else {
             pingDelayCheckNotice(
-              `${phaseLabel}: testing complete; asking the core to switch "${groupName}" → ${firstSuccessProxy}`,
+              `${phaseLabel}: no successful test result for "${groupName}"; skipping switch`,
             );
-            await selectNodeForGroup(groupName, firstSuccessProxy, {
-              reason: "proxy-ui-delay-bulk-auto",
-            }).catch((err) => {
-              console.warn(
-                `[ProxyGroups] 自动选择首个成功节点失败: ${groupName} -> ${firstSuccessProxy}`,
-                err,
-              );
-            });
+            debugLog(
+              `[ProxyGroups] 分组 ${groupName} 未找到测速成功节点，保留核心当前选择`,
+            );
           }
-        } else if (hasDelayCheckManualOverride(groupName)) {
-          pingDelayCheckNotice(
-            `${phaseLabel}: manual selection detected; skipping automatic switch for "${groupName}"`,
-          );
-          debugLog(
-            `[ProxyGroups] 分组 ${groupName} 测速期间用户已手动选择，跳过自动切换`,
-          );
-        } else {
-          pingDelayCheckNotice(
-            `${phaseLabel}: no successful test result for "${groupName}"; skipping switch`,
-          );
-          debugLog(
-            `[ProxyGroups] 分组 ${groupName} 未找到测速成功节点，保留核心当前选择`,
-          );
         }
-      }
-      const manualDuringCheck = snapshotDelayCheckManualOverrides();
-      const extraUnpinNames = availableGroups
-        .filter((g: IProxyGroupItem) => {
-          const type = g.type?.toLowerCase();
-          return (
-            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-            !manualDuringCheck.has(g.name) &&
-            type === "fallback"
-          );
-        })
-        .map((g: IProxyGroupItem) => g.name);
-      pingDelayCheckNotice("Applying connectivity score order to live groups...");
-      await stopDelayTestEarlyPickers(earlyPickers);
-      await switchGroupsAfterDelayTest({
-        groups: orderTargets,
-        firstSuccessByGroup,
-        manualOverrides: manualDuringCheck,
-        extraUnpinNames,
-        selectReason: "proxy-ui-delay-bulk-auto",
-      });
-      // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
-      // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
-      await applyManualConnectivityProxyOrder();
-      debugLog(`[ProxyGroups] Delay tests for all groups completed`);
-      pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
-    } catch (error) {
-      delayTestFailed = true;
-      console.error(`[ProxyGroups] Delay tests for all groups failed`, error);
-      const nid = delayCheckingNoticeIdRef.current;
-      if (nid != null) {
-        updateNotice(
-          nid,
-          `${t("proxies.page.tooltips.delayCheck")} failed\n${error instanceof Error ? error.message : String(error)}`,
-          0,
-        );
-      }
-    } finally {
-      delayManager.endBulkDelaySession();
-      try {
-        await stopDelayTestEarlyPickers(earlyPickers);
-        // 处理 provider 健康检查（fire and forget）
-        if (allProviders.size) {
-          debugLog(`[ProxyGroups] Found providers, count: ${allProviders.size}`);
-          Promise.allSettled(
-            [...allProviders].map((p) => healthcheckProxyProvider(p)),
-          ).then(() => {
-            debugLog(`[ProxyGroups] Provider health checks completed`);
-            onProxies();
-          });
-        }
-
-        // 测速后仅 fallback 清钉；url-test 已按评分第一节点固定。测速期间用户手动选过的组保留。
-        const manualDuringCheck = snapshotDelayCheckManualOverrides();
-        const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
-          const type = g.type?.toLowerCase();
-          return (
-            !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-            !manualDuringCheck.has(g.name) &&
-            type === "fallback"
-          );
-        });
-        await Promise.allSettled(
-          unpinGroups.map((g: IProxyGroupItem) =>
-            clearProxyGroupManualSelection(g.name),
-          ),
-        );
-        if (current) {
-          const fallbackNames = new Set(
-            availableGroups
-              .filter(
-                (g: IProxyGroupItem) => g.type?.toLowerCase() === "fallback",
-              )
-              .map((g: IProxyGroupItem) => g.name),
-          );
-          const next = (current.selected ?? []).filter((s) => {
-            const name = s.name;
-            if (!name) return true;
+        const extraUnpinNames = availableGroups
+          .filter((g: IProxyGroupItem) => {
+            const type = g.type?.toLowerCase();
             return (
-              !fallbackNames.has(name) || manualDuringCheck.has(name)
+              !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+              !hasDelayCheckManualOverride(g.name) &&
+              type === "fallback"
             );
-          });
-          if (next.length !== (current.selected ?? []).length) {
-            patchCurrent({ selected: next })
-              .then(() => mutateProfiles())
-              .catch(() => { });
-          }
-        }
-
-        // 关闭连接可能较慢，不应阻塞测速完成后的 UI 刷新与通知收尾
-        void closeConnectionsExcludingDirect()
-          .then(() => {
-            onProxies();
           })
-          .catch((error) => {
-            console.error("[ProxyGroups] Failed to close non-DIRECT connections", error);
-          });
-        onProxies();
-        if (!delayTestFailed) {
-          showNotice.success(
-            `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
+          .map((g: IProxyGroupItem) => g.name);
+        pingDelayCheckNotice(
+          "Applying connectivity score order to live groups...",
+        );
+        await stopDelayTestEarlyPickers(earlyPickers);
+        await switchGroupsAfterDelayTest({
+          groups: orderTargets,
+          firstSuccessByGroup,
+          manualOverrides: { has: hasDelayCheckManualOverride },
+          extraUnpinNames,
+          selectReason: "proxy-ui-delay-bulk-auto",
+        });
+        // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
+        // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
+        await applyManualConnectivityProxyOrder();
+        debugLog(`[ProxyGroups] Delay tests for all groups completed`);
+        pingDelayCheckNotice(
+          "Testing and switching complete; refreshing proxy data...",
+        );
+      } catch (error) {
+        delayTestFailed = true;
+        console.error(`[ProxyGroups] Delay tests for all groups failed`, error);
+        const nid = delayCheckingNoticeIdRef.current;
+        if (nid != null) {
+          updateNotice(
+            nid,
+            `${t("proxies.page.tooltips.delayCheck")} failed\n${error instanceof Error ? error.message : String(error)}`,
+            0,
           );
         }
       } finally {
-        const noticeId = delayCheckingNoticeIdRef.current;
-        if (noticeId != null) {
-          delayCheckingNoticeIdRef.current = null;
-          hideNotice(noticeId);
+        delayManager.endBulkDelaySession();
+        try {
+          await stopDelayTestEarlyPickers(earlyPickers);
+          // 处理 provider 健康检查（fire and forget）
+          if (allProviders.size) {
+            debugLog(
+              `[ProxyGroups] Found providers, count: ${allProviders.size}`,
+            );
+            Promise.allSettled(
+              [...allProviders].map((p) => healthcheckProxyProvider(p)),
+            ).then(() => {
+              debugLog(`[ProxyGroups] Provider health checks completed`);
+              onProxies();
+            });
+          }
+
+          // 测速后仅 fallback 清钉；url-test 已按评分第一节点固定。测速期间用户手动选过的组保留。
+          const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
+            const type = g.type?.toLowerCase();
+            return (
+              !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+              !hasDelayCheckManualOverride(g.name) &&
+              type === "fallback"
+            );
+          });
+          await Promise.allSettled(
+            unpinGroups.map((g: IProxyGroupItem) =>
+              clearProxyGroupManualSelection(g.name),
+            ),
+          );
+          if (current) {
+            const fallbackNames = new Set(
+              availableGroups
+                .filter(
+                  (g: IProxyGroupItem) => g.type?.toLowerCase() === "fallback",
+                )
+                .map((g: IProxyGroupItem) => g.name),
+            );
+            const next = (current.selected ?? []).filter((s) => {
+              const name = s.name;
+              if (!name) return true;
+              return (
+                !fallbackNames.has(name) || hasDelayCheckManualOverride(name)
+              );
+            });
+            if (next.length !== (current.selected ?? []).length) {
+              patchCurrent({ selected: next })
+                .then(() => mutateProfiles())
+                .catch(() => {});
+            }
+          }
+
+          // 关闭连接可能较慢，不应阻塞测速完成后的 UI 刷新与通知收尾
+          void closeConnectionsExcludingDirect()
+            .then(() => {
+              onProxies();
+            })
+            .catch((error) => {
+              console.error(
+                "[ProxyGroups] Failed to close non-DIRECT connections",
+                error,
+              );
+            });
+          onProxies();
+          if (!delayTestFailed) {
+            showNotice.success(
+              `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
+            );
+          }
+        } finally {
+          const noticeId = delayCheckingNoticeIdRef.current;
+          if (noticeId != null) {
+            delayCheckingNoticeIdRef.current = null;
+            hideNotice(noticeId);
+          }
+          isDelayCheckingRef.current = false;
+          endManualOverrideTracking();
         }
-        isDelayCheckingRef.current = false;
-        clearDelayCheckManualOverrides();
       }
-    }
-  }, [
-    availableGroups,
-    current,
-    getGroupHeadState,
-    mutateProfiles,
-    onHeadState,
-    onProxies,
-    patchCurrent,
-    t,
-  ]);
+    },
+    [availableGroups, current, mutateProfiles, onProxies, patchCurrent, t],
+  );
 
   useEffect(() => {
     if (!onRegisterCheckAll) return;
@@ -1168,7 +1186,7 @@ export const ProxyGroups = (props: Props) => {
           {availableGroups.length === 0 && (
             <MenuItem disabled>
               <Typography variant="body2" color="text.secondary">
-            No proxy groups available
+                No proxy groups available
               </Typography>
             </MenuItem>
           )}

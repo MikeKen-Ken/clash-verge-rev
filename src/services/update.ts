@@ -61,11 +61,12 @@ const parseDotTokens = (part: string | undefined): (number | string)[] => {
  * 切勿把 +build 当成 prerelease，否则同主版本的 autobuild 会永远小于正式版。
  */
 export const splitVersion = (version: string | null): VersionParts | null => {
-  if (!version) return null;
+  const normalized = ensureSemver(version);
+  if (!normalized) return null;
 
-  const plusIndex = version.indexOf("+");
-  const core = plusIndex >= 0 ? version.slice(0, plusIndex) : version;
-  const buildPart = plusIndex >= 0 ? version.slice(plusIndex + 1) : "";
+  const plusIndex = normalized.indexOf("+");
+  const core = plusIndex >= 0 ? normalized.slice(0, plusIndex) : normalized;
+  const buildPart = plusIndex >= 0 ? normalized.slice(plusIndex + 1) : "";
 
   const dashIndex = core.indexOf("-");
   const mainPart = dashIndex >= 0 ? core.slice(0, dashIndex) : core;
@@ -152,7 +153,9 @@ const shanghaiYmdToMs = (year: number, month: number, day: number): number => {
   return new Date(`${year}-${mm}-${dd}T00:00:00+08:00`).getTime();
 };
 
-const shanghaiYmd = (ms: number): { year: number; month: number; day: number } => {
+const shanghaiYmd = (
+  ms: number,
+): { year: number; month: number; day: number } => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -229,13 +232,18 @@ export const shouldOfferForkUpdate = (
 ): boolean | null => {
   const comparison = compareVersions(remoteVersion, localVersion);
   if (comparison === null) return null;
-  if (remoteVersion === localVersion) return false;
-  if (comparison > 0) return true;
+  if (comparison === 0) return false;
 
   const remoteParts = splitVersion(remoteVersion);
   const localParts = splitVersion(localVersion);
   if (!remoteParts || !localParts) return null;
-  if (mainLineCmp(remoteParts, localParts) < 0) return false;
+  const precedenceComparison = compareVersionParts(
+    { ...remoteParts, build: [] },
+    { ...localParts, build: [] },
+  );
+  if (precedenceComparison !== 0) {
+    return precedenceComparison > 0;
+  }
 
   const localTime = inferAutobuildTime(localVersion, nowMs);
   const remoteInferred = inferAutobuildTime(remoteVersion, nowMs);
@@ -244,16 +252,11 @@ export const shouldOfferForkUpdate = (
     ? remotePublished
     : remoteInferred;
 
-  if (localTime != null && remoteTime != null && remoteTime > localTime) {
-    return true;
-  }
-  if (
-    localTime != null &&
-    remoteInferred != null &&
-    localTime === remoteInferred &&
-    remoteVersion !== localVersion
-  ) {
-    return true;
+  if (localTime != null && remoteTime != null) {
+    if (remoteTime !== localTime) {
+      return remoteTime > localTime;
+    }
+    return remoteVersion !== localVersion;
   }
   // Remote name often has no +ab stamp (bare 2.4.6). If pub_date is newer than
   // the local autobuild day, still offer; if we cannot compare dates, offer
@@ -268,18 +271,18 @@ export const shouldOfferForkUpdate = (
     }
     return true;
   }
-  return false;
+  return comparison > 0;
 };
 
 export const resolveRemoteVersion = (update: Update): string | null => {
   const raw = update.rawJson ?? {};
-  
+
   // 优先从 rawJson.name 提取（autobuild 版本号通常在这里，包含完整的 +build 部分）
   const nameVersion = extractSemver(
     typeof raw.name === "string" ? raw.name : null,
   );
   if (nameVersion) return nameVersion;
-  
+
   // 其次从 update.version 提取
   const primary = ensureSemver(update.version);
   if (primary) return primary;
@@ -302,7 +305,7 @@ export const resolveRemoteVersion = (update: Update): string | null => {
   return null;
 };
 
-const localVersionNormalized = normalizeVersion(appVersion);
+const localVersionNormalized = ensureSemver(appVersion);
 
 export const checkUpdateSafe = async (
   options?: CheckOptions,
@@ -313,11 +316,16 @@ export const checkUpdateSafe = async (
   const remoteVersion = resolveRemoteVersion(result);
   const comparison = compareVersions(remoteVersion, localVersionNormalized);
 
-  if (comparison !== null && comparison <= 0) {
+  if (comparison === null || comparison <= 0) {
     try {
       await result.close();
     } catch (err) {
       console.warn("[updater] failed to close stale update resource", err);
+    }
+    if (comparison === null) {
+      throw new Error(
+        `Unable to compare updater versions: local=${localVersionNormalized ?? "invalid"} remote=${remoteVersion ?? "invalid"}`,
+      );
     }
     return null;
   }

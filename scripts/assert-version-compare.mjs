@@ -10,6 +10,16 @@ const normalizeVersion = (input) => {
   return trimmed.replace(/^v/i, "");
 };
 
+const ensureSemver = (input) => {
+  const normalized = normalizeVersion(input);
+  if (!normalized) return null;
+  return /^\d+(?:\.\d+){1,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+    normalized,
+  )
+    ? normalized
+    : null;
+};
+
 const parseDotTokens = (part) => {
   if (!part) return [];
   return part.split(".").map((token) => {
@@ -19,10 +29,11 @@ const parseDotTokens = (part) => {
 };
 
 const splitVersion = (version) => {
-  if (!version) return null;
-  const plusIndex = version.indexOf("+");
-  const core = plusIndex >= 0 ? version.slice(0, plusIndex) : version;
-  const buildPart = plusIndex >= 0 ? version.slice(plusIndex + 1) : "";
+  const normalized = ensureSemver(version);
+  if (!normalized) return null;
+  const plusIndex = normalized.indexOf("+");
+  const core = plusIndex >= 0 ? normalized.slice(0, plusIndex) : normalized;
+  const buildPart = plusIndex >= 0 ? normalized.slice(plusIndex + 1) : "";
   const dashIndex = core.indexOf("-");
   const mainPart = dashIndex >= 0 ? core.slice(0, dashIndex) : core;
   const prePart = dashIndex >= 0 ? core.slice(dashIndex + 1) : "";
@@ -127,6 +138,13 @@ const cases = [
     expectCmp: null,
   },
   {
+    name: "非空但非法的远程版本必须失败",
+    remote: "nightly",
+    local: "2.4.6",
+    expect: "error",
+    expectCmp: null,
+  },
+  {
     name: "本地无法解析必须失败而非最新",
     remote: "2.4.6+ab.0806.438e7da",
     local: null,
@@ -138,18 +156,22 @@ const cases = [
 let failed = 0;
 for (const c of cases) {
   const result = decideUpdateAvailability(c.remote, c.local);
-  const ok =
-    result.status === c.expect && result.comparison === c.expectCmp;
+  const ok = result.status === c.expect && result.comparison === c.expectCmp;
   if (!ok) {
     failed += 1;
-    console.error("FAIL", c.name, { expected: c.expect, expectCmp: c.expectCmp, got: result });
+    console.error("FAIL", c.name, {
+      expected: c.expect,
+      expectCmp: c.expectCmp,
+      got: result,
+    });
   } else {
     console.log("PASS", c.name, result);
   }
 }
 
 // 旧逻辑回归：comparison === null || comparison <= 0 会把解析失败当成最新
-const buggyTreatsAsLatest = (comparison) => comparison === null || comparison <= 0;
+const buggyTreatsAsLatest = (comparison) =>
+  comparison === null || comparison <= 0;
 if (buggyTreatsAsLatest(null) !== true) {
   failed += 1;
   console.error("FAIL 旧逻辑探针");
@@ -195,16 +217,16 @@ const shouldOfferForkUpdate = (remote, local, pubDate, nowMs) => {
     normalizeVersion(local),
   );
   if (comparison === null) return null;
-  if (remote === local) return false;
-  if (comparison > 0) return true;
+  if (comparison === 0) return false;
   const remoteParts = splitVersion(remote);
   const localParts = splitVersion(local);
   if (!remoteParts || !localParts) return null;
-  const mainLen = Math.max(remoteParts.main.length, localParts.main.length);
-  for (let i = 0; i < mainLen; i += 1) {
-    const diff = (remoteParts.main[i] ?? 0) - (localParts.main[i] ?? 0);
-    if (diff < 0) return false;
-    if (diff > 0) break;
+  const precedenceComparison = compareVersionParts(
+    { ...remoteParts, build: [] },
+    { ...localParts, build: [] },
+  );
+  if (precedenceComparison !== 0) {
+    return precedenceComparison > 0;
   }
   const localTime = inferAutobuildTime(local, nowMs);
   const remoteInferred = inferAutobuildTime(remote, nowMs);
@@ -212,18 +234,16 @@ const shouldOfferForkUpdate = (remote, local, pubDate, nowMs) => {
   const remoteTime = Number.isNaN(remotePublished)
     ? remoteInferred
     : remotePublished;
-  if (localTime != null && remoteTime != null && remoteTime > localTime) {
+  if (localTime != null && remoteTime != null) {
+    if (remoteTime !== localTime) {
+      return remoteTime > localTime;
+    }
+    return remote !== local;
+  }
+  if (remoteParts.build.length === 0 && localParts.build.length > 0) {
     return true;
   }
-  if (
-    localTime != null &&
-    remoteInferred != null &&
-    localTime === remoteInferred &&
-    remote !== local
-  ) {
-    return true;
-  }
-  return false;
+  return comparison > 0;
 };
 
 const now = Date.parse("2026-08-25T12:00:00+08:00");
@@ -252,10 +272,23 @@ const offerCases = [
     local: "2.4.6+ab.0101.aaaaaaa",
     expect: false,
   },
+  {
+    name: "跨年反向：去年 12 月远程不得覆盖今年 1 月本地",
+    remote: "2.4.6+ab.1231.old",
+    local: "2.4.6+ab.0104.new",
+    pubDate: "2026-12-31T12:00:00+08:00",
+    nowMs: Date.parse("2027-01-05T12:00:00+08:00"),
+    expect: false,
+  },
 ];
 
 for (const c of offerCases) {
-  const got = shouldOfferForkUpdate(c.remote, c.local, undefined, now);
+  const got = shouldOfferForkUpdate(
+    c.remote,
+    c.local,
+    c.pubDate,
+    c.nowMs ?? now,
+  );
   if (got !== c.expect) {
     failed += 1;
     console.error("FAIL", c.name, { expected: c.expect, got });

@@ -143,9 +143,11 @@ export async function applyLiveConnectivityOrderToGroup(
  */
 export async function applyStartupLiveConnectivityOrder(
   groups: Array<{ name: string; type?: string; members: string[] }>,
+  manualOverrides?: { has(name: string): boolean },
 ): Promise<void> {
   const targets = groups.filter(
     (group) =>
+      !manualOverrides?.has(group.name) &&
       isAutoSelectGroupType(group.type) &&
       group.name !== "Direct" &&
       group.name !== "Final",
@@ -153,9 +155,20 @@ export async function applyStartupLiveConnectivityOrder(
   if (targets.length === 0) {
     return;
   }
-  await applyLiveConnectivityOrderForGroups(targets);
+  await hydrateConnectivityStatsFromDisk();
+  const scoreContext = buildConnectivityScoreContext();
+  const orderedTargets = targets.map((group) => ({
+    ...group,
+    members: orderedMemberNamesByConnectivity(group.members, scoreContext),
+  }));
+  await applyLiveConnectivityOrderForGroups(
+    orderedTargets,
+    scoreContext,
+    manualOverrides,
+  );
   await Promise.allSettled(
-    targets.map(async (group) => {
+    orderedTargets.map(async (group) => {
+      if (manualOverrides?.has(group.name)) return;
       const type = group.type?.toLowerCase();
       if (type === "fallback") {
         await clearProxyGroupManualSelection(group.name);
@@ -173,12 +186,19 @@ export async function applyStartupLiveConnectivityOrder(
 
 export async function applyLiveConnectivityOrderForGroups(
   groups: Array<{ name: string; type?: string; members: string[] }>,
+  providedScoreContext?: ConnectivityScoreContext,
+  manualOverrides?: { has(name: string): boolean },
 ): Promise<Map<string, boolean>> {
-  await hydrateConnectivityStatsFromDisk();
-  const scoreContext = buildConnectivityScoreContext();
+  if (!providedScoreContext) {
+    await hydrateConnectivityStatsFromDisk();
+  }
+  const scoreContext = providedScoreContext ?? buildConnectivityScoreContext();
   const results = new Map<string, boolean>();
   for (const group of groups) {
-    if (!isAutoSelectGroupType(group.type)) {
+    if (
+      manualOverrides?.has(group.name) ||
+      !isAutoSelectGroupType(group.type)
+    ) {
       continue;
     }
     results.set(
@@ -206,10 +226,7 @@ export async function switchGroupsAfterDelayTest(input: {
 }): Promise<void> {
   const { groups, firstSuccessByGroup, manualOverrides, extraUnpinNames } =
     input;
-  const orderTargets = groups.filter(
-    (group) => !manualOverrides.has(group.name),
-  );
-  await applyLiveConnectivityOrderForGroups(orderTargets);
+  await applyLiveConnectivityOrderForGroups(groups, undefined, manualOverrides);
 
   const ops: Array<Promise<unknown>> = [];
   for (const group of groups) {

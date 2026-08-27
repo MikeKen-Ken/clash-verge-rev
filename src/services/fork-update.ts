@@ -1,9 +1,10 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+
 import { openWebUrl } from "@/services/cmds";
 import {
+  ensureSemver,
   extractSemver,
-  normalizeVersion,
   shouldOfferForkUpdate,
 } from "@/services/update";
 import { version as packageVersion } from "@root/package.json";
@@ -85,9 +86,11 @@ const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
   if (!response.ok) {
     const hint =
       response.status === 403
-        ? "（可能触发 GitHub 速率限制）"
+        ? " (the GitHub rate limit may have been reached)"
         : "";
-    throw new Error(`更新清单请求失败: HTTP ${response.status}${hint}`);
+    throw new Error(
+      `Update manifest request failed: HTTP ${response.status}${hint}`,
+    );
   }
   return (await response.json()) as ForkUpdateManifest;
 };
@@ -96,19 +99,28 @@ const fetchManifest = async (endpoint: string): Promise<ForkUpdateManifest> => {
 const resolveLocalVersion = async (): Promise<string> => {
   try {
     const runtime = await getVersion();
-    const normalized = extractSemver(runtime) ?? normalizeVersion(runtime);
+    const normalized = extractSemver(runtime) ?? ensureSemver(runtime);
     if (normalized) {
       console.log("[fork-updater] Local version source=getVersion()", runtime);
       return normalized;
     }
   } catch (err) {
-    console.log("[fork-updater] getVersion() failed; falling back to package.json", err);
+    console.log(
+      "[fork-updater] getVersion() failed; falling back to package.json",
+      err,
+    );
   }
-  const fallback = extractSemver(packageVersion) ?? normalizeVersion(packageVersion);
+  const fallback =
+    extractSemver(packageVersion) ?? ensureSemver(packageVersion);
   if (!fallback) {
-    throw new Error(`本地版本无法解析：package.json=${packageVersion}`);
+    throw new Error(
+      `Unable to parse local version: package.json=${packageVersion}`,
+    );
   }
-  console.log("[fork-updater] Local version source=package.json", packageVersion);
+  console.log(
+    "[fork-updater] Local version source=package.json",
+    packageVersion,
+  );
   return fallback;
 };
 
@@ -128,23 +140,26 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
       break;
     } catch (err) {
       lastError = err;
-      console.log("[fork-updater] Manifest fetch failed; trying next source", endpoint, err);
+      console.log(
+        "[fork-updater] Manifest fetch failed; trying next source",
+        endpoint,
+        err,
+      );
     }
   }
 
   if (!manifest) {
     throw lastError instanceof Error
       ? lastError
-      : new Error("无法获取更新清单");
+      : new Error("Unable to fetch the update manifest");
   }
 
   const localVersion = await resolveLocalVersion();
   const remoteRaw = manifest.version || manifest.name;
-  const remoteVersion =
-    extractSemver(remoteRaw) ?? normalizeVersion(remoteRaw);
+  const remoteVersion = extractSemver(remoteRaw) ?? ensureSemver(remoteRaw);
   if (!remoteVersion) {
     throw new Error(
-      `远程版本无法解析：name=${remoteRaw == null ? "空" : String(remoteRaw)}`,
+      `Unable to parse remote version: name=${remoteRaw == null ? "empty" : String(remoteRaw)}`,
     );
   }
 
@@ -153,17 +168,17 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
     localVersion,
     manifest.pub_date,
   );
-  console.log("[fork-updater] 版本比较", {
+  console.log("[fork-updater] Version comparison", {
     local: localVersion,
     remote: remoteVersion,
     pub_date: manifest.pub_date,
     offer,
   });
 
-  // 解析失败不得当成「已是最新」
+  // Parse failures must not be reported as already up to date.
   if (offer === null) {
     throw new Error(
-      `版本比较失败：local=${localVersion} remote=${remoteVersion}`,
+      `Version comparison failed: local=${localVersion} remote=${remoteVersion}`,
     );
   }
 
@@ -173,7 +188,9 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
 
   const downloadUrl = resolveDownloadUrl(manifest);
   if (!downloadUrl) {
-    throw new Error("更新清单中没有当前平台的安装包地址");
+    throw new Error(
+      "The update manifest has no installer URL for this platform",
+    );
   }
 
   return {
@@ -183,7 +200,7 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
     available: true,
     downloadUrl,
     downloadAndInstall: async () => {
-  console.log("[fork-updater] Opening installer download", downloadUrl);
+      console.log("[fork-updater] Opening installer download", downloadUrl);
       await openWebUrl(downloadUrl);
     },
     close: async () => {},
