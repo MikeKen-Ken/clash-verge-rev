@@ -793,6 +793,8 @@ const ProxyPage = () => {
                 <Button
                   key={mode}
                   variant={mode === uiMode ? "contained" : "outlined"}
+                  aria-pressed={mode === uiMode}
+                  data-selected={mode === uiMode ? "1" : "0"}
                   onClick={() => onChangeMode(mode)}
                   sx={{ textTransform: "capitalize" }}
                 >

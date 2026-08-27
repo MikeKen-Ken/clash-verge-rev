@@ -16,6 +16,7 @@ const FORK_UPDATE_ENDPOINTS = [
 
 type ForkUpdateManifest = {
   name?: string;
+  version?: string;
   notes?: string;
   pub_date?: string;
   platforms?: Record<string, { url?: string; signature?: string }>;
@@ -138,7 +139,7 @@ export const checkForkUpdate = async (): Promise<ForkUpdateInfo | null> => {
   }
 
   const localVersion = await resolveLocalVersion();
-  const remoteRaw = manifest.name;
+  const remoteRaw = manifest.version || manifest.name;
   const remoteVersion =
     extractSemver(remoteRaw) ?? normalizeVersion(remoteRaw);
   if (!remoteVersion) {

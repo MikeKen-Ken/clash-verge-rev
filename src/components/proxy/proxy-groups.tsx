@@ -574,6 +574,7 @@ export const ProxyGroups = (props: Props) => {
       return;
     }
     isDelayCheckingRef.current = true;
+    let delayTestFailed = false;
     clearDelayCheckManualOverrides();
     debugLog(`[ProxyGroups] Starting delay tests for all groups`);
     delayCheckingNoticeIdRef.current = showNotice.info(
@@ -594,13 +595,19 @@ export const ProxyGroups = (props: Props) => {
 
     // 测速前清空所有组的手动选择
     if (current) {
-      const allGroupNames = new Set(
-        availableGroups.map((g: IProxyGroupItem) => g.name),
+      const autoGroupNames = new Set(
+        availableGroups
+          .filter(
+            (g: IProxyGroupItem) =>
+              isAutoSelectGroupType(g.type) &&
+              !SKIP_DELAY_CHECK_GROUPS.has(g.name),
+          )
+          .map((g: IProxyGroupItem) => g.name),
       );
       const next = (current.selected ?? []).filter((s) => {
         const name = s.name;
         if (!name) return true;
-        return !allGroupNames.has(name);
+        return !autoGroupNames.has(name);
       });
       if (next.length !== (current.selected ?? []).length) {
         patchCurrent({ selected: next }).catch(() => { });
@@ -640,7 +647,6 @@ export const ProxyGroups = (props: Props) => {
           name: g.name,
           type: g.type,
           members: ((g as { all?: IProxyItem[] }).all ?? [])
-            .filter((p) => !p.provider)
             .map((p) => p.name)
             .filter(
               (n): n is string =>
@@ -768,7 +774,7 @@ export const ProxyGroups = (props: Props) => {
               proxyName !== "REJECT" &&
               typeof delay === "number" &&
               delay > 0 &&
-              delay <= timeout,
+              delay < timeout,
           );
 
         const postTestScoreContext = buildConnectivityScoreContext();
@@ -836,10 +842,7 @@ export const ProxyGroups = (props: Props) => {
           return (
             !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
             !manualDuringCheck.has(g.name) &&
-            (type === "selector" ||
-              type === "url-test" ||
-              type === "urltest" ||
-              type === "fallback")
+            type === "fallback"
           );
         })
         .map((g: IProxyGroupItem) => g.name);
@@ -858,6 +861,7 @@ export const ProxyGroups = (props: Props) => {
       debugLog(`[ProxyGroups] Delay tests for all groups completed`);
       pingDelayCheckNotice("Testing and switching complete; refreshing proxy data...");
     } catch (error) {
+      delayTestFailed = true;
       console.error(`[ProxyGroups] Delay tests for all groups failed`, error);
       const nid = delayCheckingNoticeIdRef.current;
       if (nid != null) {
@@ -882,17 +886,14 @@ export const ProxyGroups = (props: Props) => {
           });
         }
 
-        // 测速后清空各组手动选择记录；测速期间用户手动选过的组保留
+        // 测速后仅 fallback 清钉；url-test 已按评分第一节点固定。测速期间用户手动选过的组保留。
         const manualDuringCheck = snapshotDelayCheckManualOverrides();
         const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
           const type = g.type?.toLowerCase();
           return (
             !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
             !manualDuringCheck.has(g.name) &&
-            (type === "selector" ||
-              type === "url-test" ||
-              type === "urltest" ||
-              type === "fallback")
+            type === "fallback"
           );
         });
         await Promise.allSettled(
@@ -901,14 +902,18 @@ export const ProxyGroups = (props: Props) => {
           ),
         );
         if (current) {
-          const allGroupNames = new Set(
-            availableGroups.map((g: IProxyGroupItem) => g.name),
+          const fallbackNames = new Set(
+            availableGroups
+              .filter(
+                (g: IProxyGroupItem) => g.type?.toLowerCase() === "fallback",
+              )
+              .map((g: IProxyGroupItem) => g.name),
           );
           const next = (current.selected ?? []).filter((s) => {
             const name = s.name;
             if (!name) return true;
             return (
-              !allGroupNames.has(name) || manualDuringCheck.has(name)
+              !fallbackNames.has(name) || manualDuringCheck.has(name)
             );
           });
           if (next.length !== (current.selected ?? []).length) {
@@ -927,9 +932,11 @@ export const ProxyGroups = (props: Props) => {
             console.error("[ProxyGroups] Failed to close non-DIRECT connections", error);
           });
         onProxies();
-        showNotice.success(
-          `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
-        );
+        if (!delayTestFailed) {
+          showNotice.success(
+            `${t("proxies.page.tooltips.delayCheck")} ${t("tests.statuses.test.completed")}; connection cleanup will continue in the background`,
+          );
+        }
       } finally {
         const noticeId = delayCheckingNoticeIdRef.current;
         if (noticeId != null) {

@@ -142,7 +142,6 @@ impl CoreManager {
             Ok(_) => {
                 Self::apply_profile_selected_to_core().await;
                 Config::runtime().await.apply();
-                handle::Handle::notice_message("runtime_config::updated", "Runtime configuration updated.");
                 logging!(info, Type::Core, "Configuration applied");
                 Ok(())
             }

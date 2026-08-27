@@ -28,11 +28,11 @@ import {
   FormControl,
   Grid,
   IconButton,
-  InputLabel,
   MenuItem,
   TextField,
   Select,
   Stack,
+  Tooltip,
 } from "@mui/material";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -1140,23 +1140,30 @@ const ProfilePage = () => {
             <DataObjectRounded />
           </IconButton>
 
-          <FormControl size="small" sx={{ minWidth: 110 }}>
-            <InputLabel id="global-update-hours-label">Schedule (hours)</InputLabel>
-            <Select
-              labelId="global-update-hours-label"
-              value={globalUpdateHours}
-            label="Schedule (hours)"
-              onChange={(event) =>
-                setGlobalUpdateHours(Number(event.target.value))
-              }
-            >
-              {GLOBAL_UPDATE_INTERVAL_OPTIONS.map((hours) => (
-                <MenuItem key={hours} value={hours}>
-                  {hours === 168 ? "168 (24*7)" : hours}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Tooltip
+            title={`Automatically update remote profiles every ${globalUpdateHours === 168 ? "week" : `${globalUpdateHours} hours`}`}
+          >
+            <FormControl size="small" sx={{ minWidth: 64 }}>
+              <Select
+                value={globalUpdateHours}
+                inputProps={{
+                  "aria-label": "Automatic profile update schedule",
+                }}
+                renderValue={(hours) =>
+                  Number(hours) === 168 ? "1w" : `${hours}h`
+                }
+                onChange={(event) =>
+                  setGlobalUpdateHours(Number(event.target.value))
+                }
+              >
+                {GLOBAL_UPDATE_INTERVAL_OPTIONS.map((hours) => (
+                  <MenuItem key={hours} value={hours}>
+                    {hours === 168 ? "Every week" : `Every ${hours} hours`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Tooltip>
 
           {(error || isStale) && (
             <IconButton

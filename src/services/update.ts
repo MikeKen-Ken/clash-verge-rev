@@ -16,7 +16,7 @@ export type VersionParts = {
 const SEMVER_FULL_REGEX =
   /^\d+(?:\.\d+){1,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SEMVER_SEARCH_REGEX =
-  /v?\d+(?:\.\d+){1,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/i;
+  /v?\d+(?:\.\d+){1,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/gi;
 
 export const normalizeVersion = (
   input: string | null | undefined,
@@ -39,9 +39,12 @@ export const extractSemver = (
   input: string | null | undefined,
 ): string | null => {
   if (typeof input !== "string") return null;
-  const match = input.match(SEMVER_SEARCH_REGEX);
-  if (!match) return null;
-  return normalizeVersion(match[0]);
+  const matches = [...input.matchAll(SEMVER_SEARCH_REGEX)]
+    .map((match) => normalizeVersion(match[0]))
+    .filter((value): value is string => Boolean(value));
+  if (matches.length === 0) return null;
+  const withBuild = matches.filter((value) => value.includes("+"));
+  return withBuild[withBuild.length - 1] ?? matches[matches.length - 1];
 };
 
 const parseDotTokens = (part: string | undefined): (number | string)[] => {
@@ -250,6 +253,19 @@ export const shouldOfferForkUpdate = (
     localTime === remoteInferred &&
     remoteVersion !== localVersion
   ) {
+    return true;
+  }
+  // Remote name often has no +ab stamp (bare 2.4.6). If pub_date is newer than
+  // the local autobuild day, still offer; if we cannot compare dates, offer
+  // rather than claiming "already latest".
+  if (
+    mainLineCmp(remoteParts, localParts) === 0 &&
+    remoteParts.build.length === 0 &&
+    localParts.build.length > 0
+  ) {
+    if (remoteTime != null && localTime != null) {
+      return remoteTime > localTime;
+    }
     return true;
   }
   return false;

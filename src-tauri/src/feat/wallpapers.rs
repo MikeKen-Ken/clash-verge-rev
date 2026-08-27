@@ -15,6 +15,23 @@ use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 pub const UI_WALLPAPERS_PACK: &str = "clash-ui-wallpapers.zip";
 const UI_BACKGROUND_PREFIX: &str = "ui_background-";
 const MANIFEST_PATH: &str = "manifest.json";
+const MAX_PACK_BYTES: usize = 20 * 1024 * 1024;
+const MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
+const MAX_PACK_FILES: usize = 40;
+
+fn safe_wallpaper_file_name(name: &str) -> Option<String> {
+    let base = Path::new(name).file_name()?.to_str()?;
+    if base.is_empty() || base.contains("..") {
+        return None;
+    }
+    if !base
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' || ch == '-')
+    {
+        return None;
+    }
+    Some(base.to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WallpaperItem {
@@ -131,6 +148,10 @@ pub async fn apply_wallpaper_pack(bytes: &[u8]) -> Result<Vec<std::string::Strin
     let cursor = Cursor::new(bytes.to_vec());
     let mut zip = ZipArchive::new(cursor)?;
     let mut files = std::collections::HashMap::<String, Vec<u8>>::new();
+    let mut total = 0usize;
+    if zip.len() > MAX_PACK_FILES + 4 {
+        return Err(anyhow!("wallpaper pack has too many entries"));
+    }
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
         let name = entry
@@ -143,6 +164,13 @@ pub async fn apply_wallpaper_pack(bytes: &[u8]) -> Result<Vec<std::string::Strin
         }
         let mut buf = Vec::new();
         entry.read_to_end(&mut buf)?;
+        if buf.len() > MAX_ENTRY_BYTES {
+            return Err(anyhow!("wallpaper pack entry too large"));
+        }
+        total = total.saturating_add(buf.len());
+        if total > MAX_PACK_BYTES {
+            return Err(anyhow!("wallpaper pack too large"));
+        }
         files.insert(name, buf);
     }
 
@@ -156,11 +184,15 @@ pub async fn apply_wallpaper_pack(bytes: &[u8]) -> Result<Vec<std::string::Strin
 
     let mut paths = Vec::new();
     for item in &manifest.items {
-        let key = format!("images/{}", item.file_name);
+        let file_name = match safe_wallpaper_file_name(&item.file_name) {
+            Some(name) => name,
+            None => continue,
+        };
+        let key = format!("images/{file_name}");
         let Some(content) = files.get(&key) else {
             continue;
         };
-        let dest = home.join(format!("{}{}", UI_BACKGROUND_PREFIX, item.file_name));
+        let dest = home.join(format!("{UI_BACKGROUND_PREFIX}{file_name}"));
         fs::write(&dest, content).await?;
         paths.push(dest.to_string_lossy().into_owned());
     }

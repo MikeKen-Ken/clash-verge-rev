@@ -442,6 +442,9 @@ export const useRenderList = (
           group.type,
           regionFilter,
           hideUnavailableNodes,
+          [group.now, group.fixed].filter(
+            (name): name is string => Boolean(name),
+          ),
         );
 
         ret.push({

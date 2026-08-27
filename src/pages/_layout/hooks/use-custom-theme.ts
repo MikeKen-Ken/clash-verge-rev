@@ -372,8 +372,10 @@ export const useCustomTheme = () => {
             : "#2E303D"} !important;
         }
 
-        /* 移除可能的白色点或线条 */
-        * {
+        /* 去掉布局层杂散描边，但保留菜单/弹出层阴影 */
+        .layout,
+        .base-page,
+        .base-container {
           outline: none !important;
           box-shadow: none !important;
         }

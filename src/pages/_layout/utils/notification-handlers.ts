@@ -85,6 +85,8 @@ export const handleNoticeMessage = (
         "settings.feedback.notifications.clash.changeFailed",
         msg,
       ),
+    "runtime_config::updated": () =>
+      showNotice.success(msg || "Runtime configuration updated"),
   };
 
   const handler = handlers[status];

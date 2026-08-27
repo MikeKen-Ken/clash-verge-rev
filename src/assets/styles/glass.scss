@@ -100,6 +100,13 @@ html[data-liquid-glass="1"] {
     color: var(--glass-text) !important;
   }
 
+  // The generic toolbar glass fill would otherwise hide a contained mode button.
+  .base-page > header .MuiButton-root[data-selected="1"] {
+    background-color: var(--primary-main, #007aff) !important;
+    border-color: var(--primary-main, #007aff) !important;
+    color: var(--selection-color, #f5f5f5) !important;
+  }
+
   .base-page > header .MuiOutlinedInput-notchedOutline {
     border-color: transparent !important;
   }
@@ -116,6 +123,16 @@ html[data-liquid-glass="1"] {
     color: var(--glass-text);
   }
 
+  .MuiMenu-paper,
+  .MuiPopover-paper {
+    background-color: var(--glass-card-fill) !important;
+    backdrop-filter: blur(var(--glass-card-blur));
+    -webkit-backdrop-filter: blur(var(--glass-card-blur));
+    border: 1px solid var(--glass-edge) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16) !important;
+    color: var(--glass-text);
+  }
+
   .MuiDialog-paper {
     @include glass-panel(var(--glass-blur));
     background-color: transparent !important;
@@ -123,7 +140,8 @@ html[data-liquid-glass="1"] {
     color: var(--glass-text);
   }
 
-  .the-content .MuiPaper-root,
+  .the-content .profile-card,
+  .the-content .proxy-card,
   .setting-panel,
   .profile-card {
     @include glass-card;

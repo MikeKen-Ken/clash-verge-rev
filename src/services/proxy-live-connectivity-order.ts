@@ -27,7 +27,6 @@ export function memberNamesFromGroupAll(
   for (const item of members) {
     const name = typeof item === "string" ? item : item?.name;
     if (!name || name === "DIRECT" || name === "REJECT") continue;
-    if (typeof item !== "string" && item.provider) continue;
     names.push(name);
   }
   return names;
@@ -64,7 +63,7 @@ export function createDelayTestEarlyPicker(input: {
   const pick = (name: string, delay: number) => {
     if (stopped || input.isCancelled?.()) return;
     if (!name || name === "DIRECT" || name === "REJECT") return;
-    if (!(delay > 0 && delay <= input.timeoutMs)) return;
+    if (!(delay > 0 && delay < input.timeoutMs)) return;
     passed.add(name);
     let next: string | null = null;
     for (const candidate of input.orderedNames) {
@@ -140,7 +139,7 @@ export async function applyLiveConnectivityOrderToGroup(
 }
 
 /**
- * 启动时按积分重排 url-test/fallback 并清钉，立刻走评分第一的节点，不必等测速。
+ * 启动时按积分重排 url-test/fallback。url-test 钉第一个可用节点；fallback 清钉。
  */
 export async function applyStartupLiveConnectivityOrder(
   groups: Array<{ name: string; type?: string; members: string[] }>,
@@ -156,7 +155,19 @@ export async function applyStartupLiveConnectivityOrder(
   }
   await applyLiveConnectivityOrderForGroups(targets);
   await Promise.allSettled(
-    targets.map((group) => clearProxyGroupManualSelection(group.name)),
+    targets.map(async (group) => {
+      const type = group.type?.toLowerCase();
+      if (type === "fallback") {
+        await clearProxyGroupManualSelection(group.name);
+        return;
+      }
+      const first = group.members.find(
+        (name) => name && name !== "DIRECT" && name !== "REJECT",
+      );
+      if (first) {
+        await forceSelectGroupProxy(group.name, first);
+      }
+    }),
   );
 }
 
@@ -183,9 +194,8 @@ export async function applyLiveConnectivityOrderForGroups(
 }
 
 /**
- * 测速后先把运行中的 url-test/fallback 组按积分重排，再清钉。
- * 清钉后 Fallback 会选重排列表里第一个当前可用节点。
- * 测速期间用户手动选过的组不清钉；其余组测速结束后必须取消固定。
+ * 测速后按积分重排。url-test 钉本轮第一个成功的评分节点；fallback 清钉后走列表。
+ * 测速期间用户手动选过的组不改钉。
  */
 export async function switchGroupsAfterDelayTest(input: {
   groups: Array<{ name: string; type?: string; members: string[] }>;
@@ -194,20 +204,32 @@ export async function switchGroupsAfterDelayTest(input: {
   extraUnpinNames?: string[];
   selectReason?: string;
 }): Promise<void> {
-  const { groups, manualOverrides, extraUnpinNames } = input;
+  const { groups, firstSuccessByGroup, manualOverrides, extraUnpinNames } =
+    input;
   const orderTargets = groups.filter(
     (group) => !manualOverrides.has(group.name),
   );
   await applyLiveConnectivityOrderForGroups(orderTargets);
 
-  const unpinNames = new Set<string>(extraUnpinNames ?? []);
+  const ops: Array<Promise<unknown>> = [];
   for (const group of groups) {
-    unpinNames.add(group.name);
+    if (manualOverrides.has(group.name)) continue;
+    const type = group.type?.toLowerCase();
+    if (type === "url-test" || type === "urltest") {
+      const pin = firstSuccessByGroup?.get(group.name);
+      if (pin) {
+        ops.push(forceSelectGroupProxy(group.name, pin));
+      }
+      continue;
+    }
+    if (type === "fallback") {
+      ops.push(clearProxyGroupManualSelection(group.name));
+    }
   }
-  const toUnpin = [...unpinNames].filter(
-    (name) => !manualOverrides.has(name),
-  );
-  await Promise.allSettled(
-    toUnpin.map((name) => clearProxyGroupManualSelection(name)),
-  );
+  for (const name of extraUnpinNames ?? []) {
+    if (manualOverrides.has(name)) continue;
+    if (groups.some((group) => group.name === name)) continue;
+    ops.push(clearProxyGroupManualSelection(name));
+  }
+  await Promise.allSettled(ops);
 }

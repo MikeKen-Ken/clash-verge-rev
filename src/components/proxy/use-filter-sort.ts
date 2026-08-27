@@ -123,6 +123,7 @@ export function filterSort(
   groupType?: string,
   regionFilter?: string,
   hideUnavailableNodes = false,
+  keepProxyNames: string[] = [],
 ) {
   const fp = filterProxies(
     proxies,
@@ -133,6 +134,7 @@ export function filterSort(
     regionFilter,
     hideUnavailableNodes,
     latencyTimeout ?? DEFAULT_GROUP_TIMEOUT_MS,
+    keepProxyNames,
   );
   const sp = sortProxies(fp, groupName, sortType, latencyTimeout, groupType);
   return sp;
@@ -157,6 +159,7 @@ function filterProxies(
   regionFilter?: string,
   hideUnavailableNodes = false,
   latencyTimeout = DEFAULT_GROUP_TIMEOUT_MS,
+  keepProxyNames: string[] = [],
 ) {
   let list = proxies;
 
@@ -170,10 +173,12 @@ function filterProxies(
   }
 
   if (hideUnavailableNodes) {
+    const keep = new Set(keepProxyNames.filter(Boolean));
     const delayMap = delayManager.getDelaysForGroupFix(groupName, list);
     list = list.filter((proxy) => {
+      if (keep.has(proxy.name)) return true;
       const delay = delayMap.get(proxy.name) ?? -1;
-      return delay < 0 || (delay > 0 && delay < latencyTimeout);
+      return delay > 0 && delay < latencyTimeout;
     });
   }
 

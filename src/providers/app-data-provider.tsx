@@ -29,6 +29,7 @@ import {
 import {
   applyStartupLiveConnectivityOrder,
   createDelayTestEarlyPicker,
+  isAutoSelectGroupType,
   memberNamesFromGroupAll,
   orderedMemberNamesByConnectivity,
   stopDelayTestEarlyPickers,
@@ -162,11 +163,13 @@ export const AppDataProvider = ({
     }
     const groups = proxiesData.groups as IProxyGroupItem[];
     const urlTestOrFallback = groups.filter(
-      (g) => g.type === "url-test" || g.type === "fallback",
+      (g) =>
+        isAutoSelectGroupType(g.type) &&
+        g.name !== "Direct" &&
+        g.name !== "Final",
     );
-    if (urlTestOrFallback.length === 0) return;
-
     hasTriggeredStartupFallback.current = true;
+    if (urlTestOrFallback.length === 0) return;
     initialNowByGroupRef.current = new Map(
       urlTestOrFallback.map((g) => [g.name, g.now ?? ""]),
     );
@@ -267,8 +270,8 @@ export const AppDataProvider = ({
     if (initial == null || !proxiesData?.groups?.length) return;
 
     const groups = proxiesData.groups as IProxyGroupItem[];
-    const urlTestOrFallback = groups.filter(
-      (g) => g.type === "url-test" || g.type === "fallback",
+    const urlTestOrFallback = groups.filter((g) =>
+      isAutoSelectGroupType(g.type),
     );
     const allUpdated = urlTestOrFallback.every(
       (g) => (g.now ?? "") !== initial.get(g.name),

@@ -52,26 +52,15 @@ export const LayoutItem = (props: Props) => {
   const showMonochromeIcon =
     effectiveMenuIcon === "monochrome" || !effectiveMenuIcon;
   const showColorfulIcon = effectiveMenuIcon === "colorful";
-  const iconSx = navCollapsed
-    ? {
-        color: "text.primary",
-        minWidth: "auto",
-        m: 0,
-        cursor: draggable ? "grab" : "inherit",
-      }
-    : {
-        color: "text.primary",
-        position: "absolute",
-        left: 12,
-        top: "50%",
-        zIndex: 1,
-        minWidth: 24,
-        width: 24,
-        m: 0,
-        justifyContent: "center",
-        transform: "translateY(-50%)",
-        cursor: draggable ? "grab" : "inherit",
-      };
+  const navIcon = icon[1] ?? icon[0];
+  const iconSx = {
+    color: "text.primary",
+    minWidth: 24,
+    width: 24,
+    m: 0,
+    justifyContent: "center",
+    cursor: draggable ? "grab" : "inherit",
+  };
 
   return (
     <ListItem
@@ -102,6 +91,7 @@ export const LayoutItem = (props: Props) => {
             boxSizing: "border-box",
             justifyContent: "center",
             alignItems: "center",
+            gap: 1,
             m: 0,
             px: 0,
             py: 1,
@@ -143,10 +133,10 @@ export const LayoutItem = (props: Props) => {
         onClick={() => navigate(to)}
       >
         {showMonochromeIcon && (
-          <ListItemIcon sx={iconSx}>{icon[0]}</ListItemIcon>
+          <ListItemIcon sx={iconSx}>{navIcon}</ListItemIcon>
         )}
-        {showColorfulIcon && <ListItemIcon sx={iconSx}>{icon[1]}</ListItemIcon>}
-        <ListItemText primary={children} />
+        {showColorfulIcon && <ListItemIcon sx={iconSx}>{navIcon}</ListItemIcon>}
+        {!navCollapsed && <ListItemText primary={children} />}
       </ListItemButton>
     </ListItem>
   );
