@@ -418,10 +418,7 @@ export const ConnectionTable = (props: Props) => {
               top: 4,
               right: 4,
               zIndex: 3,
-              backgroundColor: (theme) =>
-                theme.palette.mode === "dark"
-                  ? theme.palette.background.default
-                  : theme.palette.background.paper,
+              backgroundColor: "transparent",
               "&:hover": {
                 backgroundColor: (theme) => theme.palette.action.hover,
               },
@@ -452,7 +449,7 @@ export const ConnectionTable = (props: Props) => {
                   display: "flex",
                   borderBottom: (theme) =>
                     `1px solid ${theme.palette.divider}`,
-                  backgroundColor: (theme) => theme.palette.background.paper,
+                  backgroundColor: "transparent",
                 }}
               >
                 {displayColumns.map((column) => {

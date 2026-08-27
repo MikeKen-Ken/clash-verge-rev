@@ -1,7 +1,7 @@
 {
   "repo": "MikeKen-Ken/mihomo",
-  "commit": "5e7878d9f4f7145be027cdbf69042ee4ec160ae3",
-  "version": "alpha-5e7878d",
+  "commit": "f147e4c2e3212ba5930bc290269edd162fef8f10",
+  "version": "alpha-f147e4c",
   "releaseTag": "Prerelease-Alpha",
   "note": "Align with Android gitlink core/src/foss/golang/clash; bump with parent submodule, do not follow MetaCubeX."
 }
