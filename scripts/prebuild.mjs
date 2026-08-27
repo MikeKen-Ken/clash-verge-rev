@@ -181,6 +181,10 @@ const META_CUSTOM_ROLLING_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha"
 let META_CUSTOM_VERSION;
 const META_CUSTOM_RELEASE_CACHE = new Map();
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getMetaCustomReleaseTagCandidates() {
   const tags = [];
   const pinnedVersion = String(META_CUSTOM_PIN.version || "").trim();
@@ -246,6 +250,9 @@ async function fetchAlphaRelease(releaseTag, options) {
 }
 
 async function downloadAlphaAssetViaApi(fileName, outPath, options) {
+  // Pin bumps often land while mihomo CI is still publishing the immutable
+  // tag. Drop stale API payloads so retries can see a just-published release.
+  META_CUSTOM_RELEASE_CACHE.clear();
   const releaseTags = getMetaCustomReleaseTagCandidates();
   let lastError;
 
@@ -785,7 +792,9 @@ const tasks = [
     name: "verge-mihomo-custom",
     func: () =>
       getLatestCustomVersion().then(() => resolveSidecar(clashMetaCustom())),
-    retry: 5,
+    // Immutable tag can lag the pin by 1–2 minutes; 5 instant retries always lose that race.
+    retry: 8,
+    retryDelayMs: 15000,
   },
   { name: "plugin", func: resolvePlugin, retry: 5, winOnly: true },
   // 一次编出 service / install / uninstall，避免重复 cargo
@@ -834,6 +843,11 @@ async function runTask() {
     } catch (err) {
       log_error(`task::${task.name} try ${i} ==`, err.message);
       if (i === task.retry - 1) throw err;
+      const delay = Number(task.retryDelayMs) || 0;
+      if (delay > 0) {
+        log_info(`task::${task.name} retrying in ${delay}ms`);
+        await sleep(delay);
+      }
     }
   }
   return runTask();
