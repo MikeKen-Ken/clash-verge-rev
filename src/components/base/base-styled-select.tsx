@@ -14,8 +14,8 @@ export const BaseStyledSelect = styled((props: SelectProps<string>) => {
       {...props}
     />
   );
-})(({ theme }) => ({
-  background: theme.palette.mode === "light" ? "#fff" : undefined,
+})(() => ({
+  background: "transparent",
   "& .MuiOutlinedInput-notchedOutline": {
     borderColor: "transparent",
   },

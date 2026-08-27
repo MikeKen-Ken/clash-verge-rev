@@ -143,7 +143,7 @@ export const ProxyItem = (props: Props) => {
         sx={[
           { borderRadius: 1, position: "relative" },
           ({ palette: { mode, primary, success } }) => {
-            const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
+            const bgcolor = mode === "light" ? "transparent" : "#24252f";
             const selectColor = mode === "light" ? primary.main : primary.light;
             const showDelay = delayValue > 0;
             const finalBgcolor = isSuccess

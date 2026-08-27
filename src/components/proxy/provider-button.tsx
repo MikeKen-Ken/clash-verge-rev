@@ -210,7 +210,7 @@ export const ProviderButton = () => {
                       },
                       ({ palette: { mode, primary } }) => {
                         const bgcolor =
-                          mode === "light" ? "#ffffff" : "#24252f";
+                          mode === "light" ? "transparent" : "#24252f";
                         const hoverColor =
                           mode === "light"
                             ? alpha(primary.main, 0.1)

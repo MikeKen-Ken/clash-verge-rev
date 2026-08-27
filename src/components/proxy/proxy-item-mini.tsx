@@ -235,7 +235,7 @@ export const ProxyItemMini = memo(ProxyItemMiniInner, miniPropsEqual);
 
 const CellButton = styled("button")(({ theme }) => {
   const { mode, primary, success } = theme.palette;
-  const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
+  const bgcolor = mode === "light" ? "transparent" : "#24252f";
   const selectColor = mode === "light" ? primary.main : primary.light;
   return {
     position: "relative",

@@ -162,7 +162,7 @@ export const ConnectivityStatsDialog = ({
                   },
                   ({ palette: { mode, primary } }) => {
                     const bgcolor =
-                      mode === "light" ? "#ffffff" : "#24252f";
+                      mode === "light" ? "transparent" : "#24252f";
                     return {
                       backgroundColor: bgcolor,
                       "&:hover": {

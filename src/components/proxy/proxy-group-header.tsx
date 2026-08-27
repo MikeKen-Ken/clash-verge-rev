@@ -38,7 +38,7 @@ export const ProxyGroupHeader = ({
   const enable_group_icon = verge?.enable_group_icon ?? true;
   const mode = useThemeMode();
   const isDark = mode !== "light";
-  const itembackgroundcolor = isDark ? "#282A36" : "#ffffff";
+  const itembackgroundcolor = isDark ? "#282A36" : "transparent";
   const iconCachePath = useIconCache({
     icon: group.icon,
     cacheKey: group.name.replaceAll(" ", ""),

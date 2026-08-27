@@ -38,7 +38,7 @@ type SearchProps = {
 
 const StyledTextField = styled(TextField)(({ theme }) => ({
   "& .MuiInputBase-root": {
-    background: theme.palette.mode === "light" ? "#fff" : undefined,
+    background: "transparent",
     paddingRight: "4px",
   },
   "& .MuiInputBase-root svg[aria-label='active'] path": {
