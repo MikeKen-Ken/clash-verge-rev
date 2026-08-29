@@ -34,6 +34,12 @@ pub struct NetworkRecoveryReport {
     pub error: Option<String>,
 }
 
+#[derive(Debug)]
+pub enum NetworkRecoveryStatus {
+    Supported(NetworkRecoveryReport),
+    Unsupported,
+}
+
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleProviderPreviewRuleDto {
@@ -134,18 +140,45 @@ pub async fn post_traffic_reset() -> Result<()> {
     Ok(())
 }
 
-/// POST `/network/recover` through the authenticated local controller socket.
-pub async fn post_network_recovery(kind: &str, reason: &str) -> Result<NetworkRecoveryReport> {
+async fn post_typed_network_recovery_request(
+    kind: &str,
+    reason: &str,
+) -> Result<reqwest::Response> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
 
     let url = "http://localhost/network/recover";
-    let response = client
+    client
         .request(Method::POST, url)
         .headers(headers)
         .json(&serde_json::json!({ "kind": kind, "reason": reason }))
         .send()
         .await
-        .context("send POST /network/recover")?;
+        .context("send POST /network/recover")
+}
+
+/// POST `/network/recover` without destructive compatibility behavior.
+pub async fn post_typed_network_recovery(
+    kind: &str,
+    reason: &str,
+) -> Result<NetworkRecoveryStatus> {
+    let response = post_typed_network_recovery_request(kind, reason).await?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(NetworkRecoveryStatus::Unsupported);
+    }
+    if !response.status().is_success() {
+        anyhow::bail!("POST /network/recover returned {}", response.status());
+    }
+    response
+        .json()
+        .await
+        .map(NetworkRecoveryStatus::Supported)
+        .context("decode POST /network/recover response")
+}
+
+/// POST `/network/recover` with the ADR-defined legacy compatibility fallback.
+pub async fn post_network_recovery(kind: &str, reason: &str) -> Result<NetworkRecoveryReport> {
+    let response = post_typed_network_recovery_request(kind, reason).await?;
 
     if response.status() == StatusCode::NOT_FOUND {
         return legacy_network_recovery(kind).await;
@@ -193,7 +226,11 @@ async fn legacy_network_recovery(kind: &str) -> Result<NetworkRecoveryReport> {
 }
 
 /// GET `/network/status` — returns the most recent typed recovery result.
-pub async fn get_network_recovery_status() -> Result<NetworkRecoveryReport> {
+///
+/// A 404 is a capability result, not a transport failure: older pinned cores do
+/// not expose the typed network-recovery routes. Callers must not infer support
+/// and fall back to connection-closing recovery after receiving `Unsupported`.
+pub async fn get_network_recovery_status() -> Result<NetworkRecoveryStatus> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
     let response = client
         .get("http://localhost/network/status")
@@ -201,12 +238,16 @@ pub async fn get_network_recovery_status() -> Result<NetworkRecoveryReport> {
         .send()
         .await
         .context("send GET /network/status")?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(NetworkRecoveryStatus::Unsupported);
+    }
     if !response.status().is_success() {
         anyhow::bail!("GET /network/status returned {}", response.status());
     }
     response
         .json()
         .await
+        .map(NetworkRecoveryStatus::Supported)
         .context("decode GET /network/status response")
 }
 

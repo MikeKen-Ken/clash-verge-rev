@@ -11,6 +11,10 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch from "node-fetch";
 import { extract } from "tar";
 
+import {
+  assertSidecarMatchesPin,
+  cachedSidecarMatchesPin,
+} from "./mihomo-pin-verifier.mjs";
 import { log_debug, log_error, log_info, log_success } from "./utils.mjs";
 
 /**
@@ -444,16 +448,14 @@ async function resolveSidecar(binInfo) {
   await fsp.mkdir(sidecarDir, { recursive: true });
 
   if (!FORCE && fs.existsSync(sidecarPath)) {
-    const installedVersion = await fsp
-      .readFile(sidecarVersionPath, "utf-8")
-      .then((value) => value.trim())
-      .catch(() => "");
-    if (installedVersion === version) {
+    if (
+      await cachedSidecarMatchesPin(sidecarPath, sidecarVersionPath, version)
+    ) {
       log_success(`"${name}" ${version} already exists, skipping download`);
       return;
     }
     log_info(
-      `"${name}" cached version ${installedVersion || "unknown"} does not match ${version}; refreshing`,
+      `"${name}" cached binary or marker does not match ${version}; refreshing`,
     );
   }
 
@@ -535,6 +537,7 @@ async function resolveSidecar(binInfo) {
       });
       log_success(`gz binary processed: "${name}"`);
     }
+    await assertSidecarMatchesPin(sidecarPath, version);
     await fsp.mkdir(path.dirname(sidecarVersionPath), { recursive: true });
     await fsp.writeFile(sidecarVersionPath, `${version}\n`, "utf-8");
   } catch (err) {

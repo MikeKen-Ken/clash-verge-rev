@@ -3,7 +3,7 @@ mod fingerprint;
 
 use crate::core::CoreManager;
 use crate::process::AsyncHandler;
-use crate::utils::mihomo_ipc;
+use crate::utils::mihomo_ipc::{self, NetworkRecoveryStatus};
 use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,6 +26,12 @@ enum NetworkEvent {
     Resume,
 }
 
+enum MonitorAction {
+    Observe,
+    RetryLater,
+    Stop,
+}
+
 pub fn start() {
     if STARTED.swap(true, Ordering::AcqRel) {
         return;
@@ -45,6 +51,9 @@ pub fn recover_after_resume() {
 
 async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
     tokio::time::sleep(NETWORK_INITIAL_DELAY).await;
+    if !wait_for_typed_recovery_support().await {
+        return;
+    }
     let mut previous = capture_or_log("initial network fingerprint").await;
     let mut recovery_gate = RecoveryGate::new(DUPLICATE_RECOVERY_WINDOW);
     let mut last_sequence = 0;
@@ -52,8 +61,13 @@ async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
     loop {
         tokio::select! {
             _ = tokio::time::sleep(NETWORK_POLL_INTERVAL) => {
-                check_escalation(&mut last_sequence, &mut last_restart).await;
-                observe_network_change(&mut previous, &mut recovery_gate).await;
+                match check_escalation(&mut last_sequence, &mut last_restart).await {
+                    MonitorAction::Observe => {
+                        observe_network_change(&mut previous, &mut recovery_gate).await;
+                    }
+                    MonitorAction::RetryLater => {}
+                    MonitorAction::Stop => return,
+                }
             }
             event = events.recv() => {
                 let Some(event) = event else {
@@ -61,9 +75,39 @@ async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
                 };
                 match event {
                     NetworkEvent::Resume => {
-                        recover_from_resume(&mut previous, &mut recovery_gate).await;
+                        match check_escalation(&mut last_sequence, &mut last_restart).await {
+                            MonitorAction::Observe => {
+                                recover_from_resume(&mut previous, &mut recovery_gate).await;
+                            }
+                            MonitorAction::RetryLater => {}
+                            MonitorAction::Stop => return,
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+async fn wait_for_typed_recovery_support() -> bool {
+    loop {
+        match mihomo_ipc::get_network_recovery_status().await {
+            Ok(NetworkRecoveryStatus::Supported(_)) => return true,
+            Ok(NetworkRecoveryStatus::Unsupported) => {
+                logging!(
+                    info,
+                    Type::Network,
+                    "Mihomo does not support typed network recovery; disabling the desktop recovery monitor"
+                );
+                return false;
+            }
+            Err(err) => {
+                logging!(
+                    info,
+                    Type::Network,
+                    "Mihomo network-recovery capability check is temporarily unavailable: {err}"
+                );
+                tokio::time::sleep(NETWORK_POLL_INTERVAL).await;
             }
         }
     }
@@ -109,16 +153,35 @@ async fn recover_from_resume(previous: &mut Option<u64>, recovery_gate: &mut Rec
     recover_once(recovery_gate, fingerprint, "desktop resumed").await;
 }
 
-async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Instant>) {
-    let Ok(report) = mihomo_ipc::get_network_recovery_status().await else {
-        return;
+async fn check_escalation(
+    last_sequence: &mut u64,
+    last_restart: &mut Option<Instant>,
+) -> MonitorAction {
+    let report = match mihomo_ipc::get_network_recovery_status().await {
+        Ok(NetworkRecoveryStatus::Supported(report)) => report,
+        Ok(NetworkRecoveryStatus::Unsupported) => {
+            logging!(
+                info,
+                Type::Network,
+                "Mihomo no longer exposes typed network recovery; stopping the desktop recovery monitor"
+            );
+            return MonitorAction::Stop;
+        }
+        Err(err) => {
+            logging!(
+                info,
+                Type::Network,
+                "Skipping desktop network recovery while the typed status endpoint is unavailable: {err}"
+            );
+            return MonitorAction::RetryLater;
+        }
     };
     if report.sequence == 0 || report.sequence == *last_sequence {
-        return;
+        return MonitorAction::Observe;
     }
     *last_sequence = report.sequence;
     if !report.restart_recommended {
-        return;
+        return MonitorAction::Observe;
     }
     if last_restart
         .as_ref()
@@ -129,7 +192,7 @@ async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Ins
             Type::Network,
             "Persistent network failure requested a core restart, but the restart cooldown is active"
         );
-        return;
+        return MonitorAction::Observe;
     }
 
     logging!(
@@ -139,10 +202,11 @@ async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Ins
     );
     if let Err(err) = CoreManager::global().restart_core().await {
         logging!(error, Type::Network, "Mihomo network-recovery restart failed: {err}");
-        return;
+        return MonitorAction::RetryLater;
     }
     *last_restart = Some(Instant::now());
     *last_sequence = 0;
+    MonitorAction::RetryLater
 }
 
 async fn capture() -> Result<u64> {
@@ -176,8 +240,8 @@ async fn recover_once(
         return;
     }
 
-    match mihomo_ipc::post_network_recovery("route-changed", reason).await {
-        Ok(report) => {
+    match mihomo_ipc::post_typed_network_recovery("route-changed", reason).await {
+        Ok(NetworkRecoveryStatus::Supported(report)) => {
             recovery_gate.record_success(fingerprint, Instant::now());
             logging!(
                 info,
@@ -191,6 +255,11 @@ async fn recover_once(
                 report.error.as_deref().unwrap_or("none")
             );
         }
+        Ok(NetworkRecoveryStatus::Unsupported) => logging!(
+            info,
+            Type::Network,
+            "Network changed, but the running Mihomo no longer supports typed recovery"
+        ),
         Err(err) => logging!(
             info,
             Type::Network,
