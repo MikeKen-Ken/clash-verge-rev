@@ -15,7 +15,7 @@ import { log_debug, log_error, log_info, log_success } from "./utils.mjs";
 
 /**
  * Prebuild script with optimization features:
- * 1. Skip downloading mihomo core if it already exists (unless --force is used)
+ * 1. Skip downloading mihomo core when the cached sidecar matches the pinned version
  * 2. Cache version information for 1 hour to avoid repeated version checks
  * 3. Use file hash to detect changes and skip unnecessary chmod/copy operations
  * 4. Use --force or -f flag to force re-download and update all resources
@@ -65,8 +65,8 @@ const { platform, arch } = target
 const SIDECAR_HOST = target
   ? target
   : execSync("rustc -vV")
-    .toString()
-    .match(/(?<=host: ).+(?=\s*)/g)[0];
+      .toString()
+      .match(/(?<=host: ).+(?=\s*)/g)[0];
 
 function parseJsonText(text) {
   return JSON.parse(text.replace(/^\uFEFF/, ""));
@@ -177,7 +177,8 @@ async function updateHashCache(targetPath) {
 // 版本以 scripts/mihomo.pin.json 为准（与 Android gitlink 对齐），不再跟随浮动 version.txt。
 const META_CUSTOM_PIN_PATH = path.join(cwd, "scripts/mihomo.pin.json");
 const META_CUSTOM_PIN = readJsonFileSync(META_CUSTOM_PIN_PATH);
-const META_CUSTOM_ROLLING_TAG = META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
+const META_CUSTOM_ROLLING_TAG =
+  META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
 let META_CUSTOM_VERSION;
 const META_CUSTOM_RELEASE_CACHE = new Map();
 
@@ -189,7 +190,8 @@ function getMetaCustomReleaseTagCandidates() {
   const tags = [];
   const pinnedVersion = String(META_CUSTOM_PIN.version || "").trim();
   if (pinnedVersion) tags.push(pinnedVersion);
-  if (!tags.includes(META_CUSTOM_ROLLING_TAG)) tags.push(META_CUSTOM_ROLLING_TAG);
+  if (!tags.includes(META_CUSTOM_ROLLING_TAG))
+    tags.push(META_CUSTOM_ROLLING_TAG);
   return tags;
 }
 
@@ -330,9 +332,7 @@ async function getLatestCustomVersion() {
 // Validate availability
 // =======================
 if (!META_CUSTOM_ASSET_MAP[`${platform}-${arch}`]) {
-  throw new Error(
-    `mihomo custom unsupported platform "${platform}-${arch}"`,
-  );
+  throw new Error(`mihomo custom unsupported platform "${platform}-${arch}"`);
 }
 
 // =======================
@@ -346,13 +346,14 @@ function clashMetaCustom() {
   const [primaryReleaseTag] = getMetaCustomReleaseTagCandidates();
   return {
     name: "verge-mihomo-custom",
+    version: META_CUSTOM_VERSION,
     // Tauri externalBin 要求 src-tauri/sidecar 下文件名为 verge-mihomo-custom-<host-triple>(.exe)，与「仅 verge-mihomo-custom.exe」不是同一命名规则。
     targetFile: `verge-mihomo-custom-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile: `${assetBase}${isWin ? ".exe" : ""}`,
     zipFile,
     downloadURL: getMetaCustomDownloadUrl(primaryReleaseTag, zipFile),
-    downloadURLCandidates: getMetaCustomReleaseTagCandidates().map((releaseTag) =>
-      getMetaCustomDownloadUrl(releaseTag, zipFile),
+    downloadURLCandidates: getMetaCustomReleaseTagCandidates().map(
+      (releaseTag) => getMetaCustomDownloadUrl(releaseTag, zipFile),
     ),
   };
 }
@@ -372,7 +373,9 @@ async function downloadFile(url, outPath, urlCandidates = [url]) {
     });
     if (!response.ok) {
       if (response.status === 404) {
-        const fileName = decodeURIComponent(candidateUrl.split("/").pop() || "");
+        const fileName = decodeURIComponent(
+          candidateUrl.split("/").pop() || "",
+        );
         if (fileName) {
           try {
             await downloadAlphaAssetViaApi(fileName, outPath, options);
@@ -426,15 +429,32 @@ async function downloadFile(url, outPath, urlCandidates = [url]) {
 // resolveSidecar (支持 zip / tgz / gz)
 // =======================
 async function resolveSidecar(binInfo) {
-  const { name, targetFile, zipFile, exeFile, downloadURL, downloadURLCandidates } =
-    binInfo;
+  const {
+    name,
+    version,
+    targetFile,
+    zipFile,
+    exeFile,
+    downloadURL,
+    downloadURLCandidates,
+  } = binInfo;
   const sidecarDir = path.join(cwd, "src-tauri", "sidecar");
   const sidecarPath = path.join(sidecarDir, targetFile);
+  const sidecarVersionPath = `${sidecarPath}.version`;
   await fsp.mkdir(sidecarDir, { recursive: true });
 
   if (!FORCE && fs.existsSync(sidecarPath)) {
-    log_success(`"${name}" already exists, skipping download`);
-    return;
+    const installedVersion = await fsp
+      .readFile(sidecarVersionPath, "utf-8")
+      .then((value) => value.trim())
+      .catch(() => "");
+    if (installedVersion === version) {
+      log_success(`"${name}" ${version} already exists, skipping download`);
+      return;
+    }
+    log_info(
+      `"${name}" cached version ${installedVersion || "unknown"} does not match ${version}; refreshing`,
+    );
   }
 
   const tempDir = path.join(TEMP_DIR, name);
@@ -450,6 +470,7 @@ async function resolveSidecar(binInfo) {
         downloadURLCandidates?.length ? downloadURLCandidates : [downloadURL],
       );
     }
+    await fsp.rm(sidecarPath, { force: true });
 
     if (zipFile.endsWith(".zip")) {
       const zip = new AdmZip(tempZip);
@@ -514,8 +535,11 @@ async function resolveSidecar(binInfo) {
       });
       log_success(`gz binary processed: "${name}"`);
     }
+    await fsp.mkdir(path.dirname(sidecarVersionPath), { recursive: true });
+    await fsp.writeFile(sidecarVersionPath, `${version}\n`, "utf-8");
   } catch (err) {
     await fsp.rm(sidecarPath, { recursive: true, force: true });
+    await fsp.rm(sidecarVersionPath, { force: true });
     throw err;
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });

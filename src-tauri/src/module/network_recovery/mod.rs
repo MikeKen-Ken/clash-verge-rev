@@ -1,50 +1,112 @@
+mod coordinator;
 mod fingerprint;
 
 use crate::core::CoreManager;
 use crate::process::AsyncHandler;
 use crate::utils::mihomo_ipc;
+use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
+
+use coordinator::RecoveryGate;
 
 const NETWORK_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const NETWORK_SETTLE_DELAY: Duration = Duration::from_millis(750);
 const NETWORK_INITIAL_DELAY: Duration = Duration::from_secs(10);
+const DUPLICATE_RECOVERY_WINDOW: Duration = Duration::from_secs(12);
 const CORE_RESTART_COOLDOWN: Duration = Duration::from_secs(5 * 60);
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+static EVENTS: OnceLock<mpsc::Sender<NetworkEvent>> = OnceLock::new();
+
+enum NetworkEvent {
+    Resume,
+}
 
 pub fn start() {
     if STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
-    AsyncHandler::spawn(run);
+    let (sender, receiver) = mpsc::channel(1);
+    if EVENTS.set(sender).is_err() {
+        return;
+    }
+    AsyncHandler::spawn(move || run(receiver));
 }
 
 pub fn recover_after_resume() {
-    AsyncHandler::spawn(|| async {
-        tokio::time::sleep(NETWORK_SETTLE_DELAY).await;
-        recover("desktop resumed").await;
-    });
+    if let Some(sender) = EVENTS.get() {
+        let _ = sender.try_send(NetworkEvent::Resume);
+    }
 }
 
-async fn run() {
+async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
     tokio::time::sleep(NETWORK_INITIAL_DELAY).await;
-    let mut previous = capture().await;
+    let mut previous = capture_or_log("initial network fingerprint").await;
+    let mut recovery_gate = RecoveryGate::new(DUPLICATE_RECOVERY_WINDOW);
     let mut last_sequence = 0;
     let mut last_restart = None;
     loop {
-        tokio::time::sleep(NETWORK_POLL_INTERVAL).await;
-        check_escalation(&mut last_sequence, &mut last_restart).await;
-        let current = capture().await;
-        if current == previous {
-            continue;
+        tokio::select! {
+            _ = tokio::time::sleep(NETWORK_POLL_INTERVAL) => {
+                check_escalation(&mut last_sequence, &mut last_restart).await;
+                observe_network_change(&mut previous, &mut recovery_gate).await;
+            }
+            event = events.recv() => {
+                let Some(event) = event else {
+                    return;
+                };
+                match event {
+                    NetworkEvent::Resume => {
+                        recover_from_resume(&mut previous, &mut recovery_gate).await;
+                    }
+                }
+            }
         }
-
-        tokio::time::sleep(NETWORK_SETTLE_DELAY).await;
-        previous = capture().await;
-        recover("desktop route, interface, or DNS changed").await;
     }
+}
+
+async fn observe_network_change(
+    previous: &mut Option<u64>,
+    recovery_gate: &mut RecoveryGate,
+) {
+    let Some(current) = capture_or_log("poll network fingerprint").await else {
+        return;
+    };
+    let Some(old) = *previous else {
+        *previous = Some(current);
+        return;
+    };
+    if current == old {
+        return;
+    }
+
+    tokio::time::sleep(NETWORK_SETTLE_DELAY).await;
+    let Some(settled) = capture_or_log("settled network fingerprint").await else {
+        return;
+    };
+    if settled == old {
+        return;
+    }
+    *previous = Some(settled);
+    recover_once(
+        recovery_gate,
+        Some(settled),
+        "desktop route, interface, or DNS changed",
+    )
+    .await;
+}
+
+async fn recover_from_resume(previous: &mut Option<u64>, recovery_gate: &mut RecoveryGate) {
+    tokio::time::sleep(NETWORK_SETTLE_DELAY).await;
+    let fingerprint = capture_or_log("resume network fingerprint").await.or(*previous);
+    if let Some(current) = fingerprint {
+        *previous = Some(current);
+    }
+    recover_once(recovery_gate, fingerprint, "desktop resumed").await;
 }
 
 async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Instant>) {
@@ -83,23 +145,52 @@ async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Ins
     *last_sequence = 0;
 }
 
-async fn capture() -> u64 {
-    AsyncHandler::spawn_blocking(fingerprint::capture).await.unwrap_or_default()
+async fn capture() -> Result<u64> {
+    AsyncHandler::spawn_blocking(fingerprint::capture)
+        .await
+        .context("network fingerprint task failed")?
 }
 
-async fn recover(reason: &str) {
-    match mihomo_ipc::post_network_recovery("route-changed", reason).await {
-        Ok(report) => logging!(
+async fn capture_or_log(operation: &str) -> Option<u64> {
+    match capture().await {
+        Ok(fingerprint) => Some(fingerprint),
+        Err(err) => {
+            logging!(info, Type::Network, "Failed to {operation}: {err}");
+            None
+        }
+    }
+}
+
+async fn recover_once(
+    recovery_gate: &mut RecoveryGate,
+    fingerprint: Option<u64>,
+    reason: &str,
+) {
+    let now = Instant::now();
+    if recovery_gate.is_duplicate(fingerprint, now) {
+        logging!(
             info,
             Type::Network,
-            "Network recovery action={} coalesced={} closed-connections={} reset-adapters={} restart-recommended={} error={}",
-            report.action,
-            report.coalesced,
-            report.closed_connections,
-            report.reset_adapters,
-            report.restart_recommended,
-            report.error.as_deref().unwrap_or("none")
-        ),
+            "Coalesced duplicate network recovery: {reason}"
+        );
+        return;
+    }
+
+    match mihomo_ipc::post_network_recovery("route-changed", reason).await {
+        Ok(report) => {
+            recovery_gate.record_success(fingerprint, Instant::now());
+            logging!(
+                info,
+                Type::Network,
+                "Network recovery action={} coalesced={} closed-connections={} reset-adapters={} restart-recommended={} error={}",
+                report.action,
+                report.coalesced,
+                report.closed_connections,
+                report.reset_adapters,
+                report.restart_recommended,
+                report.error.as_deref().unwrap_or("none")
+            );
+        }
         Err(err) => logging!(
             info,
             Type::Network,
