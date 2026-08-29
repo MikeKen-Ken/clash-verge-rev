@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, HOST};
-use reqwest::Method;
+use reqwest::{Method, StatusCode};
 
 use crate::config::{Config, IClashTemp};
 
@@ -20,6 +20,18 @@ pub struct RuleProviderPreviewDto {
     pub behavior: String,
     pub policy: String,
     pub rules: Vec<RuleProviderPreviewRuleDto>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkRecoveryReport {
+    pub sequence: u64,
+    pub action: String,
+    pub coalesced: bool,
+    pub closed_connections: bool,
+    pub reset_adapters: usize,
+    pub restart_recommended: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -120,6 +132,82 @@ pub async fn post_traffic_reset() -> Result<()> {
         anyhow::bail!("POST /traffic/reset returned {}", response.status());
     }
     Ok(())
+}
+
+/// POST `/network/recover` through the authenticated local controller socket.
+pub async fn post_network_recovery(kind: &str, reason: &str) -> Result<NetworkRecoveryReport> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+
+    let url = "http://localhost/network/recover";
+    let response = client
+        .request(Method::POST, url)
+        .headers(headers)
+        .json(&serde_json::json!({ "kind": kind, "reason": reason }))
+        .send()
+        .await
+        .context("send POST /network/recover")?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return legacy_network_recovery(kind).await;
+    }
+    if !response.status().is_success() {
+        anyhow::bail!("POST /network/recover returned {}", response.status());
+    }
+    response
+        .json()
+        .await
+        .context("decode POST /network/recover response")
+}
+
+async fn legacy_network_recovery(kind: &str) -> Result<NetworkRecoveryReport> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+    let close_response = client
+        .delete("http://localhost/connections")
+        .headers(headers.clone())
+        .send()
+        .await
+        .context("send legacy DELETE /connections")?;
+    if !close_response.status().is_success() {
+        anyhow::bail!("legacy DELETE /connections returned {}", close_response.status());
+    }
+
+    let flush_response = client
+        .post("http://localhost/cache/fakeip/flush")
+        .headers(headers)
+        .send()
+        .await
+        .context("send legacy POST /cache/fakeip/flush")?;
+    if !flush_response.status().is_success() {
+        anyhow::bail!("legacy POST /cache/fakeip/flush returned {}", flush_response.status());
+    }
+
+    Ok(NetworkRecoveryReport {
+        sequence: 0,
+        action: format!("legacy-{kind}").into(),
+        coalesced: false,
+        closed_connections: true,
+        reset_adapters: 0,
+        restart_recommended: false,
+        error: None,
+    })
+}
+
+/// GET `/network/status` — returns the most recent typed recovery result.
+pub async fn get_network_recovery_status() -> Result<NetworkRecoveryReport> {
+    let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
+    let response = client
+        .get("http://localhost/network/status")
+        .headers(headers)
+        .send()
+        .await
+        .context("send GET /network/status")?;
+    if !response.status().is_success() {
+        anyhow::bail!("GET /network/status returned {}", response.status());
+    }
+    response
+        .json()
+        .await
+        .context("decode GET /network/status response")
 }
 
 /// GET `/providers/rules/{name}` — 展开规则集内全部规则行（需与当前运行核心版本一致）。

@@ -284,6 +284,7 @@ pub fn run() {
             resolve::resolve_setup_sync();
             resolve::init_signal();
             resolve::resolve_done();
+            module::network_recovery::start();
 
             logging!(info, Type::Setup, "Initialization started");
             Ok(())
@@ -414,11 +415,18 @@ pub fn run() {
     });
 
     app.run(|app_handle, e| match e {
-        tauri::RunEvent::Ready | tauri::RunEvent::Resumed => {
+        tauri::RunEvent::Ready => {
             if core::handle::Handle::global().is_exiting() {
                 return;
             }
             event_handlers::handle_ready_resumed(app_handle);
+        }
+        tauri::RunEvent::Resumed => {
+            if core::handle::Handle::global().is_exiting() {
+                return;
+            }
+            event_handlers::handle_ready_resumed(app_handle);
+            module::network_recovery::recover_after_resume();
         }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen {
