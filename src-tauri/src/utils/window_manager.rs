@@ -2,6 +2,7 @@ use crate::{core::handle, utils::resolve::window::build_new_window};
 use clash_verge_logging::{Type, logging};
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::time::Duration;
@@ -49,6 +50,10 @@ static WINDOW_OPERATION_LIMITER: Lazy<DefaultDirectRateLimiter> = Lazy::new(|| {
             .allow_burst(NonZeroU32::new(1).unwrap()),
     )
 });
+
+// Kept only for the lifetime of this process. Lightweight mode recreates the
+// WebView, while a real app restart continues to honor the configured start page.
+static MAIN_WINDOW_RESUME_PATH: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
 fn should_handle_window_operation() -> bool {
     let res = WINDOW_OPERATION_LIMITER.check().is_ok();
@@ -287,12 +292,16 @@ impl WindowManager {
                 return false;
             }
 
-            let window = match build_new_window().await {
+            let resume_path = MAIN_WINDOW_RESUME_PATH.lock().take();
+            let window = match build_new_window(resume_path.as_deref()).await {
                 Ok(window) => {
                     logging!(info, Type::Window, "新窗口创建成功");
                     window
                 }
                 Err(e) => {
+                    if resume_path.is_some() {
+                        *MAIN_WINDOW_RESUME_PATH.lock() = resume_path;
+                    }
                     logging!(error, Type::Window, "新窗口创建失败: {}", e);
                     return false;
                 }
@@ -310,6 +319,9 @@ impl WindowManager {
     /// 摧毁窗口
     pub fn destroy_main_window() -> WindowOperationResult {
         if let Some(window) = Self::get_main_window() {
+            if let Ok(url) = window.url() {
+                *MAIN_WINDOW_RESUME_PATH.lock() = Some(url.path().to_owned());
+            }
             let _ = window.destroy();
             logging!(info, Type::Window, "窗口已摧毁");
             #[cfg(target_os = "macos")]

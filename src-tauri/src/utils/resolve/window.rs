@@ -22,12 +22,12 @@ const MINIMAL_WIDTH: f64 = 520.0;
 const MINIMAL_HEIGHT: f64 = 520.0;
 
 /// 构建新的 WebView 窗口
-pub async fn build_new_window() -> Result<WebviewWindow, String> {
+pub async fn build_new_window(resume_path: Option<&str>) -> Result<WebviewWindow, String> {
     let app_handle = handle::Handle::app_handle();
 
     let config = Config::verge().await;
     let latest = config.latest_arc();
-    let start_page = latest.start_page.as_deref().unwrap_or("/");
+    let start_page = resume_path.or(latest.start_page.as_deref()).unwrap_or("/");
     let initial_theme_mode = match latest.theme_mode.as_deref() {
         Some("dark") => "dark",
         Some("light") => "light",
