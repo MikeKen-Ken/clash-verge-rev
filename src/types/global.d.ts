@@ -1022,6 +1022,7 @@ interface IVergeConfig {
   webdav_url?: string;
   webdav_username?: string;
   webdav_password?: string;
+  connectivity_sync_interval_hours?: number;
   home_cards?: Record<string, boolean>;
   enable_hover_jump_navigator?: boolean;
   hover_jump_navigator_delay?: number;

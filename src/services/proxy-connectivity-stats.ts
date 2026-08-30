@@ -2,8 +2,10 @@
  * 记账以桌面内核 URLTest 写入的 proxy-connectivity-stats.json 为准；前端负责 hydrate 与清空。
  */
 import { invoke } from "@tauri-apps/api/core";
+
 import {
   flushConnectivityPersistenceSync,
+  resetConnectivityWebdavBaseline,
   scheduleConnectivityPersistenceSync,
 } from "@/services/proxy-connectivity-sync";
 
@@ -396,6 +398,7 @@ export async function clearConnectivityStats(): Promise<void> {
     const payload: StatsFileV2 = { v: STORE_VERSION, data: {} };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     await flushConnectivityPersistenceSync();
+    await resetConnectivityWebdavBaseline();
   } catch {
     // ignore localStorage / sync failure
   }
@@ -415,6 +418,7 @@ export async function clearConnectivityStatsForProxy(
     const payload: StatsFileV2 = { v: STORE_VERSION, data: store };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     await flushConnectivityPersistenceSync();
+    await resetConnectivityWebdavBaseline(proxyName);
   } catch {
     // ignore localStorage / sync failure
   }

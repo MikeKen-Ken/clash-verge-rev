@@ -230,6 +230,9 @@ pub struct IVerge {
     )]
     pub webdav_password: Option<String>,
 
+    /// Automatic WebDAV merge interval for node connectivity statistics.
+    pub connectivity_sync_interval_hours: Option<u32>,
+
     #[serde(skip)]
     pub enable_tray_speed: Option<bool>,
 
@@ -472,6 +475,7 @@ impl IVerge {
             webdav_url: None,
             webdav_username: None,
             webdav_password: None,
+            connectivity_sync_interval_hours: Some(24),
             enable_tray_speed: Some(false),
             // enable_tray_icon: Some(true),
             tray_proxy_groups_display_mode: Some("default".into()),
@@ -578,6 +582,7 @@ impl IVerge {
         patch!(webdav_url);
         patch!(webdav_username);
         patch!(webdav_password);
+        patch!(connectivity_sync_interval_hours);
         patch!(enable_tray_speed);
         // patch!(enable_tray_icon);
         patch!(tray_proxy_groups_display_mode);

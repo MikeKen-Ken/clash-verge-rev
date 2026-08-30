@@ -97,6 +97,10 @@ export async function getRuntimeYaml() {
   return invoke<string | null>("get_runtime_yaml");
 }
 
+export async function importRuntimeYamlProfile(name: string, source: string) {
+  return invoke<string>("import_runtime_yaml_profile", { name, source });
+}
+
 export async function startRuntimeConfigLanShare() {
   return invoke<RuntimeLanShareInfo>("start_runtime_config_lan_share");
 }
@@ -318,9 +322,9 @@ export async function calcuProxies(): Promise<{
     if (r) {
       records[name] = r.all
         ? (mergeGroupConfig(name, {
-          ...r,
-          all: uniqueGroupAll(r.all),
-        }) as IProxyItem)
+            ...r,
+            all: uniqueGroupAll(r.all),
+          }) as IProxyItem)
         : (r as IProxyItem);
     }
   }
@@ -696,6 +700,18 @@ export async function listWebDavBackup() {
     item.filename = item.href.split("/").pop() as string;
   });
   return list;
+}
+
+export interface ConnectivityWebdavSyncResult {
+  deviceCount: number;
+  proxyCount: number;
+  lastSyncAt: number;
+}
+
+export async function mergeConnectivityStatsWebdav() {
+  return invoke<ConnectivityWebdavSyncResult>(
+    "merge_connectivity_stats_webdav",
+  );
 }
 
 export async function listLocalBackup() {

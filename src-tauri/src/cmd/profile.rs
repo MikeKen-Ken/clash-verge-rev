@@ -24,6 +24,16 @@ use std::time::Duration;
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn try_begin_profile_switch() -> bool {
+    CURRENT_SWITCHING_PROFILE
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_ok()
+}
+
+pub(crate) fn finish_profile_switch() {
+    CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release);
+}
+
 #[tauri::command]
 pub async fn get_profiles() -> CmdResult<SharedDraft<IProfiles>> {
     logging!(debug, Type::Cmd, "Fetching profile list");
@@ -356,7 +366,7 @@ async fn handle_timeout(current_profile: Option<&String>) -> CmdResult<bool> {
 
 async fn perform_config_update(current_value: Option<&String>, current_profile: Option<&String>) -> CmdResult<bool> {
     defer! {
-        CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release);
+        finish_profile_switch();
     }
     let update_result = tokio::time::timeout(Duration::from_secs(30), CoreManager::global().update_config()).await;
 
@@ -371,14 +381,18 @@ async fn perform_config_update(current_value: Option<&String>, current_profile: 
 /// 修改profiles的配置
 #[tauri::command]
 pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
-    if CURRENT_SWITCHING_PROFILE
-        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-        .is_err()
-    {
+    if !try_begin_profile_switch() {
         logging!(info, Type::Cmd, "A profile switch is already in progress; abandoning request");
         return Ok(false);
     }
 
+    patch_profiles_config_locked(profiles, false).await
+}
+
+pub(crate) async fn patch_profiles_config_locked(
+    profiles: IProfiles,
+    discard_on_validation_failure: bool,
+) -> CmdResult<bool> {
     let target_profile = profiles.current.as_ref();
 
     logging!(info, Type::Cmd, "开始修改配置文件，目标profile: {:?}", target_profile);
@@ -392,7 +406,10 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
         && previous_profile.as_ref() != Some(switch_to_profile)
         && validate_new_profile(switch_to_profile).await.is_err()
     {
-        CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release);
+        if discard_on_validation_failure {
+            Config::profiles().await.discard();
+        }
+        finish_profile_switch();
         return Ok(false);
     }
     Config::profiles().await.edit_draft(|d| d.patch_config(&profiles));

@@ -180,6 +180,22 @@
     "logViewer": {
       "title": "Script Console"
     },
+    "runtimeTransfer": {
+      "actions": {
+        "upload": "Upload runtime YAML",
+        "download": "Download runtime YAML"
+      },
+      "confirmUploadTitle": "Upload runtime YAML?",
+      "confirmUploadMessage": "The selected YAML will be validated, imported as a new local profile, placed first, and activated. If activation fails, the current profile stays active.",
+      "confirmDownloadTitle": "Download runtime YAML?",
+      "confirmDownloadMessage": "Save a copy of the currently generated runtime YAML? The file can contain server addresses and credentials.",
+      "uploadPickerTitle": "Choose runtime YAML",
+      "downloadPickerTitle": "Save runtime YAML",
+      "uploadSucceeded": "Runtime YAML imported and activated",
+      "downloadSucceeded": "Runtime YAML exported",
+      "runtimeUnavailable": "Runtime YAML is not available",
+      "failed": "Runtime YAML transfer failed"
+    },
     "runtimeShare": {
       "title": "Share runtime YAML (LAN)",
       "shareActionTitle": "Share via LAN QR code",

@@ -53,6 +53,7 @@ import {
   ProfileViewer,
   ProfileViewerRef,
 } from "@/components/profile/profile-viewer";
+import { RuntimeYamlTransferActions } from "@/components/profile/runtime-yaml-transfer-actions";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
 import { useListen } from "@/hooks/use-listen";
 import { useProfiles } from "@/hooks/use-profiles";
@@ -71,11 +72,11 @@ import {
   saveProfileFile,
   updateProfile,
 } from "@/services/cmds";
+import { showNotice } from "@/services/notice-service";
 import {
   resolveFlag,
   sortProxiesByConnectivity,
 } from "@/services/proxy-region-sort";
-import { showNotice } from "@/services/notice-service";
 import { useSetLoadingCache, useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
 
@@ -1121,6 +1122,13 @@ const ProfilePage = () => {
           >
             <TextSnippetOutlined />
           </IconButton>
+
+          <RuntimeYamlTransferActions
+            onImported={async () => {
+              await mutateProfiles();
+              await mutateLogs();
+            }}
+          />
 
           <IconButton
             size="small"

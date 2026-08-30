@@ -21,11 +21,16 @@ import {
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import delayManager, { setDefaultHealthCheck } from "@/services/delay";
-import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
 import {
   buildConnectivityScoreContext,
   hydrateConnectivityStatsFromDisk,
 } from "@/services/proxy-connectivity-stats";
+import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
+import {
+  connectivitySyncCheckPeriodMs,
+  isConnectivityWebdavConfigured,
+  mergeConnectivityStatsIfDue,
+} from "@/services/proxy-connectivity-webdav-sync";
 import {
   applyStartupLiveConnectivityOrder,
   createDelayTestEarlyPicker,
@@ -51,6 +56,22 @@ export const AppDataProvider = ({
       void syncConnectivityPersistenceToDisk();
     });
   }, []);
+
+  useEffect(() => {
+    if (!isConnectivityWebdavConfigured(verge)) return;
+    const intervalHours = verge?.connectivity_sync_interval_hours ?? 24;
+    const run = () => {
+      void mergeConnectivityStatsIfDue(intervalHours).catch(() => {
+        // Automatic sync retries at the next check; manual sync surfaces errors.
+      });
+    };
+    run();
+    const timer = window.setInterval(
+      run,
+      connectivitySyncCheckPeriodMs(intervalHours),
+    );
+    return () => window.clearInterval(timer);
+  }, [verge]);
 
   useEffect(() => {
     setDefaultHealthCheck({
@@ -113,7 +134,7 @@ export const AppDataProvider = ({
   useEffect(() => {
     const handler = () => {
       void hydrateConnectivityStatsFromDisk().finally(() => {
-        refreshProxy().catch(() => { });
+        refreshProxy().catch(() => {});
       });
     };
     delayManager.setGlobalListener(handler);
@@ -140,7 +161,7 @@ export const AppDataProvider = ({
       initialPollingTimerRef.current = setTimeout(() => {
         initialPollingTimerRef.current = null;
         initialPollingCountRef.current += 1;
-        refreshProxy().catch(() => { });
+        refreshProxy().catch(() => {});
         if (initialPollingCountRef.current < INITIAL_POLL_MAX_COUNT) {
           scheduleNext();
         }
@@ -182,7 +203,7 @@ export const AppDataProvider = ({
       pollingTimerRef.current = setTimeout(() => {
         pollingTimerRef.current = null;
         pollingCountRef.current += 1;
-        refreshProxy().catch(() => { });
+        refreshProxy().catch(() => {});
         if (pollingCountRef.current < POLL_MAX_COUNT) {
           scheduleNextPoll();
         }

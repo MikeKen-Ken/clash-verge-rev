@@ -243,6 +243,65 @@ impl WebDavClient {
         timeout(Duration::from_secs(TIMEOUT_DELETE), fut).await??;
         Ok(())
     }
+
+    /// Ensure an application-owned WebDAV collection exists.
+    pub async fn ensure_collection(&self, path: &str) -> Result<(), Error> {
+        let client = self.get_client(Operation::Upload).await?;
+        match client.mkcol(path).await {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                // WebDAV servers commonly report an error when MKCOL targets an
+                // existing collection. A depth-0 listing distinguishes that case.
+                client
+                    .list(path, reqwest_dav::Depth::Number(0))
+                    .await
+                    .map(|_| ())
+                    .map_err(|_| Error::msg(err.to_string()))
+            }
+        }
+    }
+
+    /// Upload a small application data object to an explicit WebDAV path.
+    pub async fn put_bytes(&self, path: &str, content: Vec<u8>) -> Result<(), Error> {
+        let client = self.get_client(Operation::Upload).await?;
+        timeout(
+            Duration::from_secs(TIMEOUT_UPLOAD),
+            client.put(path, content),
+        )
+        .await??;
+        Ok(())
+    }
+
+    /// Download a bounded application data object from an explicit WebDAV path.
+    pub async fn get_bytes(&self, path: &str, max_bytes: usize) -> Result<Vec<u8>, Error> {
+        let client = self.get_client(Operation::Download).await?;
+        let response = timeout(Duration::from_secs(TIMEOUT_DOWNLOAD), client.get(path)).await??;
+        if response.content_length().is_some_and(|len| len > max_bytes as u64) {
+            return Err(Error::msg("WebDAV object exceeds the size limit"));
+        }
+        let content = response.bytes().await?;
+        if content.len() > max_bytes {
+            return Err(Error::msg("WebDAV object exceeds the size limit"));
+        }
+        Ok(content.to_vec())
+    }
+
+    /// List files in an application-owned WebDAV collection.
+    pub async fn list_files_at(&self, path: &str) -> Result<Vec<ListFile>, Error> {
+        let client = self.get_client(Operation::List).await?;
+        let entities = timeout(
+            Duration::from_secs(TIMEOUT_LIST),
+            client.list(path, reqwest_dav::Depth::Number(1)),
+        )
+        .await??;
+        Ok(entities
+            .into_iter()
+            .filter_map(|entity| match entity {
+                ListEntity::File(file) => Some(file),
+                _ => None,
+            })
+            .collect())
+    }
 }
 
 pub async fn create_backup() -> Result<(String, PathBuf), Error> {

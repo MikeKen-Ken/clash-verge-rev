@@ -14,8 +14,7 @@ export async function syncConnectivityStatsToDisk(): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     const raw =
-      localStorage.getItem(STORAGE_KEY) ??
-      JSON.stringify({ v: 2, data: {} });
+      localStorage.getItem(STORAGE_KEY) ?? JSON.stringify({ v: 2, data: {} });
     await invoke<void>("sync_connectivity_stats_file", { rawJson: raw });
   } catch {
     // ignore sync failure
@@ -36,4 +35,13 @@ export function scheduleConnectivityPersistenceSync(): void {
 export async function flushConnectivityPersistenceSync(): Promise<void> {
   enqueuePersistenceSync(() => syncConnectivityPersistenceToDisk());
   await persistenceSyncChain;
+}
+
+/** Clear the imported-device baseline after the user resets aggregate counters. */
+export async function resetConnectivityWebdavBaseline(
+  proxyName?: string,
+): Promise<void> {
+  await invoke<void>("reset_connectivity_stats_sync_baseline", {
+    proxyName: proxyName || null,
+  });
 }
