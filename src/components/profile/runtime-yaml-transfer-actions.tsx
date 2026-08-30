@@ -67,11 +67,7 @@ export const RuntimeYamlTransferActions = ({ onImported }: Props) => {
       }
     } catch (error) {
       console.error(`[RuntimeYamlTransfer] ${action} failed`, error);
-      showNotice.error(
-        error instanceof Error
-          ? error.message
-          : t("profiles.modals.runtimeTransfer.failed"),
-      );
+      showNotice.error(t("profiles.modals.runtimeTransfer.failed"), error);
     } finally {
       setBusy(false);
     }

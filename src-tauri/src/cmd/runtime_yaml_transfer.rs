@@ -10,6 +10,7 @@ use crate::{
     utils::{dirs, help},
 };
 use anyhow::{Context as _, bail};
+use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
 
@@ -207,6 +208,11 @@ async fn import_runtime_yaml_content(
     }
 }
 
+fn webdav_object_missing(error: &impl std::fmt::Display) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("404") || message.contains("not found")
+}
+
 /// Upload the currently generated runtime YAML to the shared WebDAV object.
 #[tauri::command]
 pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
@@ -215,13 +221,17 @@ pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
     validate_runtime_yaml(content.as_str()).stringify_err()?;
 
     let client = WebDavClient::global();
-    client
-        .ensure_collection(REMOTE_COLLECTION)
-        .await
-        .stringify_err()?;
+    if let Err(error) = client.ensure_collection(REMOTE_COLLECTION).await {
+        logging!(
+            info,
+            Type::Backup,
+            "Runtime YAML WebDAV collection create skipped: {error}"
+        );
+    }
     client
         .put_bytes(REMOTE_OBJECT, content.into_bytes())
         .await
+        .context("Failed to upload runtime YAML to WebDAV")
         .stringify_err()
 }
 
@@ -229,10 +239,20 @@ pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
 #[tauri::command]
 pub async fn import_runtime_yaml_from_webdav() -> CmdResult<String> {
     require_https_webdav().await.stringify_err()?;
-    let bytes = WebDavClient::global()
+    let bytes = match WebDavClient::global()
         .get_bytes(REMOTE_OBJECT, MAX_RUNTIME_YAML_BYTES)
         .await
-        .stringify_err()?;
+    {
+        Ok(bytes) => bytes,
+        Err(error) if webdav_object_missing(&error) => {
+            return Err(
+                "No runtime YAML on WebDAV yet. Download from a running client first.".into(),
+            );
+        }
+        Err(error) => {
+            return Err(format!("Failed to download runtime YAML from WebDAV: {error}").into());
+        }
+    };
     let content = std::string::String::from_utf8(bytes)
         .context("Runtime YAML is not valid UTF-8")
         .stringify_err()?;
