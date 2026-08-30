@@ -5,13 +5,13 @@ use crate::{
         Config, IProfiles, PrfItem, PrfOption,
         profiles::{profiles_append_item_safe, profiles_delete_item_safe},
     },
+    core::backup::WebDavClient,
     module::auto_backup::{AutoBackupManager, AutoBackupTrigger},
     utils::{dirs, help},
 };
 use anyhow::{Context as _, bail};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
-use std::path::PathBuf;
 
 struct ProfileSwitchLock {
     active: bool,
@@ -40,6 +40,8 @@ impl Drop for ProfileSwitchLock {
 }
 
 const MAX_RUNTIME_YAML_BYTES: usize = 10 * 1024 * 1024;
+const REMOTE_COLLECTION: &str = "clash-runtime-yaml";
+const REMOTE_OBJECT: &str = "clash-runtime-yaml/runtime.yaml";
 
 fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
     if content.is_empty() {
@@ -80,6 +82,28 @@ mod tests {
     }
 }
 
+async fn require_https_webdav() -> anyhow::Result<()> {
+    let url = Config::verge()
+        .await
+        .data_arc()
+        .webdav_url
+        .clone()
+        .unwrap_or_default();
+    if !url.trim().to_ascii_lowercase().starts_with("https://") {
+        bail!("WebDAV URL must be https");
+    }
+    Ok(())
+}
+
+async fn current_runtime_yaml() -> anyhow::Result<std::string::String> {
+    let runtime = Config::runtime().await.latest_arc();
+    let config = runtime
+        .config
+        .as_ref()
+        .context("Runtime YAML is not available")?;
+    serde_yaml_ng::to_string(config).context("failed to convert config to yaml")
+}
+
 async fn remove_candidate_file(file: &String) {
     if let Ok(directory) = dirs::app_profiles_dir() {
         let _ = tokio::fs::remove_file(directory.join(file.as_str())).await;
@@ -93,21 +117,10 @@ async fn rollback_imported_profile(uid: &String, file: &String) {
     }
 }
 
-#[tauri::command]
-pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdResult<String> {
-    let extension = source.extension().and_then(|value| value.to_str());
-    if !matches!(
-        extension,
-        Some(value) if value.eq_ignore_ascii_case("yaml") || value.eq_ignore_ascii_case("yml")
-    ) {
-        return Err("Only YAML files can be imported".into());
-    }
-
-    let metadata = tokio::fs::metadata(&source).await.stringify_err()?;
-    if metadata.len() > MAX_RUNTIME_YAML_BYTES as u64 {
-        return Err("Runtime YAML is larger than 10 MB".into());
-    }
-    let content = tokio::fs::read_to_string(&source).await.stringify_err()?;
+async fn import_runtime_yaml_content(
+    name: String,
+    content: std::string::String,
+) -> CmdResult<String> {
     validate_runtime_yaml(content.as_str()).stringify_err()?;
 
     let mut switch_lock = ProfileSwitchLock::acquire()
@@ -192,4 +205,36 @@ pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdRe
             Err(error)
         }
     }
+}
+
+/// Upload the currently generated runtime YAML to the shared WebDAV object.
+#[tauri::command]
+pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
+    require_https_webdav().await.stringify_err()?;
+    let content = current_runtime_yaml().await.stringify_err()?;
+    validate_runtime_yaml(content.as_str()).stringify_err()?;
+
+    let client = WebDavClient::global();
+    client
+        .ensure_collection(REMOTE_COLLECTION)
+        .await
+        .stringify_err()?;
+    client
+        .put_bytes(REMOTE_OBJECT, content.into_bytes())
+        .await
+        .stringify_err()
+}
+
+/// Download the shared WebDAV runtime YAML and import it as a local profile.
+#[tauri::command]
+pub async fn import_runtime_yaml_from_webdav() -> CmdResult<String> {
+    require_https_webdav().await.stringify_err()?;
+    let bytes = WebDavClient::global()
+        .get_bytes(REMOTE_OBJECT, MAX_RUNTIME_YAML_BYTES)
+        .await
+        .stringify_err()?;
+    let content = std::string::String::from_utf8(bytes)
+        .context("Runtime YAML is not valid UTF-8")
+        .stringify_err()?;
+    import_runtime_yaml_content("Imported runtime YAML".into(), content).await
 }

@@ -1,18 +1,20 @@
 import { FileDownloadOutlined, FileUploadOutlined } from "@mui/icons-material";
 import { IconButton, Tooltip } from "@mui/material";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { useLockFn } from "ahooks";
-import dayjs from "dayjs";
 import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ConfirmViewer } from "@/components/profile/confirm-viewer";
+import { useVerge } from "@/hooks/use-verge";
 import {
-  exportTextFile,
-  getRuntimeYaml,
-  importRuntimeYamlProfile,
+  exportRuntimeYamlWebdav,
+  importRuntimeYamlFromWebdav,
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
+import {
+  isHttpsWebdavUrl,
+  isWebdavConfigured,
+} from "@/services/webdav-status";
 
 type TransferAction = "upload" | "download";
 
@@ -20,47 +22,35 @@ interface Props {
   onImported: () => void | Promise<void>;
 }
 
-const yamlFilters = [{ name: "YAML", extensions: ["yaml", "yml"] }];
-
-const profileNameFromPath = (path: string) => {
-  const fileName = path.split(/[/\\]/).pop() || "Imported runtime YAML";
-  return fileName.replace(/\.ya?ml$/i, "").trim() || "Imported runtime YAML";
-};
-
 export const RuntimeYamlTransferActions = ({ onImported }: Props) => {
   const { t } = useTranslation();
+  const { verge } = useVerge();
   const [pendingAction, setPendingAction] = useState<TransferAction | null>(
     null,
   );
   const [busy, setBusy] = useState(false);
 
   const uploadRuntimeYaml = async () => {
-    const source = await open({
-      title: t("profiles.modals.runtimeTransfer.uploadPickerTitle"),
-      multiple: false,
-      filters: yamlFilters,
-    });
-    if (!source || Array.isArray(source)) return;
-
-    await importRuntimeYamlProfile(profileNameFromPath(source), source);
+    await importRuntimeYamlFromWebdav();
     await onImported();
     showNotice.success("profiles.modals.runtimeTransfer.uploadSucceeded");
   };
 
   const downloadRuntimeYaml = async () => {
-    const destination = await save({
-      title: t("profiles.modals.runtimeTransfer.downloadPickerTitle"),
-      defaultPath: `runtime-${dayjs().format("YYYY-MM-DD_HH-mm-ss")}.yaml`,
-      filters: yamlFilters,
-    });
-    if (!destination || Array.isArray(destination)) return;
-
-    const content = await getRuntimeYaml();
-    if (!content?.trim()) {
-      throw new Error(t("profiles.modals.runtimeTransfer.runtimeUnavailable"));
-    }
-    await exportTextFile(destination, content);
+    await exportRuntimeYamlWebdav();
     showNotice.success("profiles.modals.runtimeTransfer.downloadSucceeded");
+  };
+
+  const requestTransfer = (action: TransferAction) => {
+    if (!isWebdavConfigured(verge)) {
+      showNotice.error(t("profiles.modals.runtimeTransfer.webdavRequired"));
+      return;
+    }
+    if (!isHttpsWebdavUrl(verge?.webdav_url)) {
+      showNotice.error(t("profiles.modals.runtimeTransfer.httpsRequired"));
+      return;
+    }
+    setPendingAction(action);
   };
 
   const confirmTransfer = useLockFn(async () => {
@@ -98,7 +88,7 @@ export const RuntimeYamlTransferActions = ({ onImported }: Props) => {
             color="inherit"
             disabled={busy}
             aria-label={t("profiles.modals.runtimeTransfer.actions.upload")}
-            onClick={() => setPendingAction("upload")}
+            onClick={() => requestTransfer("upload")}
           >
             <FileUploadOutlined />
           </IconButton>
@@ -111,7 +101,7 @@ export const RuntimeYamlTransferActions = ({ onImported }: Props) => {
             color="inherit"
             disabled={busy}
             aria-label={t("profiles.modals.runtimeTransfer.actions.download")}
-            onClick={() => setPendingAction("download")}
+            onClick={() => requestTransfer("download")}
           >
             <FileDownloadOutlined />
           </IconButton>

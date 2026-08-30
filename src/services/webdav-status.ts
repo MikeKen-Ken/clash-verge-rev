@@ -23,6 +23,21 @@ export const buildWebdavSignature = (
   return JSON.stringify([url, username, password]);
 };
 
+export const isHttpsWebdavUrl = (url?: string | null) =>
+  (url?.trim().toLowerCase() ?? "").startsWith("https://");
+
+export const isWebdavConfigured = (
+  verge?: Pick<
+    IVergeConfig,
+    "webdav_url" | "webdav_username" | "webdav_password"
+  > | null,
+) =>
+  Boolean(
+    verge?.webdav_url?.trim() &&
+      verge.webdav_username?.trim() &&
+      verge.webdav_password,
+  );
+
 const canUseStorage = () => typeof localStorage !== "undefined";
 
 export const getWebdavStatus = (signature: string): WebdavStatus => {

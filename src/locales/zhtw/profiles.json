@@ -184,15 +184,15 @@
         "download": "下載執行階段 YAML"
       },
       "confirmUploadTitle": "上傳執行階段 YAML？",
-      "confirmUploadMessage": "所選 YAML 會先經過驗證，再作為新的本機設定置頂並啟用。啟用失敗時會保留目前設定。",
+      "confirmUploadMessage": "將從 WebDAV 下載執行階段 YAML，驗證後作為新的本機設定置頂並啟用。啟用失敗時會保留目前設定。",
       "confirmDownloadTitle": "下載執行階段 YAML？",
-      "confirmDownloadMessage": "是否儲存目前產生的執行階段 YAML？檔案中可能包含伺服器位址與憑證。",
-      "uploadPickerTitle": "選擇執行階段 YAML",
-      "downloadPickerTitle": "儲存執行階段 YAML",
-      "uploadSucceeded": "執行階段 YAML 已匯入並啟用",
-      "downloadSucceeded": "執行階段 YAML 已匯出",
+      "confirmDownloadMessage": "是否將目前產生的執行階段 YAML 上傳到 WebDAV？檔案中可能包含伺服器位址與憑證。",
+      "uploadSucceeded": "已從 WebDAV 匯入並啟用執行階段 YAML",
+      "downloadSucceeded": "執行階段 YAML 已上傳到 WebDAV",
       "runtimeUnavailable": "執行階段 YAML 目前無法使用",
-      "failed": "執行階段 YAML 傳輸失敗"
+      "failed": "執行階段 YAML 傳輸失敗",
+      "webdavRequired": "請先設定 WebDAV 再傳輸執行階段 YAML",
+      "httpsRequired": "執行階段 YAML 傳輸需要 HTTPS 的 WebDAV 位址"
     }
   }
 }

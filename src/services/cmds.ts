@@ -97,8 +97,12 @@ export async function getRuntimeYaml() {
   return invoke<string | null>("get_runtime_yaml");
 }
 
-export async function importRuntimeYamlProfile(name: string, source: string) {
-  return invoke<string>("import_runtime_yaml_profile", { name, source });
+export async function exportRuntimeYamlWebdav() {
+  return invoke<void>("export_runtime_yaml_webdav");
+}
+
+export async function importRuntimeYamlFromWebdav() {
+  return invoke<string>("import_runtime_yaml_from_webdav");
 }
 
 export async function startRuntimeConfigLanShare() {

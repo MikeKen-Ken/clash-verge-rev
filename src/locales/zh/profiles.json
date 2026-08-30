@@ -186,15 +186,15 @@
         "download": "下载运行时 YAML"
       },
       "confirmUploadTitle": "上传运行时 YAML？",
-      "confirmUploadMessage": "所选 YAML 将先经过校验，再作为新的本地配置置顶并激活。激活失败时会保留当前配置。",
+      "confirmUploadMessage": "将从 WebDAV 下载运行时 YAML，校验后作为新的本地配置置顶并激活。激活失败时会保留当前配置。",
       "confirmDownloadTitle": "下载运行时 YAML？",
-      "confirmDownloadMessage": "是否保存当前生成的运行时 YAML？文件中可能包含服务器地址和凭据。",
-      "uploadPickerTitle": "选择运行时 YAML",
-      "downloadPickerTitle": "保存运行时 YAML",
-      "uploadSucceeded": "运行时 YAML 已导入并激活",
-      "downloadSucceeded": "运行时 YAML 已导出",
+      "confirmDownloadMessage": "是否将当前生成的运行时 YAML 上传到 WebDAV？文件中可能包含服务器地址和凭据。",
+      "uploadSucceeded": "已从 WebDAV 导入并激活运行时 YAML",
+      "downloadSucceeded": "运行时 YAML 已上传到 WebDAV",
       "runtimeUnavailable": "运行时 YAML 当前不可用",
-      "failed": "运行时 YAML 传输失败"
+      "failed": "运行时 YAML 传输失败",
+      "webdavRequired": "请先配置 WebDAV 再传输运行时 YAML",
+      "httpsRequired": "运行时 YAML 传输需要 HTTPS 的 WebDAV 地址"
     },
     "runtimeShare": {
       "title": "局域网分享运行时 YAML（扫码）",
