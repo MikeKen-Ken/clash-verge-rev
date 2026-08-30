@@ -322,12 +322,55 @@ pub fn apply_manual_connectivity_proxy_order(config: Mapping) -> Mapping {
 
 /// 前端同步联通统计 JSON 到数据目录（不触发 reload）。
 pub fn write_connectivity_stats_file(raw_json: &str) -> Result<(), String> {
+    transact_connectivity_stats_file(|current| {
+        let mut replacement: serde_json::Value =
+            serde_json::from_str(raw_json).map_err(|e| e.to_string())?;
+        let current: serde_json::Value =
+            serde_json::from_str(current).unwrap_or(serde_json::Value::Null);
+        if let (Some(target), Some(sync)) = (
+            replacement.as_object_mut(),
+            current.get("_sync").cloned(),
+        ) {
+            target.entry("_sync").or_insert(sync);
+        }
+        Ok((
+            serde_json::to_string(&replacement).map_err(|e| e.to_string())?,
+            (),
+        ))
+    })
+}
+
+/// Run a read-modify-write transaction while holding the same cross-process
+/// lock used by the Mihomo connectivity recorder.
+pub fn transact_connectivity_stats_file<T>(
+    transaction: impl FnOnce(&str) -> Result<(String, T), String>,
+) -> Result<T, String> {
+    use std::io::Write as _;
+
     let home = dirs::app_home_dir().map_err(|e| e.to_string())?;
     with_connectivity_stats_lock(&home, || {
         let path = home.join(STATS_FILE);
+        let current = match std::fs::read_to_string(&path) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                r#"{"v":2,"data":{}}"#.to_string()
+            }
+            Err(err) => return Err(err.to_string()),
+        };
+        let (replacement, result) = transaction(&current)?;
         let tmp = home.join(format!("{STATS_FILE}.tmp"));
-        std::fs::write(&tmp, raw_json).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&tmp)
+            .map_err(|e| e.to_string())?;
+        file.write_all(replacement.as_bytes())
+            .map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+        Ok(result)
     })
 }
 
@@ -373,8 +416,7 @@ fn with_connectivity_stats_lock<T>(
                 std::thread::sleep(Duration::from_millis(15));
             }
             Err(_) => {
-                // 超时降级：避免 UI 永久卡住
-                return f();
+                return Err("Timed out waiting for connectivity statistics lock".to_string());
             }
         }
     }

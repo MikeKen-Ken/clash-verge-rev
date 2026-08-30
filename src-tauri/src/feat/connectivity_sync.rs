@@ -7,7 +7,7 @@ use clash_verge_logging::{Type, logging};
 use chrono::{Duration, Local, NaiveDate, Utc};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs, io::Write as _, path::PathBuf};
 
 const PROTOCOL_VERSION: u8 = 1;
 const STORE_VERSION: u8 = 2;
@@ -47,11 +47,20 @@ struct ProxyEntry {
 
 type StatsData = HashMap<String, ProxyEntry>;
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct StatsFile {
     v: u8,
     #[serde(default)]
     data: StatsData,
+    #[serde(default, rename = "_sync", skip_serializing_if = "Option::is_none")]
+    sync: Option<LocalSyncMetadata>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalSyncMetadata {
+    #[serde(default)]
+    last_others: StatsData,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -73,6 +82,11 @@ struct SyncState {
     last_others: StatsData,
     #[serde(default)]
     last_sync_at: i64,
+}
+
+struct LocalMergeOutcome {
+    own: StatsData,
+    merged: StatsData,
 }
 
 #[derive(Debug, Serialize)]
@@ -104,7 +118,16 @@ fn load_state() -> Result<SyncState, Error> {
 
 fn save_state(state: &SyncState) -> Result<(), Error> {
     let path = state_path()?;
-    fs::write(path, serde_json::to_vec(state)?)?;
+    let temporary = path.with_extension("json.tmp");
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&temporary)?;
+    file.write_all(&serde_json::to_vec(state)?)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(temporary, path)?;
     Ok(())
 }
 
@@ -116,13 +139,16 @@ fn valid_device_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
-fn parse_local_stats(raw: &str) -> Result<StatsData, Error> {
+fn parse_local_stats_file(raw: &str) -> Result<StatsFile, Error> {
     let mut file: StatsFile = serde_json::from_str(raw).context("invalid local statistics")?;
     if file.v != STORE_VERSION {
         return Err(Error::msg("unsupported local statistics version"));
     }
     prune(&mut file.data);
-    Ok(file.data)
+    if let Some(sync) = file.sync.as_mut() {
+        prune(&mut sync.last_others);
+    }
+    Ok(file)
 }
 
 fn prune(data: &mut StatsData) {
@@ -180,6 +206,36 @@ fn add_into(target: &mut StatsData, source: &StatsData) {
             total.ds = total.ds.saturating_add(counts.ds).min(MAX_SAFE_COUNT);
         }
     }
+}
+
+fn prepare_local_merge(
+    current_raw: &str,
+    fallback_others: &StatsData,
+    remote_others: &StatsData,
+) -> Result<(String, LocalMergeOutcome), Error> {
+    let current = parse_local_stats_file(current_raw)?;
+    let baseline = current
+        .sync
+        .as_ref()
+        .map(|sync| &sync.last_others)
+        .unwrap_or(fallback_others);
+    let mut own = subtract(&current.data, baseline);
+    prune(&mut own);
+    let mut merged = own.clone();
+    add_into(&mut merged, remote_others);
+    prune(&mut merged);
+
+    let replacement = StatsFile {
+        v: STORE_VERSION,
+        data: merged.clone(),
+        sync: Some(LocalSyncMetadata {
+            last_others: remote_others.clone(),
+        }),
+    };
+    Ok((
+        serde_json::to_string(&replacement)?,
+        LocalMergeOutcome { own, merged },
+    ))
 }
 
 fn snapshot_filename(device_id: &str) -> String {
@@ -246,11 +302,6 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     client.ensure_collection(REMOTE_DEVICES_DIR).await?;
 
     let mut state = load_state()?;
-    let current_raw = connectivity_order::read_connectivity_stats_file().map_err(Error::msg)?;
-    let current = parse_local_stats(&current_raw)?;
-    let mut own = subtract(&current, &state.last_others);
-    prune(&mut own);
-
     let mut files = client.list_files_at(REMOTE_DEVICES_DIR).await?;
     files.sort_by(|a, b| a.href.cmp(&b.href));
     let listed_ids = listed_device_ids(files.iter().map(|file| file.href.as_str()));
@@ -258,8 +309,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         return Err(Error::msg("Too many connectivity sync devices"));
     }
 
-    let mut merged = StatsData::new();
-    let mut others = StatsData::new();
+    let mut remote_others = StatsData::new();
     let mut seen_devices = std::collections::HashSet::new();
     for device_id in listed_ids {
         let path = format!("{REMOTE_DEVICES_DIR}/{}", snapshot_filename(&device_id));
@@ -295,26 +345,28 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         };
         seen_devices.insert(device_id.clone());
         prune(&mut snapshot.data);
-        add_into(&mut merged, &snapshot.data);
         if device_id != state.device_id {
-            add_into(&mut others, &snapshot.data);
+            add_into(&mut remote_others, &snapshot.data);
         }
     }
 
-    if seen_devices.insert(state.device_id.clone()) {
-        add_into(&mut merged, &own);
-    }
-    prune(&mut merged);
-    prune(&mut others);
+    seen_devices.insert(state.device_id.clone());
+    prune(&mut remote_others);
+    let fallback_others = state.last_others.clone();
+    let transaction_others = remote_others.clone();
+    let local_merge = connectivity_order::transact_connectivity_stats_file(|current_raw| {
+        let (replacement, outcome) = prepare_local_merge(
+            current_raw,
+            &fallback_others,
+            &transaction_others,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok((replacement, outcome))
+    })
+    .map_err(Error::msg)?;
     let now = Utc::now().timestamp_millis();
-    let local_payload = StatsFile {
-        v: STORE_VERSION,
-        data: merged.clone(),
-    };
-    connectivity_order::write_connectivity_stats_file(&serde_json::to_string(&local_payload)?)
-        .map_err(Error::msg)?;
 
-    state.last_others = others;
+    state.last_others = remote_others;
     state.last_sync_at = now;
     save_state(&state)?;
 
@@ -322,7 +374,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         v: PROTOCOL_VERSION,
         device_id: state.device_id.clone(),
         updated_at: now,
-        data: own,
+        data: local_merge.own,
     };
     let own_path = format!(
         "{REMOTE_DEVICES_DIR}/{}",
@@ -341,7 +393,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
 
     Ok(ConnectivitySyncResult {
         device_count: seen_devices.len().max(1),
-        proxy_count: merged.len(),
+        proxy_count: local_merge.merged.len(),
         last_sync_at: now,
     })
 }
@@ -349,6 +401,21 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
 pub async fn reset_connectivity_sync_baseline(proxy_name: Option<&str>) -> Result<(), Error> {
     let _guard = sync_lock().lock().await;
     let mut state = load_state()?;
+    let fallback_others = state.last_others.clone();
+    connectivity_order::transact_connectivity_stats_file(|current_raw| {
+        let mut current = parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
+        let sync = current.sync.get_or_insert_with(|| LocalSyncMetadata {
+            last_others: fallback_others,
+        });
+        if let Some(name) = proxy_name.filter(|name| !name.is_empty()) {
+            sync.last_others.remove(name);
+        } else {
+            sync.last_others.clear();
+        }
+        let replacement = serde_json::to_string(&current).map_err(|error| error.to_string())?;
+        Ok((replacement, ()))
+    })
+    .map_err(Error::msg)?;
     if let Some(name) = proxy_name.filter(|name| !name.is_empty()) {
         state.last_others.remove(name);
     } else {
@@ -437,5 +504,51 @@ mod tests {
             listed,
             vec!["alpha".into(), "gamma-2".into(), "beta".into()]
         );
+    }
+
+    #[test]
+    fn local_merge_uses_latest_counters_and_persists_the_baseline() {
+        let current = StatsFile {
+            v: STORE_VERSION,
+            data: data(9, 3),
+            sync: None,
+        };
+        let fallback = data(5, 1);
+        let remote = data(5, 1);
+        let (replacement, outcome) = prepare_local_merge(
+            &serde_json::to_string(&current).unwrap(),
+            &fallback,
+            &remote,
+        )
+        .unwrap();
+        let day = Local::now().format("%Y-%m-%d").to_string();
+
+        assert_eq!(count_at(&outcome.own, "node", &day).s, 4);
+        assert_eq!(count_at(&outcome.merged, "node", &day).s, 9);
+        let stored = parse_local_stats_file(&replacement).unwrap();
+        assert_eq!(stored.sync.unwrap().last_others, remote);
+    }
+
+    #[test]
+    fn retry_uses_embedded_baseline_instead_of_stale_side_state() {
+        let current = StatsFile {
+            v: STORE_VERSION,
+            data: data(8, 3),
+            sync: Some(LocalSyncMetadata {
+                last_others: data(5, 1),
+            }),
+        };
+        let stale_fallback = StatsData::new();
+        let remote = data(5, 1);
+        let (_, outcome) = prepare_local_merge(
+            &serde_json::to_string(&current).unwrap(),
+            &stale_fallback,
+            &remote,
+        )
+        .unwrap();
+        let day = Local::now().format("%Y-%m-%d").to_string();
+
+        assert_eq!(count_at(&outcome.own, "node", &day).s, 3);
+        assert_eq!(count_at(&outcome.merged, "node", &day).s, 8);
     }
 }

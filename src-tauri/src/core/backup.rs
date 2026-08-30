@@ -97,13 +97,16 @@ impl WebDavClient {
         config: &WebDavConfig,
         op: Operation,
         accept_invalid_certs: bool,
+        https_only: bool,
     ) -> Result<reqwest_dav::Client, Error> {
         let mut agent = reqwest::Client::builder()
             .use_rustls_tls()
             .timeout(Duration::from_secs(op.timeout()))
             .user_agent(format!("clash-verge/{APP_VERSION} ({OS} WebDAV-Client)"))
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                if attempt.previous().len() >= 5 {
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                if https_only && attempt.url().scheme() != "https" {
+                    attempt.error("WebDAV redirect must use https")
+                } else if attempt.previous().len() >= 5 {
                     attempt.error("重定向次数过多")
                 } else {
                     attempt.follow()
@@ -147,7 +150,7 @@ impl WebDavClient {
         }
 
         let config = self.ensure_config().await?;
-        let client = Self::build_dav_client(&config, op, true)?;
+        let client = Self::build_dav_client(&config, op, true, false)?;
 
         if client
             .list(dirs::BACKUP_DIR, reqwest_dav::Depth::Number(0))
@@ -173,7 +176,7 @@ impl WebDavClient {
             return Ok(client);
         }
         let config = self.ensure_config().await?;
-        let client = Self::build_dav_client(&config, op, false)?;
+        let client = Self::build_dav_client(&config, op, false, true)?;
         Self::store_client(&self.strict_clients, op, &client);
         Ok(client)
     }

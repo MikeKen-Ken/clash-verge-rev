@@ -31,13 +31,13 @@ export const RuntimeYamlTransferActions = ({ onImported }: Props) => {
   const [busy, setBusy] = useState(false);
 
   const uploadRuntimeYaml = async () => {
-    await importRuntimeYamlFromWebdav();
-    await onImported();
+    await exportRuntimeYamlWebdav();
     showNotice.success("profiles.modals.runtimeTransfer.uploadSucceeded");
   };
 
   const downloadRuntimeYaml = async () => {
-    await exportRuntimeYamlWebdav();
+    await importRuntimeYamlFromWebdav();
+    await onImported();
     showNotice.success("profiles.modals.runtimeTransfer.downloadSucceeded");
   };
 

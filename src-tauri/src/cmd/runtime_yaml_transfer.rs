@@ -10,7 +10,6 @@ use crate::{
     utils::{dirs, help},
 };
 use anyhow::{Context as _, bail};
-use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
 
@@ -41,8 +40,8 @@ impl Drop for ProfileSwitchLock {
 }
 
 const MAX_RUNTIME_YAML_BYTES: usize = 10 * 1024 * 1024;
-const REMOTE_COLLECTION: &str = "clash-runtime-yaml";
-const REMOTE_OBJECT: &str = "clash-runtime-yaml/runtime.yaml";
+const REMOTE_OBJECT: &str = "clash-runtime.yaml";
+const LEGACY_REMOTE_OBJECT: &str = "clash-runtime-yaml/runtime.yaml";
 
 fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
     if content.is_empty() {
@@ -213,46 +212,57 @@ fn webdav_object_missing(error: &impl std::fmt::Display) -> bool {
     message.contains("404") || message.contains("not found")
 }
 
+async fn get_remote_runtime_yaml_bytes() -> anyhow::Result<Vec<u8>> {
+    let client = WebDavClient::global();
+    match client.get_bytes(REMOTE_OBJECT, MAX_RUNTIME_YAML_BYTES).await {
+        Ok(bytes) => Ok(bytes),
+        Err(error) if webdav_object_missing(&error) => client
+            .get_bytes(LEGACY_REMOTE_OBJECT, MAX_RUNTIME_YAML_BYTES)
+            .await
+            .map_err(|legacy| {
+                if webdav_object_missing(&legacy) {
+                    anyhow::anyhow!(
+                        "No runtime YAML on WebDAV yet. Upload from a running client first."
+                    )
+                } else {
+                    anyhow::anyhow!("Failed to download runtime YAML from WebDAV: {legacy}")
+                }
+            }),
+        Err(error) => Err(anyhow::anyhow!(
+            "Failed to download runtime YAML from WebDAV: {error}"
+        )),
+    }
+}
+
+async fn put_remote_runtime_yaml(content: Vec<u8>) -> anyhow::Result<()> {
+    let client = WebDavClient::global();
+    match client.put_bytes(REMOTE_OBJECT, content.clone()).await {
+        Ok(()) => Ok(()),
+        Err(error) if webdav_object_missing(&error) => {
+            let _ = client.ensure_collection("clash-runtime-yaml").await;
+            client
+                .put_bytes(LEGACY_REMOTE_OBJECT, content)
+                .await
+                .context("Failed to upload runtime YAML to WebDAV")
+        }
+        Err(error) => Err(error).context("Failed to upload runtime YAML to WebDAV"),
+    }
+}
+
 /// Upload the currently generated runtime YAML to the shared WebDAV object.
 #[tauri::command]
 pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
     require_https_webdav().await.stringify_err()?;
     let content = current_runtime_yaml().await.stringify_err()?;
     validate_runtime_yaml(content.as_str()).stringify_err()?;
-
-    let client = WebDavClient::global();
-    if let Err(error) = client.ensure_collection(REMOTE_COLLECTION).await {
-        logging!(
-            info,
-            Type::Backup,
-            "Runtime YAML WebDAV collection create skipped: {error}"
-        );
-    }
-    client
-        .put_bytes(REMOTE_OBJECT, content.into_bytes())
-        .await
-        .context("Failed to upload runtime YAML to WebDAV")
-        .stringify_err()
+    put_remote_runtime_yaml(content.into_bytes()).await.stringify_err()
 }
 
 /// Download the shared WebDAV runtime YAML and import it as a local profile.
 #[tauri::command]
 pub async fn import_runtime_yaml_from_webdav() -> CmdResult<String> {
     require_https_webdav().await.stringify_err()?;
-    let bytes = match WebDavClient::global()
-        .get_bytes(REMOTE_OBJECT, MAX_RUNTIME_YAML_BYTES)
-        .await
-    {
-        Ok(bytes) => bytes,
-        Err(error) if webdav_object_missing(&error) => {
-            return Err(
-                "No runtime YAML on WebDAV yet. Download from a running client first.".into(),
-            );
-        }
-        Err(error) => {
-            return Err(format!("Failed to download runtime YAML from WebDAV: {error}").into());
-        }
-    };
+    let bytes = get_remote_runtime_yaml_bytes().await.stringify_err()?;
     let content = std::string::String::from_utf8(bytes)
         .context("Runtime YAML is not valid UTF-8")
         .stringify_err()?;
