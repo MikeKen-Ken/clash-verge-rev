@@ -132,11 +132,11 @@ impl WebDavClient {
     fn store_client(
         cache: &ArcSwap<HashMap<Operation, reqwest_dav::Client>>,
         op: Operation,
-        client: reqwest_dav::Client,
+        client: &reqwest_dav::Client,
     ) {
         cache.rcu(|clients_map| {
             let mut new_map = (**clients_map).clone();
-            new_map.insert(op, client);
+            new_map.insert(op, client.clone());
             Arc::new(new_map)
         });
     }
@@ -164,7 +164,7 @@ impl WebDavClient {
             }
         }
 
-        Self::store_client(&self.clients, op, client.clone());
+        Self::store_client(&self.clients, op, &client);
         Ok(client)
     }
 
@@ -174,7 +174,7 @@ impl WebDavClient {
         }
         let config = self.ensure_config().await?;
         let client = Self::build_dav_client(&config, op, false)?;
-        Self::store_client(&self.strict_clients, op, client.clone());
+        Self::store_client(&self.strict_clients, op, &client);
         Ok(client)
     }
 
