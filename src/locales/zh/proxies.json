@@ -72,6 +72,19 @@
     "title": {
       "default": "代理组",
       "chainMode": "链式代理模式"
+    },
+    "connectivityStats": {
+      "mergeNow": "立即合并",
+      "merging": "正在合并…",
+      "intervalLabel": "自动合并间隔",
+      "intervalHour": "1 小时",
+      "intervalHours": "{{hours}} 小时",
+      "interval7Days": "7 天",
+      "webdavRequired": "请先配置 WebDAV 再同步连通统计",
+      "httpsRequired": "连通统计同步需要 HTTPS WebDAV 地址",
+      "mergeFailed": "合并连通统计失败",
+      "intervalSaveFailed": "保存自动合并间隔失败",
+      "mergeSucceeded": "已从 {{count}} 台设备合并连通统计"
     }
   },
   "feedback": {

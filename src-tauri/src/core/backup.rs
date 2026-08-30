@@ -275,15 +275,26 @@ impl WebDavClient {
     /// Download a bounded application data object from an explicit WebDAV path.
     pub async fn get_bytes(&self, path: &str, max_bytes: usize) -> Result<Vec<u8>, Error> {
         let client = self.get_client(Operation::Download).await?;
-        let response = timeout(Duration::from_secs(TIMEOUT_DOWNLOAD), client.get(path)).await??;
-        if response.content_length().is_some_and(|len| len > max_bytes as u64) {
-            return Err(Error::msg("WebDAV object exceeds the size limit"));
-        }
-        let content = response.bytes().await?;
-        if content.len() > max_bytes {
-            return Err(Error::msg("WebDAV object exceeds the size limit"));
-        }
-        Ok(content.to_vec())
+        timeout(Duration::from_secs(TIMEOUT_DOWNLOAD), async {
+            let mut response = client.get(path).await?;
+            if response.content_length().is_some_and(|len| len > max_bytes as u64) {
+                return Err(Error::msg("WebDAV object exceeds the size limit"));
+            }
+            let mut content = Vec::new();
+            loop {
+                match response.chunk().await? {
+                    Some(chunk) => {
+                        if content.len().saturating_add(chunk.len()) > max_bytes {
+                            return Err(Error::msg("WebDAV object exceeds the size limit"));
+                        }
+                        content.extend_from_slice(&chunk);
+                    }
+                    None => break,
+                }
+            }
+            Ok(content)
+        })
+        .await??
     }
 
     /// List files in an application-owned WebDAV collection.

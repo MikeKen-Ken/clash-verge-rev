@@ -60,6 +60,19 @@
     "title": {
       "default": "プロキシグループ",
       "chainMode": "Proxy Chain Mode"
+    },
+    "connectivityStats": {
+      "mergeNow": "Merge now",
+      "merging": "Merging…",
+      "intervalLabel": "Automatic merge interval",
+      "intervalHour": "1 hour",
+      "intervalHours": "{{hours}} hours",
+      "interval7Days": "7 days",
+      "webdavRequired": "Configure WebDAV before syncing connectivity statistics",
+      "httpsRequired": "Connectivity statistics sync requires an HTTPS WebDAV URL",
+      "mergeFailed": "Failed to merge connectivity statistics",
+      "intervalSaveFailed": "Failed to save automatic merge interval",
+      "mergeSucceeded": "Connectivity statistics merged from {{count}} devices"
     }
   },
   "feedback": {

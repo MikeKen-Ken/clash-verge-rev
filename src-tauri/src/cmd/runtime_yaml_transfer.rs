@@ -1,7 +1,10 @@
 use super::{CmdResult, StringifyErr as _};
 use crate::{
     cmd::profile::{finish_profile_switch, patch_profiles_config_locked, try_begin_profile_switch},
-    config::{Config, IProfiles, PrfItem, PrfOption, profiles::profiles_append_item_safe},
+    config::{
+        Config, IProfiles, PrfItem, PrfOption,
+        profiles::{profiles_append_item_safe, profiles_delete_item_safe},
+    },
     module::auto_backup::{AutoBackupManager, AutoBackupTrigger},
     utils::{dirs, help},
 };
@@ -9,6 +12,32 @@ use anyhow::{Context as _, bail};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
 use std::path::PathBuf;
+
+struct ProfileSwitchLock {
+    active: bool,
+}
+
+impl ProfileSwitchLock {
+    fn acquire() -> Option<Self> {
+        if try_begin_profile_switch() {
+            Some(Self { active: true })
+        } else {
+            None
+        }
+    }
+
+    fn hand_off(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for ProfileSwitchLock {
+    fn drop(&mut self) {
+        if self.active {
+            finish_profile_switch();
+        }
+    }
+}
 
 const MAX_RUNTIME_YAML_BYTES: usize = 10 * 1024 * 1024;
 
@@ -30,7 +59,7 @@ fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_runtime_yaml;
+    use super::{MAX_RUNTIME_YAML_BYTES, validate_runtime_yaml};
 
     #[test]
     fn accepts_mapping_runtime_yaml() {
@@ -40,13 +69,27 @@ mod tests {
     #[test]
     fn rejects_empty_or_non_mapping_yaml() {
         assert!(validate_runtime_yaml("").is_err());
+        assert!(validate_runtime_yaml("{}\n").is_err());
         assert!(validate_runtime_yaml("- DIRECT\n").is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_runtime_yaml() {
+        let content = format!("mixed-port: 7890\n# {}\n", "x".repeat(MAX_RUNTIME_YAML_BYTES));
+        assert!(validate_runtime_yaml(&content).is_err());
     }
 }
 
 async fn remove_candidate_file(file: &String) {
     if let Ok(directory) = dirs::app_profiles_dir() {
         let _ = tokio::fs::remove_file(directory.join(file.as_str())).await;
+    }
+}
+
+async fn rollback_imported_profile(uid: &String, file: &String) {
+    Config::profiles().await.discard();
+    if profiles_delete_item_safe(uid).await.is_err() {
+        remove_candidate_file(file).await;
     }
 }
 
@@ -67,9 +110,8 @@ pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdRe
     let content = tokio::fs::read_to_string(&source).await.stringify_err()?;
     validate_runtime_yaml(content.as_str()).stringify_err()?;
 
-    if !try_begin_profile_switch() {
-        return Err("A profile switch is already in progress".into());
-    }
+    let mut switch_lock = ProfileSwitchLock::acquire()
+        .ok_or_else(|| String::from("A profile switch is already in progress"))?;
 
     let uid: String = help::get_uid("L").into();
     let file: String = format!("{uid}.yaml").into();
@@ -96,14 +138,13 @@ pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdRe
         desc: Some("Imported runtime YAML".into()),
         updated: Some(chrono::Local::now().timestamp() as usize),
         option: Some(PrfOption::default()),
-        file_data: Some(content),
+        file_data: Some(content.into()),
         ..PrfItem::default()
     };
 
     if let Err(error) = profiles_append_item_safe(&mut item).await {
         Config::profiles().await.discard();
         remove_candidate_file(&file).await;
-        finish_profile_switch();
         return Err(error.to_string().into());
     }
 
@@ -127,6 +168,7 @@ pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdRe
         });
     }
 
+    switch_lock.hand_off();
     let switch_result = patch_profiles_config_locked(
         IProfiles {
             current: Some(uid.clone()),
@@ -142,11 +184,11 @@ pub async fn import_runtime_yaml_profile(name: String, source: PathBuf) -> CmdRe
             Ok(uid)
         }
         Ok(false) => {
-            remove_candidate_file(&file).await;
+            rollback_imported_profile(&uid, &file).await;
             Err("Runtime YAML failed validation; the previous profile is still active".into())
         }
         Err(error) => {
-            remove_candidate_file(&file).await;
+            rollback_imported_profile(&uid, &file).await;
             Err(error)
         }
     }

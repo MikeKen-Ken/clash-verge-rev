@@ -28,7 +28,7 @@ import {
 import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
 import {
   connectivitySyncCheckPeriodMs,
-  isConnectivityWebdavConfigured,
+  isConnectivityWebdavReady,
   mergeConnectivityStatsIfDue,
 } from "@/services/proxy-connectivity-webdav-sync";
 import {
@@ -58,7 +58,7 @@ export const AppDataProvider = ({
   }, []);
 
   useEffect(() => {
-    if (!isConnectivityWebdavConfigured(verge)) return;
+    if (!isConnectivityWebdavReady(verge)) return;
     const intervalHours = verge?.connectivity_sync_interval_hours ?? 24;
     const run = () => {
       void mergeConnectivityStatsIfDue(intervalHours).catch(() => {

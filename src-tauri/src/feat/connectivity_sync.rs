@@ -1,5 +1,8 @@
-use crate::{core::backup::WebDavClient, enhance::connectivity_order, utils::dirs};
+use crate::{
+    config::Config, core::backup::WebDavClient, enhance::connectivity_order, utils::dirs,
+};
 use anyhow::{Context, Error};
+use clash_verge_logging::{Type, logging};
 use chrono::{Duration, Local, NaiveDate, Utc};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
@@ -186,8 +189,52 @@ fn filename_from_href(href: &str) -> Option<&str> {
     href.trim_end_matches('/').rsplit('/').next()
 }
 
+fn snapshot_matches(snapshot: &DeviceSnapshot, device_id: &str) -> bool {
+    snapshot.v == PROTOCOL_VERSION && snapshot.device_id == device_id
+}
+
+fn listed_device_files<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<(String, String)> {
+    let mut listed = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for href in hrefs {
+        let Some(filename) = filename_from_href(href) else {
+            continue;
+        };
+        let Some(device_id) = filename.strip_suffix(".json") else {
+            continue;
+        };
+        if !valid_device_id(device_id) || !seen.insert(device_id.to_string()) {
+            continue;
+        }
+        listed.push((device_id.to_string(), filename.to_string()));
+    }
+    listed
+}
+
+fn device_limit_exceeded(listed_ids: &[(String, String)], own_device_id: &str) -> bool {
+    if listed_ids.len() > MAX_REMOTE_DEVICES {
+        return true;
+    }
+    !listed_ids.iter().any(|(id, _)| id == own_device_id)
+        && listed_ids.len() >= MAX_REMOTE_DEVICES
+}
+
+async fn require_https_webdav() -> Result<(), Error> {
+    let url = Config::verge()
+        .await
+        .data_arc()
+        .webdav_url
+        .clone()
+        .unwrap_or_default();
+    if !url.trim().to_ascii_lowercase().starts_with("https://") {
+        return Err(Error::msg("WebDAV URL must be https"));
+    }
+    Ok(())
+}
+
 pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, Error> {
     let _guard = sync_lock().lock().await;
+    require_https_webdav().await?;
     let client = WebDavClient::global();
     client.ensure_collection(REMOTE_ROOT).await?;
     client.ensure_collection(REMOTE_VERSION_DIR).await?;
@@ -199,54 +246,49 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     let mut own = subtract(&current, &state.last_others);
     prune(&mut own);
 
-    let now = Utc::now().timestamp_millis();
-    let own_snapshot = DeviceSnapshot {
-        v: PROTOCOL_VERSION,
-        device_id: state.device_id.clone(),
-        updated_at: now,
-        data: own.clone(),
-    };
-    let own_path = format!(
-        "{REMOTE_DEVICES_DIR}/{}",
-        snapshot_filename(&state.device_id)
-    );
-    client
-        .put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?)
-        .await?;
-
     let mut files = client.list_files_at(REMOTE_DEVICES_DIR).await?;
     files.sort_by(|a, b| a.href.cmp(&b.href));
-    let valid_file_count = files
-        .iter()
-        .filter_map(|file| filename_from_href(file.href.as_str()))
-        .filter_map(|filename| filename.strip_suffix(".json"))
-        .filter(|device_id| valid_device_id(device_id))
-        .count();
-    if valid_file_count > MAX_REMOTE_DEVICES {
+    let listed_ids = listed_device_files(files.iter().map(|file| file.href.as_str()));
+    if device_limit_exceeded(&listed_ids, &state.device_id) {
         return Err(Error::msg("Too many connectivity sync devices"));
     }
 
     let mut merged = StatsData::new();
     let mut others = StatsData::new();
     let mut seen_devices = std::collections::HashSet::new();
-    for file in files {
-        let Some(filename) = filename_from_href(file.href.as_str()) else {
-            continue;
-        };
-        let Some(device_id) = filename.strip_suffix(".json") else {
-            continue;
-        };
-        if !valid_device_id(device_id) || seen_devices.contains(device_id) {
-            continue;
-        }
+    for (device_id, filename) in listed_ids {
         let path = format!("{REMOTE_DEVICES_DIR}/{filename}");
-        let bytes = client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await?;
-        let mut snapshot = serde_json::from_slice::<DeviceSnapshot>(&bytes)
-            .context("invalid connectivity device snapshot")?;
-        if snapshot.v != PROTOCOL_VERSION || snapshot.device_id != device_id {
-            return Err(Error::msg("connectivity snapshot identity mismatch"));
-        }
-        seen_devices.insert(device_id.to_string());
+        let bytes = match client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                logging!(
+                    info,
+                    Type::Network,
+                    "Skipping connectivity snapshot {device_id}: {error}"
+                );
+                continue;
+            }
+        };
+        let mut snapshot = match serde_json::from_slice::<DeviceSnapshot>(&bytes) {
+            Ok(snapshot) if snapshot_matches(&snapshot, &device_id) => snapshot,
+            Ok(_) => {
+                logging!(
+                    info,
+                    Type::Network,
+                    "Skipping connectivity snapshot {device_id}: identity mismatch"
+                );
+                continue;
+            }
+            Err(error) => {
+                logging!(
+                    info,
+                    Type::Network,
+                    "Skipping connectivity snapshot {device_id}: {error}"
+                );
+                continue;
+            }
+        };
+        seen_devices.insert(device_id.clone());
         prune(&mut snapshot.data);
         add_into(&mut merged, &snapshot.data);
         if device_id != state.device_id {
@@ -254,11 +296,12 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         }
     }
 
-    if !seen_devices.contains(&state.device_id) {
+    if seen_devices.insert(state.device_id.clone()) {
         add_into(&mut merged, &own);
     }
     prune(&mut merged);
     prune(&mut others);
+    let now = Utc::now().timestamp_millis();
     let local_payload = StatsFile {
         v: STORE_VERSION,
         data: merged.clone(),
@@ -269,6 +312,20 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     state.last_others = others;
     state.last_sync_at = now;
     save_state(&state)?;
+
+    let own_snapshot = DeviceSnapshot {
+        v: PROTOCOL_VERSION,
+        device_id: state.device_id.clone(),
+        updated_at: now,
+        data: own,
+    };
+    let own_path = format!(
+        "{REMOTE_DEVICES_DIR}/{}",
+        snapshot_filename(&state.device_id)
+    );
+    client
+        .put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?)
+        .await?;
 
     Ok(ConnectivitySyncResult {
         device_count: seen_devices.len().max(1),
@@ -332,5 +389,46 @@ mod tests {
             &Local::now().format("%Y-%m-%d").to_string(),
         );
         assert_eq!((counts.s, counts.f), (8, 3));
+    }
+
+    #[test]
+    fn rejects_identity_mismatch_snapshots() {
+        let snapshot = DeviceSnapshot {
+            v: PROTOCOL_VERSION,
+            device_id: "alpha".into(),
+            updated_at: 1,
+            data: StatsData::new(),
+        };
+        assert!(snapshot_matches(&snapshot, "alpha"));
+        assert!(!snapshot_matches(&snapshot, "beta"));
+    }
+
+    #[test]
+    fn device_limit_counts_this_installation_before_upload() {
+        let listed: Vec<(String, String)> = (0..MAX_REMOTE_DEVICES)
+            .map(|index| {
+                let id = format!("device-{index}");
+                (id.clone(), format!("{id}.json"))
+            })
+            .collect();
+        assert!(device_limit_exceeded(&listed, "new-device"));
+        assert!(!device_limit_exceeded(&listed, "device-0"));
+    }
+
+    #[test]
+    fn lists_unique_valid_device_files() {
+        let listed = listed_device_files([
+            "/clash-connectivity-sync/v1/devices/alpha.json",
+            "/clash-connectivity-sync/v1/devices/alpha.json",
+            "/clash-connectivity-sync/v1/devices/bad.name.json",
+            "/clash-connectivity-sync/v1/devices/beta.json",
+        ]);
+        assert_eq!(
+            listed,
+            vec![
+                ("alpha".into(), "alpha.json".into()),
+                ("beta".into(), "beta.json".into()),
+            ]
+        );
     }
 }

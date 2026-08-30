@@ -23,6 +23,8 @@ import {
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useTranslation } from "react-i18next";
+
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { showNotice } from "@/services/notice-service";
@@ -35,6 +37,7 @@ import {
 } from "@/services/proxy-connectivity-stats";
 import {
   isConnectivityWebdavConfigured,
+  isConnectivityWebdavHttps,
   mergeConnectivityStatsNow,
 } from "@/services/proxy-connectivity-webdav-sync";
 
@@ -79,6 +82,7 @@ export const ConnectivityStatsDialog = ({
   open,
   onClose,
 }: ConnectivityStatsDialogProps) => {
+  const { t } = useTranslation();
   const { proxies, refreshProxy } = useAppData();
   const { verge, patchVerge } = useVerge();
   const [rows, setRows] = useState<ConnectivityScoreRow[]>([]);
@@ -142,18 +146,28 @@ export const ConnectivityStatsDialog = ({
 
   const handleMerge = useLockFn(async () => {
     if (!isConnectivityWebdavConfigured(verge)) {
-      showNotice.error(
-        "Configure WebDAV before syncing connectivity statistics",
-      );
+      showNotice.error(t("proxies.page.connectivityStats.webdavRequired"));
+      return;
+    }
+    if (!isConnectivityWebdavHttps(verge)) {
+      showNotice.error(t("proxies.page.connectivityStats.httpsRequired"));
       return;
     }
     setSyncing(true);
     try {
-      await mergeConnectivityStatsNow({ notifySuccess: true });
+      const result = await mergeConnectivityStatsNow();
       await reloadRows();
       await refreshProxy();
+      showNotice.success(
+        t("proxies.page.connectivityStats.mergeSucceeded", {
+          count: result.deviceCount,
+        }),
+      );
     } catch (error) {
-      showNotice.error("Failed to merge connectivity statistics", error);
+      showNotice.error(
+        t("proxies.page.connectivityStats.mergeFailed"),
+        error,
+      );
     } finally {
       setSyncing(false);
     }
@@ -199,22 +213,24 @@ export const ConnectivityStatsDialog = ({
             startIcon={<SyncRounded fontSize="small" />}
             onClick={() => void handleMerge()}
           >
-            {syncing ? "Merging…" : "Merge now"}
+            {syncing
+              ? t("proxies.page.connectivityStats.merging")
+              : t("proxies.page.connectivityStats.mergeNow")}
           </Button>
           <FormControl size="small" sx={{ minWidth: 190 }}>
             <InputLabel id="connectivity-sync-interval-label">
-              Automatic merge interval
+              {t("proxies.page.connectivityStats.intervalLabel")}
             </InputLabel>
             <Select
               labelId="connectivity-sync-interval-label"
-              label="Automatic merge interval"
+              label={t("proxies.page.connectivityStats.intervalLabel")}
               value={syncIntervalHours}
               onChange={(event) => {
                 void patchVerge({
                   connectivity_sync_interval_hours: Number(event.target.value),
                 }).catch((error) => {
                   showNotice.error(
-                    "Failed to save automatic merge interval",
+                    t("proxies.page.connectivityStats.intervalSaveFailed"),
                     error,
                   );
                 });
@@ -223,8 +239,12 @@ export const ConnectivityStatsDialog = ({
               {CONNECTIVITY_SYNC_INTERVAL_OPTIONS.map((hours) => (
                 <MenuItem key={hours} value={hours}>
                   {hours === 168
-                    ? "7 days"
-                    : `${hours} hour${hours === 1 ? "" : "s"}`}
+                    ? t("proxies.page.connectivityStats.interval7Days")
+                    : hours === 1
+                      ? t("proxies.page.connectivityStats.intervalHour")
+                      : t("proxies.page.connectivityStats.intervalHours", {
+                          hours,
+                        })}
                 </MenuItem>
               ))}
             </Select>

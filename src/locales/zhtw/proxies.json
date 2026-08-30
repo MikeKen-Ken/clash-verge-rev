@@ -62,6 +62,19 @@
     "title": {
       "default": "代理組",
       "chainMode": "鏈式代理模式"
+    },
+    "connectivityStats": {
+      "mergeNow": "立即合併",
+      "merging": "正在合併…",
+      "intervalLabel": "自動合併間隔",
+      "intervalHour": "1 小時",
+      "intervalHours": "{{hours}} 小時",
+      "interval7Days": "7 天",
+      "webdavRequired": "請先設定 WebDAV 再同步連通統計",
+      "httpsRequired": "連通統計同步需要 HTTPS WebDAV 位址",
+      "mergeFailed": "合併連通統計失敗",
+      "intervalSaveFailed": "儲存自動合併間隔失敗",
+      "mergeSucceeded": "已從 {{count}} 台裝置合併連通統計"
     }
   },
   "feedback": {
