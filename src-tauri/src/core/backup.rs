@@ -54,6 +54,7 @@ impl Operation {
 pub struct WebDavClient {
     config: ArcSwapOption<WebDavConfig>,
     clients: ArcSwap<HashMap<Operation, reqwest_dav::Client>>,
+    strict_clients: ArcSwap<HashMap<Operation, reqwest_dav::Client>>,
 }
 
 impl WebDavClient {
@@ -62,74 +63,92 @@ impl WebDavClient {
         WEBDAV_CLIENT.get_or_init(|| Self {
             config: ArcSwapOption::new(None),
             clients: ArcSwap::new(Arc::new(HashMap::new())),
+            strict_clients: ArcSwap::new(Arc::new(HashMap::new())),
         })
     }
 
-    async fn get_client(&self, op: Operation) -> Result<reqwest_dav::Client, Error> {
-        // 先尝试从缓存获取
-        {
-            let clients_map = self.clients.load();
-            if let Some(client) = clients_map.get(&op) {
-                return Ok(client.clone());
-            }
+    async fn ensure_config(&self) -> Result<WebDavConfig, Error> {
+        if let Some(cfg_arc) = self.config.load().clone() {
+            return Ok((*cfg_arc).clone());
         }
 
-        // 获取或创建配置
-        let config = {
-            // 首先检查是否已有配置
-            let existing_config = self.config.load();
+        let verge = Config::verge().await.data_arc();
+        if verge.webdav_url.is_none() || verge.webdav_username.is_none() || verge.webdav_password.is_none() {
+            let msg: String =
+                "Unable to create web dav client, please make sure the webdav config is correct".into();
+            return Err(anyhow::Error::msg(msg));
+        }
 
-            if let Some(cfg_arc) = existing_config.clone() {
-                (*cfg_arc).clone()
-            } else {
-                // 释放锁后获取异步配置
-                let verge = Config::verge().await.data_arc();
-                if verge.webdav_url.is_none() || verge.webdav_username.is_none() || verge.webdav_password.is_none() {
-                    let msg: String =
-                        "Unable to create web dav client, please make sure the webdav config is correct".into();
-                    return Err(anyhow::Error::msg(msg));
-                }
-
-                let config = WebDavConfig {
-                    url: verge
-                        .webdav_url
-                        .clone()
-                        .unwrap_or_default()
-                        .trim_end_matches('/')
-                        .into(),
-                    username: verge.webdav_username.clone().unwrap_or_default(),
-                    password: verge.webdav_password.clone().unwrap_or_default(),
-                };
-
-                // 存储配置到 ArcSwapOption
-                self.config.store(Some(Arc::new(config.clone())));
-                config
-            }
+        let config = WebDavConfig {
+            url: verge
+                .webdav_url
+                .clone()
+                .unwrap_or_default()
+                .trim_end_matches('/')
+                .into(),
+            username: verge.webdav_username.clone().unwrap_or_default(),
+            password: verge.webdav_password.clone().unwrap_or_default(),
         };
+        self.config.store(Some(Arc::new(config.clone())));
+        Ok(config)
+    }
 
-        // 创建新的客户端
-        let client = reqwest_dav::ClientBuilder::new()
-            .set_agent(
-                reqwest::Client::builder()
-                    .use_rustls_tls()
-                    .danger_accept_invalid_certs(true)
-                    .timeout(Duration::from_secs(op.timeout()))
-                    .user_agent(format!("clash-verge/{APP_VERSION} ({OS} WebDAV-Client)"))
-                    .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                        // 允许所有请求类型的重定向，包括PUT
-                        if attempt.previous().len() >= 5 {
-                            attempt.error("重定向次数过多")
-                        } else {
-                            attempt.follow()
-                        }
-                    }))
-                    .build()?,
-            )
-            .set_host(config.url.into())
-            .set_auth(reqwest_dav::Auth::Basic(config.username.into(), config.password.into()))
-            .build()?;
+    fn build_dav_client(
+        config: &WebDavConfig,
+        op: Operation,
+        accept_invalid_certs: bool,
+    ) -> Result<reqwest_dav::Client, Error> {
+        let mut agent = reqwest::Client::builder()
+            .use_rustls_tls()
+            .timeout(Duration::from_secs(op.timeout()))
+            .user_agent(format!("clash-verge/{APP_VERSION} ({OS} WebDAV-Client)"))
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() >= 5 {
+                    attempt.error("重定向次数过多")
+                } else {
+                    attempt.follow()
+                }
+            }));
+        if accept_invalid_certs {
+            agent = agent.danger_accept_invalid_certs(true);
+        }
+        Ok(reqwest_dav::ClientBuilder::new()
+            .set_agent(agent.build()?)
+            .set_host(config.url.clone().into())
+            .set_auth(reqwest_dav::Auth::Basic(
+                config.username.clone().into(),
+                config.password.clone().into(),
+            ))
+            .build()?)
+    }
 
-        // 尝试检查目录是否存在，如果不存在尝试创建
+    fn cached_client(
+        cache: &ArcSwap<HashMap<Operation, reqwest_dav::Client>>,
+        op: Operation,
+    ) -> Option<reqwest_dav::Client> {
+        cache.load().get(&op).cloned()
+    }
+
+    fn store_client(
+        cache: &ArcSwap<HashMap<Operation, reqwest_dav::Client>>,
+        op: Operation,
+        client: reqwest_dav::Client,
+    ) {
+        cache.rcu(|clients_map| {
+            let mut new_map = (**clients_map).clone();
+            new_map.insert(op, client);
+            Arc::new(new_map)
+        });
+    }
+
+    async fn get_client(&self, op: Operation) -> Result<reqwest_dav::Client, Error> {
+        if let Some(client) = Self::cached_client(&self.clients, op) {
+            return Ok(client);
+        }
+
+        let config = self.ensure_config().await?;
+        let client = Self::build_dav_client(&config, op, true)?;
+
         if client
             .list(dirs::BACKUP_DIR, reqwest_dav::Depth::Number(0))
             .await
@@ -139,27 +158,30 @@ impl WebDavClient {
                 Ok(_) => logging!(info, Type::Backup, "Successfully created backup directory"),
                 Err(e) => {
                     logging!(warn, Type::Backup, "Warning: Failed to create backup directory: {}", e);
-                    // 清除缓存，强制下次重新尝试
                     self.reset();
                     return Err(anyhow::Error::msg(format!("Failed to create backup directory: {}", e)));
                 }
             }
         }
 
-        {
-            self.clients.rcu(|clients_map| {
-                let mut new_map = (**clients_map).clone();
-                new_map.insert(op, client.clone());
-                Arc::new(new_map)
-            });
-        }
+        Self::store_client(&self.clients, op, client.clone());
+        Ok(client)
+    }
 
+    async fn get_sync_client(&self, op: Operation) -> Result<reqwest_dav::Client, Error> {
+        if let Some(client) = Self::cached_client(&self.strict_clients, op) {
+            return Ok(client);
+        }
+        let config = self.ensure_config().await?;
+        let client = Self::build_dav_client(&config, op, false)?;
+        Self::store_client(&self.strict_clients, op, client.clone());
         Ok(client)
     }
 
     pub fn reset(&self) {
         self.config.store(None);
         self.clients.store(Arc::new(HashMap::new()));
+        self.strict_clients.store(Arc::new(HashMap::new()));
     }
 
     pub async fn upload(&self, file_path: PathBuf, file_name: String) -> Result<(), Error> {
@@ -246,7 +268,7 @@ impl WebDavClient {
 
     /// Ensure an application-owned WebDAV collection exists.
     pub async fn ensure_collection(&self, path: &str) -> Result<(), Error> {
-        let client = self.get_client(Operation::Upload).await?;
+        let client = self.get_sync_client(Operation::Upload).await?;
         match client.mkcol(path).await {
             Ok(_) => Ok(()),
             Err(err) => {
@@ -263,7 +285,7 @@ impl WebDavClient {
 
     /// Upload a small application data object to an explicit WebDAV path.
     pub async fn put_bytes(&self, path: &str, content: Vec<u8>) -> Result<(), Error> {
-        let client = self.get_client(Operation::Upload).await?;
+        let client = self.get_sync_client(Operation::Upload).await?;
         timeout(
             Duration::from_secs(TIMEOUT_UPLOAD),
             client.put(path, content),
@@ -274,7 +296,7 @@ impl WebDavClient {
 
     /// Download a bounded application data object from an explicit WebDAV path.
     pub async fn get_bytes(&self, path: &str, max_bytes: usize) -> Result<Vec<u8>, Error> {
-        let client = self.get_client(Operation::Download).await?;
+        let client = self.get_sync_client(Operation::Download).await?;
         timeout(Duration::from_secs(TIMEOUT_DOWNLOAD), async {
             let mut response = client.get(path).await?;
             if response.content_length().is_some_and(|len| len > max_bytes as u64) {
@@ -294,12 +316,12 @@ impl WebDavClient {
             }
             Ok(content)
         })
-        .await??
+        .await?
     }
 
     /// List files in an application-owned WebDAV collection.
     pub async fn list_files_at(&self, path: &str) -> Result<Vec<ListFile>, Error> {
-        let client = self.get_client(Operation::List).await?;
+        let client = self.get_sync_client(Operation::List).await?;
         let entities = timeout(
             Duration::from_secs(TIMEOUT_LIST),
             client.list(path, reqwest_dav::Depth::Number(1)),

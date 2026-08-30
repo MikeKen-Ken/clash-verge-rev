@@ -1,5 +1,6 @@
 use crate::{
-    config::Config, core::backup::WebDavClient, enhance::connectivity_order, utils::dirs,
+    config::Config, core::backup::WebDavClient, enhance::connectivity_order,
+    utils::{dirs, help},
 };
 use anyhow::{Context, Error};
 use clash_verge_logging::{Type, logging};
@@ -185,15 +186,20 @@ fn snapshot_filename(device_id: &str) -> String {
     format!("{device_id}.json")
 }
 
-fn filename_from_href(href: &str) -> Option<&str> {
-    href.trim_end_matches('/').rsplit('/').next()
+fn filename_from_href(href: &str) -> Option<String> {
+    let decoded = help::get_last_part_and_decode(href.trim_end_matches('/'))?;
+    if decoded.is_empty() {
+        None
+    } else {
+        Some(decoded)
+    }
 }
 
 fn snapshot_matches(snapshot: &DeviceSnapshot, device_id: &str) -> bool {
     snapshot.v == PROTOCOL_VERSION && snapshot.device_id == device_id
 }
 
-fn listed_device_files<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<(String, String)> {
+fn listed_device_ids<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut listed = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for href in hrefs {
@@ -206,17 +212,16 @@ fn listed_device_files<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<(Str
         if !valid_device_id(device_id) || !seen.insert(device_id.to_string()) {
             continue;
         }
-        listed.push((device_id.to_string(), filename.to_string()));
+        listed.push(device_id.to_string());
     }
     listed
 }
 
-fn device_limit_exceeded(listed_ids: &[(String, String)], own_device_id: &str) -> bool {
+fn device_limit_exceeded(listed_ids: &[String], own_device_id: &str) -> bool {
     if listed_ids.len() > MAX_REMOTE_DEVICES {
         return true;
     }
-    !listed_ids.iter().any(|(id, _)| id == own_device_id)
-        && listed_ids.len() >= MAX_REMOTE_DEVICES
+    !listed_ids.iter().any(|id| id == own_device_id) && listed_ids.len() >= MAX_REMOTE_DEVICES
 }
 
 async fn require_https_webdav() -> Result<(), Error> {
@@ -248,7 +253,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
 
     let mut files = client.list_files_at(REMOTE_DEVICES_DIR).await?;
     files.sort_by(|a, b| a.href.cmp(&b.href));
-    let listed_ids = listed_device_files(files.iter().map(|file| file.href.as_str()));
+    let listed_ids = listed_device_ids(files.iter().map(|file| file.href.as_str()));
     if device_limit_exceeded(&listed_ids, &state.device_id) {
         return Err(Error::msg("Too many connectivity sync devices"));
     }
@@ -256,8 +261,8 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     let mut merged = StatsData::new();
     let mut others = StatsData::new();
     let mut seen_devices = std::collections::HashSet::new();
-    for (device_id, filename) in listed_ids {
-        let path = format!("{REMOTE_DEVICES_DIR}/{filename}");
+    for device_id in listed_ids {
+        let path = format!("{REMOTE_DEVICES_DIR}/{}", snapshot_filename(&device_id));
         let bytes = match client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -325,7 +330,14 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     );
     client
         .put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?)
-        .await?;
+        .await
+        .unwrap_or_else(|error| {
+            logging!(
+                info,
+                Type::Network,
+                "Connectivity snapshot upload will retry on the next merge: {error}"
+            );
+        });
 
     Ok(ConnectivitySyncResult {
         device_count: seen_devices.len().max(1),
@@ -405,11 +417,8 @@ mod tests {
 
     #[test]
     fn device_limit_counts_this_installation_before_upload() {
-        let listed: Vec<(String, String)> = (0..MAX_REMOTE_DEVICES)
-            .map(|index| {
-                let id = format!("device-{index}");
-                (id.clone(), format!("{id}.json"))
-            })
+        let listed: Vec<String> = (0..MAX_REMOTE_DEVICES)
+            .map(|index| format!("device-{index}"))
             .collect();
         assert!(device_limit_exceeded(&listed, "new-device"));
         assert!(!device_limit_exceeded(&listed, "device-0"));
@@ -417,18 +426,16 @@ mod tests {
 
     #[test]
     fn lists_unique_valid_device_files() {
-        let listed = listed_device_files([
+        let listed = listed_device_ids([
             "/clash-connectivity-sync/v1/devices/alpha.json",
             "/clash-connectivity-sync/v1/devices/alpha.json",
             "/clash-connectivity-sync/v1/devices/bad.name.json",
+            "/clash-connectivity-sync/v1/devices/gamma%2D2.json",
             "/clash-connectivity-sync/v1/devices/beta.json",
         ]);
         assert_eq!(
             listed,
-            vec![
-                ("alpha".into(), "alpha.json".into()),
-                ("beta".into(), "beta.json".into()),
-            ]
+            vec!["alpha".into(), "gamma-2".into(), "beta".into()]
         );
     }
 }
