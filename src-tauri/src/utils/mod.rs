@@ -12,4 +12,5 @@ pub mod schtasks;
 pub mod server;
 pub mod singleton;
 pub mod tmpl;
+pub mod wall_clock;
 pub mod window_manager;

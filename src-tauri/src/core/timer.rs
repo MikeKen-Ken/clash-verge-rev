@@ -3,7 +3,7 @@ use crate::{
     core::profile_update_retry::ProfileUpdateRetry,
     feat::{self, handle_update_retry_side_effects},
     singleton,
-    utils::resolve::is_resolve_done,
+    utils::{resolve::is_resolve_done, wall_clock},
 };
 use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging, logging_error};
@@ -19,7 +19,10 @@ use std::{
     },
     time::Duration,
 };
-use tokio::time::{sleep, timeout};
+use tokio::{
+    sync::Mutex as AsyncMutex,
+    time::{sleep, timeout},
+};
 
 type TaskID = u64;
 
@@ -43,6 +46,9 @@ pub struct Timer {
 
     /// Flag to mark if timer is initialized - atomic for better performance
     pub initialized: AtomicBool,
+
+    /// Serialize timer-map and DelayTimer registration changes across refresh and task completion.
+    schedule_lock: AsyncMutex<()>,
 }
 
 // Use singleton macro
@@ -55,6 +61,7 @@ impl Timer {
             timer_map: Arc::new(RwLock::new(HashMap::new())),
             timer_count: AtomicU64::new(1),
             initialized: AtomicBool::new(false),
+            schedule_lock: AsyncMutex::new(()),
         }
     }
 
@@ -95,61 +102,14 @@ impl Timer {
             }
         }
 
-        let cur_timestamp = chrono::Local::now().timestamp();
-
-        // Collect profiles that need immediate update
-        let profiles_to_update = if let Some(items) = Config::profiles().await.latest_arc().get_items() {
-            items
-                .iter()
-                .filter_map(|item| {
-                    let allow_auto_update = item.option.as_ref()?.allow_auto_update.unwrap_or_default();
-                    if !allow_auto_update {
-                        return None;
-                    }
-
-                    let interval = item.option.as_ref()?.update_interval? as i64;
-                    let updated = item.updated? as i64;
-                    let uid = item.uid.as_ref()?;
-
-                    if interval > 0 && cur_timestamp - updated >= interval * 60 {
-                        logging!(info, Type::Timer, "需要立即更新的配置: uid={}", uid);
-                        Some(uid.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<String>>()
-        } else {
-            Vec::new()
-        };
-
-        // Advance tasks outside of locks to minimize lock contention
-        if !profiles_to_update.is_empty() {
-            logging!(
-                info,
-                Type::Timer,
-                "需要立即更新的配置数量: {}",
-                profiles_to_update.len()
-            );
-            let timer_map = self.timer_map.read();
-            let delay_timer = self.delay_timer.write();
-
-            for uid in profiles_to_update {
-                if let Some(task) = timer_map.get(&uid) {
-                    logging!(info, Type::Timer, "立即执行任务: uid={}", uid);
-                    if let Err(e) = delay_timer.advance_task(task.task_id) {
-                        logging!(warn, Type::Timer, "Failed to advance task {}: {}", uid, e);
-                    }
-                }
-            }
-        }
-
         logging!(info, Type::Timer, "Timer initialization completed");
         Ok(())
     }
 
     /// Refresh timer tasks with better error handling
     pub async fn refresh(&self) -> Result<()> {
+        let _schedule_guard = self.schedule_lock.lock().await;
+
         // Generate diff outside of lock to minimize lock contention
         let diff_map = self.gen_diff().await;
 
@@ -238,9 +198,14 @@ impl Timer {
         } // Locks are dropped here
 
         // Now perform async operations without holding locks
-        let delay_timer = self.delay_timer.write();
+        let mut prepared = Vec::new();
         for (uid, tid, interval) in operations_to_add {
-            if let Err(e) = self.add_task(&delay_timer, uid.clone(), tid, interval) {
+            let run_at = self.next_run_at(&uid, interval, false).await;
+            prepared.push((uid, tid, interval, run_at));
+        }
+        let delay_timer = self.delay_timer.write();
+        for (uid, tid, interval, run_at) in prepared {
+            if let Err(e) = self.add_task(&delay_timer, uid.clone(), tid, interval, run_at) {
                 logging_error!(Type::Timer, "Failed to add task for uid {}: {}", uid, e);
                 // Rollback on failure - remove from timer_map
                 self.timer_map.write().remove(&uid);
@@ -352,21 +317,29 @@ impl Timer {
     }
 
     /// Add a timer task with better error handling
-    fn add_task(&self, delay_timer: &DelayTimer, uid: String, tid: TaskID, minutes: u64) -> Result<()> {
+    fn add_task(
+        &self,
+        delay_timer: &DelayTimer,
+        uid: String,
+        tid: TaskID,
+        minutes: u64,
+        run_at_secs: u64,
+    ) -> Result<()> {
         logging!(
             info,
             Type::Timer,
-            "Adding task: uid={}, id={}, interval={}min",
+            "Adding task: uid={}, id={}, interval={}min, run_at={}",
             uid,
             tid,
-            minutes
+            minutes,
+            run_at_secs
         );
 
         // Create a task with reasonable retries and backoff
         let task = TaskBuilder::default()
             .set_task_id(tid)
             .set_maximum_parallel_runnable_num(1)
-            .set_frequency_repeated_by_minutes(minutes)
+            .set_frequency_once_by_timestamp_seconds(run_at_secs)
             .spawn_async_routine(move || {
                 let uid = uid.clone();
                 Box::pin(async move {
@@ -379,6 +352,90 @@ impl Timer {
         delay_timer.add_task(task).context("failed to add timer task")?;
 
         Ok(())
+    }
+
+    async fn next_run_at(&self, uid: &str, interval_minutes: u64, just_completed: bool) -> u64 {
+        let updated = self.profile_updated_at(uid).await;
+        let now = chrono::Local::now().timestamp();
+        wall_clock::next_unix_timestamp(updated, interval_minutes as i64 * 60, now, just_completed)
+    }
+
+    async fn profile_updated_at(&self, uid: &str) -> i64 {
+        let items = Config::profiles().await.latest_arc();
+        items
+            .get_items()
+            .into_iter()
+            .flatten()
+            .find(|item| item.uid.as_deref() == Some(uid))
+            .and_then(|item| item.updated)
+            .map(|value| value as i64)
+            .unwrap_or(0)
+    }
+
+    async fn schedule_next(uid: &String) {
+        let timer = Self::global();
+        let _schedule_guard = timer.schedule_lock.lock().await;
+        let (old_tid, interval) = {
+            let timer_map = timer.timer_map.read();
+            match timer_map.get(uid) {
+                Some(task) => (task.task_id, task.interval_minutes),
+                None => return,
+            }
+        };
+        {
+            let delay_timer = timer.delay_timer.write();
+            if let Err(e) = delay_timer.remove_task(old_tid) {
+                if !Self::is_missing_delay_timer_task_error(&e) {
+                    logging!(
+                        warn,
+                        Type::Timer,
+                        "Failed to remove task {} for {}: {}",
+                        old_tid,
+                        uid,
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+        let run_at = timer.next_run_at(uid, interval, true).await;
+        let tid = timer.timer_count.fetch_add(1, Ordering::Relaxed);
+        let delay_timer = timer.delay_timer.write();
+        if let Err(e) = timer.add_task(&delay_timer, uid.clone(), tid, interval, run_at) {
+            logging_error!(
+                Type::Timer,
+                "Failed to reschedule task for uid {}: {}",
+                uid,
+                e
+            );
+            drop(delay_timer);
+            let mut timer_map = timer.timer_map.write();
+            if timer_map.get(uid).is_some_and(|task| task.task_id == old_tid) {
+                timer_map.remove(uid);
+            }
+            return;
+        }
+        drop(delay_timer);
+
+        let mut timer_map = timer.timer_map.write();
+        match timer_map.get_mut(uid) {
+            Some(task) if task.task_id == old_tid => task.task_id = tid,
+            _ => {
+                drop(timer_map);
+                if let Err(e) = timer.delay_timer.write().remove_task(tid) {
+                    if !Self::is_missing_delay_timer_task_error(&e) {
+                        logging!(
+                            warn,
+                            Type::Timer,
+                            "Failed to remove orphaned rescheduled task {} for {}: {}",
+                            tid,
+                            uid,
+                            e
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Get next update time for a profile
@@ -491,6 +548,7 @@ impl Timer {
 
         Self::emit_update_event(uid, false);
         handle_update_retry_side_effects(uid, result);
+        Self::schedule_next(uid).await;
     }
 
     async fn wait_until_resolve_done(max_wait: Duration) {

@@ -21,6 +21,12 @@ pub async fn merge_connectivity_stats_webdav() -> CmdResult<feat::ConnectivitySy
         .map_err(|error| error.to_string().into())
 }
 
+/// Persisted last successful merge time in unix milliseconds.
+#[tauri::command]
+pub async fn connectivity_last_sync_at() -> CmdResult<i64> {
+    feat::last_connectivity_sync_at().await.map_err(|error| error.to_string().into())
+}
+
 /// Forget imported counters after the user clears all statistics or one node.
 #[tauri::command]
 pub async fn reset_connectivity_stats_sync_baseline(

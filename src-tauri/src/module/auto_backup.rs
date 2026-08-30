@@ -2,7 +2,7 @@ use crate::{
     config::{Config, IVerge},
     feat::create_local_backup_with_namer,
     process::AsyncHandler,
-    utils::dirs::local_backup_dir,
+    utils::{dirs::local_backup_dir, wall_clock},
 };
 use anyhow::Result;
 use chrono::Local;
@@ -10,7 +10,6 @@ use clash_verge_logging::{Type, logging};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use std::{
-    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicI64, Ordering},
@@ -113,6 +112,7 @@ impl AutoBackupManager {
             *self.settings.write() = settings;
         }
         let _ = self.settings_tx.send(settings);
+        self.last_backup.store(latest_auto_backup_unix(None).await, Ordering::Release);
         self.maybe_start_runner(settings);
         Ok(())
     }
@@ -159,8 +159,10 @@ impl AutoBackupManager {
 
     async fn run_scheduler(rx: &mut watch::Receiver<AutoBackupSettings>) {
         let mut current = *rx.borrow();
+        let mut just_ran = false;
         loop {
             if !current.schedule_enabled {
+                just_ran = false;
                 if rx.changed().await.is_err() {
                     break;
                 }
@@ -168,12 +170,23 @@ impl AutoBackupManager {
                 continue;
             }
 
-            let duration = Duration::from_secs(current.interval_hours.saturating_mul(3600));
-            let sleeper = tokio::time::sleep(duration);
+            let duration_secs = current.interval_hours.saturating_mul(3600);
+            let last = latest_auto_backup_unix(Some(AutoBackupTrigger::Scheduled.slug())).await;
+            let now = Local::now().timestamp();
+            let delay_secs = wall_clock::next_unix_timestamp(
+                last,
+                duration_secs as i64,
+                now,
+                just_ran,
+            )
+            .saturating_sub(now as u64)
+            .max(1);
+            let sleeper = tokio::time::sleep(Duration::from_secs(delay_secs));
             tokio::pin!(sleeper);
 
             tokio::select! {
                 _ = &mut sleeper => {
+                    just_ran = true;
                     if let Err(err) = Self::global()
                         .execute_trigger(AutoBackupTrigger::Scheduled)
                         .await
@@ -189,6 +202,7 @@ impl AutoBackupManager {
                     if changed.is_err() {
                         break;
                     }
+                    just_ran = false;
                     current = *rx.borrow();
                 }
             }
@@ -247,41 +261,46 @@ fn append_auto_suffix(file_name: &str, slug: &str) -> String {
     }
 }
 
-async fn cleanup_auto_backups() -> Result<()> {
-    if AUTO_BACKUP_KEEP == 0 {
-        return Ok(());
-    }
+async fn latest_auto_backup_unix(slug: Option<&str>) -> i64 {
+    let Ok(files) = list_auto_backup_files().await else {
+        return 0;
+    };
+    files
+        .into_iter()
+        .filter(|(name, _)| match slug {
+            Some(slug) => name.contains(&format!("{AUTO_MARKER}{slug}")),
+            None => true,
+        })
+        .map(|(_, ts)| ts as i64)
+        .max()
+        .unwrap_or(0)
+}
 
+async fn list_auto_backup_files() -> Result<Vec<(String, u64)>> {
     let backup_dir = local_backup_dir()?;
     if !backup_dir.exists() {
-        return Ok(());
+        return Ok(Vec::new());
     }
-
     let mut entries = match fs::read_dir(&backup_dir).await {
         Ok(dir) => dir,
         Err(err) => {
             logging!(warn, Type::Backup, "Failed to read backup directory: {err:#?}");
-            return Ok(());
+            return Ok(Vec::new());
         }
     };
-
-    let mut files: Vec<(PathBuf, u64)> = Vec::new();
-
+    let mut files = Vec::new();
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if !path.is_file() {
             continue;
         }
-
         let file_name = match entry.file_name().into_string() {
             Ok(name) => name,
             Err(_) => continue,
         };
-
         if !file_name.contains(AUTO_MARKER) {
             continue;
         }
-
         let modified = entry
             .metadata()
             .await
@@ -290,17 +309,26 @@ async fn cleanup_auto_backups() -> Result<()> {
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map(|dur| dur.as_secs())
             .unwrap_or(0);
+        files.push((file_name, modified));
+    }
+    Ok(files)
+}
 
-        files.push((path, modified));
+async fn cleanup_auto_backups() -> Result<()> {
+    if AUTO_BACKUP_KEEP == 0 {
+        return Ok(());
     }
 
+    let mut files = list_auto_backup_files().await?;
     if files.len() <= AUTO_BACKUP_KEEP {
         return Ok(());
     }
 
     files.sort_by_key(|(_, ts)| *ts);
     let remove_count = files.len() - AUTO_BACKUP_KEEP;
-    for (path, _) in files.into_iter().take(remove_count) {
+    let backup_dir = local_backup_dir()?;
+    for (file_name, _) in files.into_iter().take(remove_count) {
+        let path = backup_dir.join(file_name);
         if let Err(err) = fs::remove_file(&path).await {
             logging!(
                 warn,

@@ -293,6 +293,11 @@ async fn require_https_webdav() -> Result<(), Error> {
     Ok(())
 }
 
+pub async fn last_connectivity_sync_at() -> Result<i64, Error> {
+    let _guard = sync_lock().lock().await;
+    Ok(load_state()?.last_sync_at)
+}
+
 pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, Error> {
     let _guard = sync_lock().lock().await;
     require_https_webdav().await?;

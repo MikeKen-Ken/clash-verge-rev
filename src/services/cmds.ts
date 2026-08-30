@@ -718,6 +718,10 @@ export async function mergeConnectivityStatsWebdav() {
   );
 }
 
+export async function connectivityLastSyncAt() {
+  return invoke<number>("connectivity_last_sync_at");
+}
+
 export async function listLocalBackup() {
   return invoke<ILocalBackupFile[]>("list_local_backup");
 }

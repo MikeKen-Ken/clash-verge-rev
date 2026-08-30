@@ -1,10 +1,10 @@
 import {
+  connectivityLastSyncAt,
   mergeConnectivityStatsWebdav,
   type ConnectivityWebdavSyncResult,
 } from "@/services/cmds";
 import { hydrateConnectivityStatsFromDisk } from "@/services/proxy-connectivity-stats";
 
-const LAST_SYNC_KEY = "proxy.connectivityWebdavLastSyncAt";
 const MIN_INTERVAL_HOURS = 1;
 const DEFAULT_INTERVAL_HOURS = 24;
 
@@ -16,18 +16,6 @@ function normalizedIntervalHours(value?: number): number {
     MIN_INTERVAL_HOURS,
     Math.round(value ?? DEFAULT_INTERVAL_HOURS),
   );
-}
-
-function readLastSyncAt(): number {
-  if (typeof localStorage === "undefined") return 0;
-  const value = Number(localStorage.getItem(LAST_SYNC_KEY) ?? 0);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function writeLastSyncAt(value: number): void {
-  if (typeof localStorage !== "undefined") {
-    localStorage.setItem(LAST_SYNC_KEY, String(value));
-  }
 }
 
 function isHttpsWebdavUrl(url?: string | null): boolean {
@@ -67,7 +55,6 @@ export async function mergeConnectivityStatsNow(): Promise<ConnectivityWebdavSyn
   activeSync = (async () => {
     const result = await mergeConnectivityStatsWebdav();
     await hydrateConnectivityStatsFromDisk();
-    writeLastSyncAt(result.lastSyncAt || Date.now());
     return result;
   })().finally(() => {
     activeSync = null;
@@ -79,7 +66,8 @@ export async function mergeConnectivityStatsIfDue(
   intervalHours?: number,
 ): Promise<void> {
   const intervalMs = normalizedIntervalHours(intervalHours) * 60 * 60 * 1000;
-  if (Date.now() - readLastSyncAt() < intervalMs) return;
+  const lastSyncAt = await connectivityLastSyncAt();
+  if (Date.now() - lastSyncAt < intervalMs) return;
   await mergeConnectivityStatsNow();
 }
 
