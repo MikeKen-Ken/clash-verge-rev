@@ -4,8 +4,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import {
-  flushConnectivityPersistenceSync,
-  resetConnectivityWebdavBaseline,
+  publishConnectivityReset,
+  runConnectivityPersistenceTransaction,
   scheduleConnectivityPersistenceSync,
 } from "@/services/proxy-connectivity-sync";
 
@@ -188,9 +188,13 @@ function loadStore(): Record<string, ProxyConnectivityEntry> {
     }
     const maybeV2 = parsed as StatsFileV2;
     const loaded =
-      maybeV2.v === STORE_VERSION && maybeV2.data && typeof maybeV2.data === "object"
+      maybeV2.v === STORE_VERSION &&
+      maybeV2.data &&
+      typeof maybeV2.data === "object"
         ? maybeV2.data
-        : migrateLegacyStore(parsed as Record<string, LegacyProxyConnectivityStats>);
+        : migrateLegacyStore(
+            parsed as Record<string, LegacyProxyConnectivityStats>,
+          );
     const { store, changed } = pruneEmptyProxyEntries(loaded);
     cachedStore = store;
     if (changed || maybeV2.v !== STORE_VERSION) {
@@ -247,22 +251,32 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
   }
 }
 
-function parseStatsPayload(raw: string | null | undefined): Record<string, ProxyConnectivityEntry> {
+function parseStatsPayload(
+  raw: string | null | undefined,
+): Record<string, ProxyConnectivityEntry> {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed !== "object" || parsed === null) return {};
     const maybeV2 = parsed as StatsFileV2;
-    if (maybeV2.v === STORE_VERSION && maybeV2.data && typeof maybeV2.data === "object") {
+    if (
+      maybeV2.v === STORE_VERSION &&
+      maybeV2.data &&
+      typeof maybeV2.data === "object"
+    ) {
       return maybeV2.data;
     }
-    return migrateLegacyStore(parsed as Record<string, LegacyProxyConnectivityStats>);
+    return migrateLegacyStore(
+      parsed as Record<string, LegacyProxyConnectivityStats>,
+    );
   } catch {
     return {};
   }
 }
 
-export function getConnectivityStats(proxyName: string): ProxyConnectivityStats {
+export function getConnectivityStats(
+  proxyName: string,
+): ProxyConnectivityStats {
   if (!proxyName) return { success: 0, failure: 0, delaySum: 0 };
   const store = loadStore();
   const entry = store[proxyName];
@@ -331,9 +345,15 @@ export function computeSmoothedEffectiveAvgDelay(
 }
 
 /** score = 1 / (1 + avg / D0)，越高越靠前 */
-export function computeConnectivityScoreFromAvgDelay(avgDelayMs: number): number {
+export function computeConnectivityScoreFromAvgDelay(
+  avgDelayMs: number,
+): number {
   if (!Number.isFinite(avgDelayMs) || avgDelayMs < 0) {
-    return 1 / (1 + CONNECTIVITY_FALLBACK_DELAY_MS / CONNECTIVITY_SCORE_REFERENCE_DELAY_MS);
+    return (
+      1 /
+      (1 +
+        CONNECTIVITY_FALLBACK_DELAY_MS / CONNECTIVITY_SCORE_REFERENCE_DELAY_MS)
+    );
   }
   return 1 / (1 + avgDelayMs / CONNECTIVITY_SCORE_REFERENCE_DELAY_MS);
 }
@@ -392,16 +412,17 @@ export function recordGroupDelayResults(
 
 /** 一键清空全部节点的测速联通统计（写盘完成后再返回，避免随后 hydrate 读到旧数据） */
 export async function clearConnectivityStats(): Promise<void> {
-  cachedStore = {};
   if (typeof window === "undefined") return;
-  try {
-    const payload: StatsFileV2 = { v: STORE_VERSION, data: {} };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    await flushConnectivityPersistenceSync();
-    await resetConnectivityWebdavBaseline();
-  } catch {
-    // ignore localStorage / sync failure
-  }
+  await runConnectivityPersistenceTransaction(async () => {
+    await publishConnectivityReset();
+    cachedStore = {};
+    try {
+      const payload: StatsFileV2 = { v: STORE_VERSION, data: {} };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // The native reset is authoritative even if the UI cache cannot persist.
+    }
+  });
 }
 
 /** 清空单个节点的测速联通统计（写盘完成后再返回） */
@@ -411,17 +432,18 @@ export async function clearConnectivityStatsForProxy(
   if (!proxyName) return;
   const store = { ...loadStore() };
   if (!(proxyName in store)) return;
-  delete store[proxyName];
-  cachedStore = store;
   if (typeof window === "undefined") return;
-  try {
-    const payload: StatsFileV2 = { v: STORE_VERSION, data: store };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    await flushConnectivityPersistenceSync();
-    await resetConnectivityWebdavBaseline(proxyName);
-  } catch {
-    // ignore localStorage / sync failure
-  }
+  await runConnectivityPersistenceTransaction(async () => {
+    await publishConnectivityReset(proxyName);
+    delete store[proxyName];
+    cachedStore = store;
+    try {
+      const payload: StatsFileV2 = { v: STORE_VERSION, data: store };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // The native reset is authoritative even if the UI cache cannot persist.
+    }
+  });
 }
 
 /** 面板列表行：分数 + 加权成功/失败 + 平滑有效延迟 */

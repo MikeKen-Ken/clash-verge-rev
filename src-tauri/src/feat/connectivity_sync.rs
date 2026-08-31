@@ -1,23 +1,30 @@
 use crate::{
     config::Config, core::backup::WebDavClient, enhance::connectivity_order,
-    utils::{dirs, help},
+    utils::dirs,
 };
 use anyhow::{Context, Error};
 use clash_verge_logging::{Type, logging};
 use chrono::{Duration, Local, NaiveDate, Utc};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, io::Write as _, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    io::Write as _,
+    path::PathBuf,
+};
 
-const PROTOCOL_VERSION: u8 = 1;
+mod protocol;
+use protocol::*;
+
+const PROTOCOL_VERSION: u8 = 2;
 const STORE_VERSION: u8 = 2;
 const RETENTION_DAYS: i64 = 30;
-const MAX_REMOTE_DEVICES: usize = 128;
 const MAX_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SAFE_COUNT: u64 = 9_007_199_254_740_991;
 const REMOTE_ROOT: &str = "clash-connectivity-sync";
-const REMOTE_VERSION_DIR: &str = "clash-connectivity-sync/v1";
-const REMOTE_DEVICES_DIR: &str = "clash-connectivity-sync/v1/devices";
+const REMOTE_VERSION_DIR: &str = "clash-connectivity-sync/v2";
+const REMOTE_DEVICES_DIR: &str = "clash-connectivity-sync/v2/devices";
 const LOCAL_STATE_FILE: &str = "connectivity-sync-state.json";
 
 fn sync_lock() -> &'static tokio::sync::Mutex<()> {
@@ -61,16 +68,8 @@ struct StatsFile {
 struct LocalSyncMetadata {
     #[serde(default)]
     last_others: StatsData,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DeviceSnapshot {
-    v: u8,
-    device_id: String,
-    updated_at: i64,
-    #[serde(default)]
-    data: StatsData,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    reset_watermarks: ResetWatermarks,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -79,7 +78,11 @@ struct SyncState {
     v: u8,
     device_id: String,
     #[serde(default)]
+    revision: u64,
+    #[serde(default)]
     last_others: StatsData,
+    #[serde(default)]
+    resets: ResetWatermarks,
     #[serde(default)]
     last_sync_at: i64,
 }
@@ -87,6 +90,7 @@ struct SyncState {
 struct LocalMergeOutcome {
     own: StatsData,
     merged: StatsData,
+    resets: ResetWatermarks,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,13 +110,17 @@ fn load_state() -> Result<SyncState, Error> {
     let mut state = fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str::<SyncState>(&raw).ok())
-        .filter(|state| state.v == PROTOCOL_VERSION && valid_device_id(&state.device_id))
+        .filter(|state| {
+            (state.v == 1 || state.v == PROTOCOL_VERSION) && valid_device_id(&state.device_id)
+        })
         .unwrap_or_else(|| SyncState {
             v: PROTOCOL_VERSION,
             device_id: nanoid::nanoid!(24),
             ..SyncState::default()
         });
+    state.v = PROTOCOL_VERSION;
     prune(&mut state.last_others);
+    state.resets = sanitize_reset_watermarks(&state.resets)?;
     Ok(state)
 }
 
@@ -131,14 +139,6 @@ fn save_state(state: &SyncState) -> Result<(), Error> {
     Ok(())
 }
 
-fn valid_device_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-}
-
 fn parse_local_stats_file(raw: &str) -> Result<StatsFile, Error> {
     let mut file: StatsFile = serde_json::from_str(raw).context("invalid local statistics")?;
     if file.v != STORE_VERSION {
@@ -147,6 +147,7 @@ fn parse_local_stats_file(raw: &str) -> Result<StatsFile, Error> {
     prune(&mut file.data);
     if let Some(sync) = file.sync.as_mut() {
         prune(&mut sync.last_others);
+        sync.reset_watermarks = sanitize_reset_watermarks(&sync.reset_watermarks)?;
     }
     Ok(file)
 }
@@ -212,14 +213,30 @@ fn prepare_local_merge(
     current_raw: &str,
     fallback_others: &StatsData,
     remote_others: &StatsData,
+    active_resets: &ResetWatermarks,
 ) -> Result<(String, LocalMergeOutcome), Error> {
-    let current = parse_local_stats_file(current_raw)?;
-    let baseline = current
+    let mut current = parse_local_stats_file(current_raw)?;
+    let embedded_resets = current
         .sync
         .as_ref()
-        .map(|sync| &sync.last_others)
-        .unwrap_or(fallback_others);
-    let mut own = subtract(&current.data, baseline);
+        .map(|sync| sync.reset_watermarks.clone())
+        .unwrap_or_default();
+    let active_resets = merge_reset_watermarks([&embedded_resets, active_resets])?;
+    let mut baseline = current
+        .sync
+        .as_ref()
+        .map(|sync| sync.last_others.clone())
+        .unwrap_or_else(|| fallback_others.clone());
+    for (name, generation) in &active_resets {
+        if embedded_resets
+            .get(name)
+            .map_or(true, |previous| generation > previous)
+        {
+            current.data.remove(name);
+            baseline.remove(name);
+        }
+    }
+    let mut own = subtract(&current.data, &baseline);
     prune(&mut own);
     let mut merged = own.clone();
     add_into(&mut merged, remote_others);
@@ -230,54 +247,17 @@ fn prepare_local_merge(
         data: merged.clone(),
         sync: Some(LocalSyncMetadata {
             last_others: remote_others.clone(),
+            reset_watermarks: active_resets.clone(),
         }),
     };
     Ok((
         serde_json::to_string(&replacement)?,
-        LocalMergeOutcome { own, merged },
+        LocalMergeOutcome {
+            own,
+            merged,
+            resets: active_resets,
+        },
     ))
-}
-
-fn snapshot_filename(device_id: &str) -> String {
-    format!("{device_id}.json")
-}
-
-fn filename_from_href(href: &str) -> Option<String> {
-    let decoded = help::get_last_part_and_decode(href.trim_end_matches('/'))?;
-    if decoded.is_empty() {
-        None
-    } else {
-        Some(decoded)
-    }
-}
-
-fn snapshot_matches(snapshot: &DeviceSnapshot, device_id: &str) -> bool {
-    snapshot.v == PROTOCOL_VERSION && snapshot.device_id == device_id
-}
-
-fn listed_device_ids<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<String> {
-    let mut listed = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for href in hrefs {
-        let Some(filename) = filename_from_href(href) else {
-            continue;
-        };
-        let Some(device_id) = filename.strip_suffix(".json") else {
-            continue;
-        };
-        if !valid_device_id(device_id) || !seen.insert(device_id.to_string()) {
-            continue;
-        }
-        listed.push(device_id.to_string());
-    }
-    listed
-}
-
-fn device_limit_exceeded(listed_ids: &[String], own_device_id: &str) -> bool {
-    if listed_ids.len() > MAX_REMOTE_DEVICES {
-        return true;
-    }
-    !listed_ids.iter().any(|id| id == own_device_id) && listed_ids.len() >= MAX_REMOTE_DEVICES
 }
 
 async fn require_https_webdav() -> Result<(), Error> {
@@ -309,61 +289,97 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     let mut state = load_state()?;
     let mut files = client.list_files_at(REMOTE_DEVICES_DIR).await?;
     files.sort_by(|a, b| a.href.cmp(&b.href));
-    let listed_ids = listed_device_ids(files.iter().map(|file| file.href.as_str()));
-    if device_limit_exceeded(&listed_ids, &state.device_id) {
+    let listed = listed_snapshot_refs(files.iter().map(|file| file.href.as_str()));
+    if device_limit_exceeded(&listed, &state.device_id) {
         return Err(Error::msg("Too many connectivity sync devices"));
     }
 
-    let mut remote_others = StatsData::new();
-    let mut seen_devices = std::collections::HashSet::new();
-    for device_id in listed_ids {
-        let path = format!("{REMOTE_DEVICES_DIR}/{}", snapshot_filename(&device_id));
-        let bytes = match client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                logging!(
-                    info,
-                    Type::Network,
-                    "Skipping connectivity snapshot {device_id}: {error}"
-                );
-                continue;
-            }
-        };
-        let mut snapshot = match serde_json::from_slice::<DeviceSnapshot>(&bytes) {
-            Ok(snapshot) if snapshot_matches(&snapshot, &device_id) => snapshot,
-            Ok(_) => {
-                logging!(
-                    info,
-                    Type::Network,
-                    "Skipping connectivity snapshot {device_id}: identity mismatch"
-                );
-                continue;
-            }
-            Err(error) => {
-                logging!(
-                    info,
-                    Type::Network,
-                    "Skipping connectivity snapshot {device_id}: {error}"
-                );
-                continue;
-            }
-        };
-        seen_devices.insert(device_id.clone());
-        prune(&mut snapshot.data);
-        if device_id != state.device_id {
-            add_into(&mut remote_others, &snapshot.data);
+    let mut references_by_device: HashMap<String, Vec<RemoteSnapshotRef>> = HashMap::new();
+    for reference in listed {
+        references_by_device
+            .entry(reference.device_id.clone())
+            .or_default()
+            .push(reference);
+    }
+
+    let mut newest_by_device: HashMap<String, DeviceSnapshot> = HashMap::new();
+    for (device_id, references) in references_by_device {
+        let mut candidates = Vec::with_capacity(references.len());
+        for reference in references {
+            let path = format!(
+                "{REMOTE_DEVICES_DIR}/{}",
+                snapshot_filename(&reference.device_id, reference.slot)
+            );
+            let bytes = match client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    logging!(
+                        info,
+                        Type::Network,
+                        "Skipping connectivity device {device_id}: unreadable slot: {error}"
+                    );
+                    candidates.push(None);
+                    break;
+                }
+            };
+            let mut snapshot = match serde_json::from_slice::<DeviceSnapshot>(&bytes) {
+                Ok(snapshot) if snapshot_matches(&snapshot, &reference, PROTOCOL_VERSION) => {
+                    snapshot
+                }
+                Ok(_) => {
+                    logging!(
+                        info,
+                        Type::Network,
+                        "Skipping connectivity device {device_id}: invalid slot identity"
+                    );
+                    candidates.push(None);
+                    break;
+                }
+                Err(error) => {
+                    logging!(
+                        info,
+                        Type::Network,
+                        "Skipping connectivity device {device_id}: invalid slot: {error}"
+                    );
+                    candidates.push(None);
+                    break;
+                }
+            };
+            prune(&mut snapshot.data);
+            candidates.push(Some(snapshot));
+        }
+        if let Some(newest) = newest_complete_snapshot(candidates) {
+            newest_by_device.insert(device_id, newest);
         }
     }
 
-    seen_devices.insert(state.device_id.clone());
+    let local_raw = connectivity_order::read_connectivity_stats_file().map_err(Error::msg)?;
+    let local_resets = parse_local_stats_file(&local_raw)?
+        .sync
+        .map(|sync| sync.reset_watermarks)
+        .unwrap_or_default();
+    let active_resets = merge_reset_watermarks(
+        [&state.resets, &local_resets]
+            .into_iter()
+            .chain(newest_by_device.values().map(|item| &item.resets)),
+    )?;
+    let mut remote_others = StatsData::new();
+    for (device_id, snapshot) in &mut newest_by_device {
+        filter_snapshot_data(snapshot, &active_resets);
+        if device_id != &state.device_id {
+            add_into(&mut remote_others, &snapshot.data);
+        }
+    }
     prune(&mut remote_others);
     let fallback_others = state.last_others.clone();
     let transaction_others = remote_others.clone();
+    let transaction_resets = active_resets.clone();
     let local_merge = connectivity_order::transact_connectivity_stats_file(|current_raw| {
         let (replacement, outcome) = prepare_local_merge(
             current_raw,
             &fallback_others,
             &transaction_others,
+            &transaction_resets,
         )
         .map_err(|error| error.to_string())?;
         Ok((replacement, outcome))
@@ -371,61 +387,92 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     .map_err(Error::msg)?;
     let now = Utc::now().timestamp_millis();
 
-    state.last_others = remote_others;
-    state.last_sync_at = now;
+    // Keep reset filtering monotonic across an upload failure without marking
+    // the merge successful or committing its revision/imported baseline.
+    state.resets = local_merge.resets.clone();
     save_state(&state)?;
+
+    let own_remote_revision = newest_by_device
+        .get(&state.device_id)
+        .map(|snapshot| snapshot.revision)
+        .unwrap_or_default();
+    let revision = state.revision.max(own_remote_revision).saturating_add(1);
+    if revision > MAX_SAFE_COUNT {
+        return Err(Error::msg("connectivity snapshot revision overflow"));
+    }
+    let slot = (revision % SNAPSHOT_SLOT_COUNT as u64) as u8;
 
     let own_snapshot = DeviceSnapshot {
         v: PROTOCOL_VERSION,
         device_id: state.device_id.clone(),
+        revision,
+        slot,
         updated_at: now,
+        resets: local_merge.resets.clone(),
+        generations: generations_for(&local_merge.own, &local_merge.resets),
         data: local_merge.own,
     };
     let own_path = format!(
         "{REMOTE_DEVICES_DIR}/{}",
-        snapshot_filename(&state.device_id)
+        snapshot_filename(&state.device_id, slot)
     );
     client
         .put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?)
-        .await
-        .unwrap_or_else(|error| {
-            logging!(
-                info,
-                Type::Network,
-                "Connectivity snapshot upload will retry on the next merge: {error}"
-            );
-        });
+        .await?;
+
+    state.revision = revision;
+    state.last_others = remote_others;
+    state.resets = local_merge.resets;
+    state.last_sync_at = now;
+    save_state(&state)?;
 
     Ok(ConnectivitySyncResult {
-        device_count: seen_devices.len().max(1),
+        device_count: newest_by_device.len().max(1),
         proxy_count: local_merge.merged.len(),
         last_sync_at: now,
     })
 }
 
-pub async fn reset_connectivity_sync_baseline(proxy_name: Option<&str>) -> Result<(), Error> {
+pub async fn reset_connectivity_statistics(proxy_name: Option<&str>) -> Result<(), Error> {
     let _guard = sync_lock().lock().await;
     let mut state = load_state()?;
     let fallback_others = state.last_others.clone();
-    connectivity_order::transact_connectivity_stats_file(|current_raw| {
-        let mut current = parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
-        let sync = current.sync.get_or_insert_with(|| LocalSyncMetadata {
-            last_others: fallback_others,
-        });
-        if let Some(name) = proxy_name.filter(|name| !name.is_empty()) {
-            sync.last_others.remove(name);
-        } else {
-            sync.last_others.clear();
-        }
-        let replacement = serde_json::to_string(&current).map_err(|error| error.to_string())?;
-        Ok((replacement, ()))
-    })
-    .map_err(Error::msg)?;
-    if let Some(name) = proxy_name.filter(|name| !name.is_empty()) {
-        state.last_others.remove(name);
-    } else {
-        state.last_others.clear();
-    }
+    let device_id = state.device_id.clone();
+    let state_resets = state.resets.clone();
+    let (next_others, next_resets) =
+        connectivity_order::transact_connectivity_stats_file(|current_raw| {
+            let mut current =
+                parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
+            let embedded = current.sync.take().unwrap_or_else(|| LocalSyncMetadata {
+                last_others: fallback_others.clone(),
+                reset_watermarks: ResetWatermarks::new(),
+            });
+            let active = merge_reset_watermarks([&state_resets, &embedded.reset_watermarks])
+                .map_err(|error| error.to_string())?;
+            let names = reset_names(
+                proxy_name,
+                &current.data,
+                &embedded.last_others,
+                &active,
+            );
+            let resets = advance_reset_watermarks(&active, names.iter().cloned(), &device_id)
+                .map_err(|error| error.to_string())?;
+            let mut last_others = embedded.last_others;
+            for name in &names {
+                current.data.remove(name);
+                last_others.remove(name);
+            }
+            current.sync = Some(LocalSyncMetadata {
+                last_others: last_others.clone(),
+                reset_watermarks: resets.clone(),
+            });
+            let replacement =
+                serde_json::to_string(&current).map_err(|error| error.to_string())?;
+            Ok((replacement, (last_others, resets)))
+        })
+        .map_err(Error::msg)?;
+    state.last_others = next_others;
+    state.resets = next_resets;
     save_state(&state)
 }
 
@@ -480,17 +527,38 @@ mod tests {
         let snapshot = DeviceSnapshot {
             v: PROTOCOL_VERSION,
             device_id: "alpha".into(),
+            revision: 3,
+            slot: 1,
             updated_at: 1,
+            resets: ResetWatermarks::new(),
+            generations: ResetWatermarks::new(),
             data: StatsData::new(),
         };
-        assert!(snapshot_matches(&snapshot, "alpha"));
-        assert!(!snapshot_matches(&snapshot, "beta"));
+        assert!(snapshot_matches(
+            &snapshot,
+            &RemoteSnapshotRef {
+                device_id: "alpha".into(),
+                slot: 1,
+            },
+            PROTOCOL_VERSION,
+        ));
+        assert!(!snapshot_matches(
+            &snapshot,
+            &RemoteSnapshotRef {
+                device_id: "beta".into(),
+                slot: 1,
+            },
+            PROTOCOL_VERSION,
+        ));
     }
 
     #[test]
     fn device_limit_counts_this_installation_before_upload() {
-        let listed: Vec<String> = (0..MAX_REMOTE_DEVICES)
-            .map(|index| format!("device-{index}"))
+        let listed: Vec<RemoteSnapshotRef> = (0..MAX_REMOTE_DEVICES)
+            .map(|index| RemoteSnapshotRef {
+                device_id: format!("device-{index}"),
+                slot: 0,
+            })
             .collect();
         assert!(device_limit_exceeded(&listed, "new-device"));
         assert!(!device_limit_exceeded(&listed, "device-0"));
@@ -498,17 +566,42 @@ mod tests {
 
     #[test]
     fn lists_unique_valid_device_files() {
-        let listed = listed_device_ids([
-            "/clash-connectivity-sync/v1/devices/alpha.json",
-            "/clash-connectivity-sync/v1/devices/alpha.json",
-            "/clash-connectivity-sync/v1/devices/bad.name.json",
-            "/clash-connectivity-sync/v1/devices/gamma%2D2.json",
-            "/clash-connectivity-sync/v1/devices/beta.json",
+        let listed = listed_snapshot_refs([
+            "/clash-connectivity-sync/v2/devices/alpha-0.json",
+            "/clash-connectivity-sync/v2/devices/alpha-0.json",
+            "/clash-connectivity-sync/v2/devices/bad.name-0.json",
+            "/clash-connectivity-sync/v2/devices/gamma%2D2-1.json",
+            "/clash-connectivity-sync/v2/devices/beta-2.json",
         ]);
         assert_eq!(
             listed,
-            vec!["alpha".into(), "gamma-2".into(), "beta".into()]
+            vec![
+                RemoteSnapshotRef {
+                    device_id: "alpha".into(),
+                    slot: 0,
+                },
+                RemoteSnapshotRef {
+                    device_id: "gamma-2".into(),
+                    slot: 1,
+                },
+            ]
         );
+    }
+
+    #[test]
+    fn incomplete_slot_set_is_rejected() {
+        let valid = DeviceSnapshot {
+            v: PROTOCOL_VERSION,
+            device_id: "alpha".into(),
+            revision: 2,
+            slot: 0,
+            updated_at: 1,
+            resets: ResetWatermarks::new(),
+            generations: ResetWatermarks::new(),
+            data: StatsData::new(),
+        };
+
+        assert!(newest_complete_snapshot(vec![Some(valid), None]).is_none());
     }
 
     #[test]
@@ -524,6 +617,7 @@ mod tests {
             &serde_json::to_string(&current).unwrap(),
             &fallback,
             &remote,
+            &ResetWatermarks::new(),
         )
         .unwrap();
         let day = Local::now().format("%Y-%m-%d").to_string();
@@ -541,6 +635,7 @@ mod tests {
             data: data(8, 3),
             sync: Some(LocalSyncMetadata {
                 last_others: data(5, 1),
+                reset_watermarks: ResetWatermarks::new(),
             }),
         };
         let stale_fallback = StatsData::new();
@@ -549,11 +644,142 @@ mod tests {
             &serde_json::to_string(&current).unwrap(),
             &stale_fallback,
             &remote,
+            &ResetWatermarks::new(),
         )
         .unwrap();
         let day = Local::now().format("%Y-%m-%d").to_string();
 
         assert_eq!(count_at(&outcome.own, "node", &day).s, 3);
         assert_eq!(count_at(&outcome.merged, "node", &day).s, 8);
+    }
+
+    #[test]
+    fn newer_reset_removes_the_old_aggregate_and_baseline() {
+        let current = StatsFile {
+            v: STORE_VERSION,
+            data: data(300, 0),
+            sync: Some(LocalSyncMetadata {
+                last_others: data(200, 0),
+                reset_watermarks: ResetWatermarks::new(),
+            }),
+        };
+        let resets = HashMap::from([(
+            "node".to_string(),
+            ResetGeneration {
+                counter: 1,
+                device_id: "device-b".into(),
+            },
+        )]);
+        let (_, outcome) = prepare_local_merge(
+            &serde_json::to_string(&current).unwrap(),
+            &StatsData::new(),
+            &StatsData::new(),
+            &resets,
+        )
+        .unwrap();
+
+        assert!(!outcome.own.contains_key("node"));
+        assert!(!outcome.merged.contains_key("node"));
+        assert_eq!(outcome.resets, resets);
+    }
+
+    #[test]
+    fn retry_after_reset_preserves_post_reset_measurements() {
+        let resets = HashMap::from([(
+            "node".to_string(),
+            ResetGeneration {
+                counter: 1,
+                device_id: "device-b".into(),
+            },
+        )]);
+        let current = StatsFile {
+            v: STORE_VERSION,
+            data: data(3, 0),
+            sync: Some(LocalSyncMetadata {
+                last_others: StatsData::new(),
+                reset_watermarks: resets.clone(),
+            }),
+        };
+        let (_, outcome) = prepare_local_merge(
+            &serde_json::to_string(&current).unwrap(),
+            &StatsData::new(),
+            &StatsData::new(),
+            &resets,
+        )
+        .unwrap();
+
+        let day = Local::now().format("%Y-%m-%d").to_string();
+        assert_eq!(count_at(&outcome.own, "node", &day).s, 3);
+    }
+
+    #[test]
+    fn global_reset_advances_reset_only_nodes() {
+        let active = HashMap::from([(
+            "reset-only".to_string(),
+            ResetGeneration {
+                counter: 1,
+                device_id: "device-a".into(),
+            },
+        )]);
+
+        let names = reset_names(None, &StatsData::new(), &StatsData::new(), &active);
+
+        assert_eq!(names, vec!["reset-only"]);
+    }
+
+    #[test]
+    fn concurrent_resets_use_counter_then_device_id_order() {
+        let left = HashMap::from([(
+            "node".to_string(),
+            ResetGeneration {
+                counter: 4,
+                device_id: "device-a".into(),
+            },
+        )]);
+        let right = HashMap::from([(
+            "node".to_string(),
+            ResetGeneration {
+                counter: 4,
+                device_id: "device-b".into(),
+            },
+        )]);
+        let merged = merge_reset_watermarks([&left, &right]).unwrap();
+        assert_eq!(merged["node"].device_id, "device-b");
+    }
+
+    #[test]
+    fn snapshot_data_requires_the_active_generation() {
+        let active = HashMap::from([(
+            "node".to_string(),
+            ResetGeneration {
+                counter: 2,
+                device_id: "device-b".into(),
+            },
+        )]);
+        let mut stale = DeviceSnapshot {
+            v: PROTOCOL_VERSION,
+            device_id: "device-a".into(),
+            revision: 2,
+            slot: 0,
+            updated_at: 1,
+            resets: active.clone(),
+            generations: HashMap::from([(
+                "node".to_string(),
+                ResetGeneration {
+                    counter: 1,
+                    device_id: "device-a".into(),
+                },
+            )]),
+            data: data(300, 0),
+        };
+        filter_snapshot_data(&mut stale, &active);
+        assert!(!stale.data.contains_key("node"));
+    }
+
+    #[test]
+    fn two_slots_bound_remote_files() {
+        assert_eq!(MAX_REMOTE_FILES, 64);
+        assert_eq!(snapshot_filename("device-a", 0), "device-a-0.json");
+        assert_eq!(snapshot_filename("device-a", 1), "device-a-1.json");
     }
 }

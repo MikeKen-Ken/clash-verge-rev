@@ -9,6 +9,15 @@ function enqueuePersistenceSync(task: () => Promise<void>): void {
   persistenceSyncChain = persistenceSyncChain.then(task).catch(() => {});
 }
 
+/** Serialize a mutation with every queued localStorage-to-disk write. */
+export async function runConnectivityPersistenceTransaction(
+  task: () => Promise<void>,
+): Promise<void> {
+  const transaction = persistenceSyncChain.then(task);
+  persistenceSyncChain = transaction.catch(() => {});
+  await transaction;
+}
+
 /** 将 localStorage 中的联通统计同步到数据目录，供 generate/reload 时写入核心顺序（不触发 reload）。 */
 export async function syncConnectivityStatsToDisk(): Promise<void> {
   if (typeof window === "undefined") return;
@@ -37,8 +46,8 @@ export async function flushConnectivityPersistenceSync(): Promise<void> {
   await persistenceSyncChain;
 }
 
-/** Clear the imported-device baseline after the user resets aggregate counters. */
-export async function resetConnectivityWebdavBaseline(
+/** Atomically publish a reset generation before clearing aggregate counters. */
+export async function publishConnectivityReset(
   proxyName?: string,
 ): Promise<void> {
   await invoke<void>("reset_connectivity_stats_sync_baseline", {

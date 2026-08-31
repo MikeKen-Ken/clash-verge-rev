@@ -27,12 +27,12 @@ pub async fn connectivity_last_sync_at() -> CmdResult<i64> {
     feat::last_connectivity_sync_at().await.map_err(|error| error.to_string().into())
 }
 
-/// Forget imported counters after the user clears all statistics or one node.
+/// Persist a reset generation and clear the selected aggregate counters atomically.
 #[tauri::command]
 pub async fn reset_connectivity_stats_sync_baseline(
     proxy_name: Option<String>,
 ) -> CmdResult<()> {
-    feat::reset_connectivity_sync_baseline(proxy_name.as_deref())
+    feat::reset_connectivity_statistics(proxy_name.as_deref())
         .await
         .map_err(|error| error.to_string().into())
 }
