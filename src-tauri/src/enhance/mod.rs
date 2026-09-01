@@ -832,7 +832,7 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: ClashMode) -> Mappin
     // 删除顶层 nameserver-policy；不改动 nameserver / dns 块
     config.remove("nameserver-policy");
 
-    logging!(info, Type::Core, "applied {mode} mode overrides (rules)");
+    logging!(info, Type::Core, "applied {} mode overrides (rules)", mode.as_str());
     config
 }
 

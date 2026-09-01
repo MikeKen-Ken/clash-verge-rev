@@ -361,7 +361,7 @@ impl Tray {
             sys_proxy_text,
             switch_map[system_proxy],
             tun_text,
-            switch_map[tun_mode],
+            switch_map[&tun_mode],
             profile_text,
             current_profile_name
         );
@@ -524,7 +524,7 @@ fn create_profile_menu_item(
 
 fn create_subcreate_proxy_menu_item(
     app_handle: &AppHandle,
-    proxy_mode: &str,
+    proxy_mode: ClashMode,
     proxy_group_order_map: Option<HashMap<String, usize>>,
     proxy_nodes_data: Option<Proxies>,
 ) -> Vec<Submenu<Wry>> {
@@ -536,7 +536,7 @@ fn create_subcreate_proxy_menu_item(
             for (group_name, group_data) in proxy_nodes_data.proxies.iter() {
                 // Filter groups based on mode and hidden flag
                 let should_show = match proxy_mode {
-                    "global" => group_name == "GLOBAL",
+                    ClashMode::Global => group_name == "GLOBAL",
                     _ => group_name != "GLOBAL",
                 } && !group_data.hidden.unwrap_or_default();
 
