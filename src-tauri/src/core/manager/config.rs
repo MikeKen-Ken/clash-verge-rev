@@ -10,7 +10,6 @@ use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::{collections::HashSet, path::PathBuf, time::Instant};
-use tauri_plugin_mihomo::Error as MihomoError;
 use tokio::time::timeout;
 
 impl CoreManager {
@@ -73,7 +72,10 @@ impl CoreManager {
         }
 
         self.set_last_update(Instant::now());
-        let update_error = match self.perform_config_update().await {
+        // Mode switch only rewrites MATCH (or restores profile rules). Skip sidecar
+        // `mihomo -t -d <live app dir>`: it shares the running core's pipe/provider
+        // files and is a common reason the first subsequent PUT /configs hangs.
+        let update_error = match self.perform_config_update_force().await {
             Ok((true, _)) => None,
             Ok((false, error_msg)) => Some(anyhow!("{error_msg}")),
             Err(error) => Some(error),
@@ -215,20 +217,12 @@ impl CoreManager {
 
     async fn apply_config(&self, path: PathBuf) -> Result<()> {
         let path = dirs::path_to_str(&path)?;
-        let reload_result = timeout(timing::CORE_RELOAD_TIMEOUT, self.reload_config(path)).await;
-        match reload_result {
-            Err(_) => {
-                Config::runtime().await.discard();
-                Err(anyhow!(
-                    "Failed to apply config: reload timed out after {:?}",
-                    timing::CORE_RELOAD_TIMEOUT
-                ))
-            }
-            Ok(Err(err)) => {
+        match super::reload::reload_config_resilient(path).await {
+            Err(err) => {
                 Config::runtime().await.discard();
                 Err(anyhow!("Failed to apply config: {}", err))
             }
-            Ok(_) => {
+            Ok(()) => {
                 Self::apply_profile_selected_to_core().await;
                 Config::runtime().await.apply();
                 logging!(info, Type::Core, "Configuration applied");
@@ -295,9 +289,5 @@ impl CoreManager {
                 }
             }
         }
-    }
-
-    async fn reload_config(&self, path: &str) -> Result<(), MihomoError> {
-        handle::Handle::mihomo().await.reload_config(true, path).await
     }
 }

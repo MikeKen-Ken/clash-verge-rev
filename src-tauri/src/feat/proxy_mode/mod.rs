@@ -1,32 +1,39 @@
 use crate::{
     config::{ClashMode, Config},
     core::{CoreManager, handle, tray},
-    process::AsyncHandler,
 };
 use anyhow::Result;
 use clash_verge_logging::{Type, logging, logging_error};
+use tokio::time::{Duration, timeout};
 
-fn close_connections_after_mode_change() {
-    AsyncHandler::spawn(move || async {
-        let mihomo = handle::Handle::mihomo().await;
-        match mihomo.get_connections().await {
-            Ok(connections) => {
-                if let Some(connections_array) = connections.connections {
-                    for connection in connections_array {
-                        let _ = mihomo.close_connection(&connection.id).await;
-                    }
-                }
-            }
-            Err(error) => {
-                logging!(error, Type::Core, "Failed to get connections: {error}");
-            }
+async fn close_connections_before_mode_change() {
+    let mihomo = handle::Handle::mihomo().await;
+    match timeout(Duration::from_secs(2), mihomo.close_all_connections()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            logging!(
+                warn,
+                Type::Core,
+                "Failed to close connections before mode change: {error}"
+            );
         }
-    });
+        Err(_) => {
+            logging!(
+                warn,
+                Type::Core,
+                "Closing connections before mode change timed out"
+            );
+        }
+    }
 }
 
 /// Apply a supported proxy mode and perform success-only side effects.
 pub async fn change_clash_mode(mode: ClashMode) -> Result<()> {
     logging!(debug, Type::Core, "change clash mode to {}", mode.as_str());
+
+    if Config::verge().await.data_arc().auto_close_connection.unwrap_or(false) {
+        close_connections_before_mode_change().await;
+    }
 
     if let Err(error) = CoreManager::global().change_clash_mode(mode).await {
         logging!(error, Type::Core, "Failed to change Clash mode: {error}");
@@ -42,10 +49,6 @@ pub async fn change_clash_mode(mode: ClashMode) -> Result<()> {
             .update_icon(&Config::verge().await.data_arc())
             .await
     );
-
-    if Config::verge().await.data_arc().auto_close_connection.unwrap_or(false) {
-        close_connections_after_mode_change();
-    }
 
     Ok(())
 }

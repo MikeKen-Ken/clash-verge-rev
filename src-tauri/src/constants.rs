@@ -26,6 +26,10 @@ pub mod timing {
     pub const EVENT_EMIT_DELAY: Duration = Duration::from_millis(20);
     pub const STARTUP_ERROR_DELAY: Duration = Duration::from_secs(2);
     pub const CORE_RELOAD_TIMEOUT: Duration = Duration::from_secs(10);
+    /// ApplyConfig often tears down the named pipe / unix socket before the first
+    /// PUT /configs response is written; wait this long then retry once.
+    pub const CORE_RELOAD_RETRY_DELAY: Duration = Duration::from_millis(300);
+    pub const CORE_RELOAD_ATTEMPTS: u32 = 2;
     pub const CORE_SELECT_NODE_TIMEOUT: Duration = Duration::from_secs(3);
 
     #[cfg(target_os = "windows")]

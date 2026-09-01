@@ -8,6 +8,7 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, HOST}
 use reqwest::{Method, StatusCode};
 
 use crate::config::{Config, IClashTemp};
+use crate::constants::timing;
 
 const RESET_TIMEOUT: Duration = Duration::from_secs(5);
 const RULE_PREVIEW_TIMEOUT: Duration = Duration::from_secs(120);
@@ -344,6 +345,28 @@ pub async fn delete_proxy_fixed(group_name: &str) -> Result<()> {
             response.status(),
             group_name
         );
+    }
+    Ok(())
+}
+
+/// PUT `/configs?force=true` on a dedicated IPC client (not the plugin connection pool).
+///
+/// Mode switch and other reloads share the plugin pool with delay tests / WS.
+/// ApplyConfig also recreates the named pipe; a pooled in-flight request then
+/// never sees the HTTP response. A one-shot client avoids that stall.
+pub async fn put_configs_reload(path: &str) -> Result<()> {
+    let (client, headers) =
+        build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
+    let response = client
+        .request(Method::PUT, "http://localhost/configs?force=true")
+        .headers(headers)
+        .json(&serde_json::json!({ "path": path }))
+        .send()
+        .await
+        .context("send PUT /configs?force=true")?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("PUT /configs returned {}", response.status());
     }
     Ok(())
 }
