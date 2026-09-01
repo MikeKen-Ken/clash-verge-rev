@@ -1,12 +1,13 @@
 use super::CoreManager;
 use crate::{
-    config::{Config, ConfigType, runtime::IRuntime},
+    config::{ClashMode, Config, ConfigType, runtime::IRuntime},
     constants::timing,
     core::{handle, validate::CoreConfigValidator},
     utils::{dirs, help},
 };
 use anyhow::{Result, anyhow};
 use clash_verge_logging::{Type, logging};
+use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::{collections::HashSet, path::PathBuf, time::Instant};
 use tauri_plugin_mihomo::Error as MihomoError;
@@ -45,6 +46,94 @@ impl CoreManager {
         }
 
         self.perform_config_update().await
+    }
+
+    /// Persist and apply a mode change as one serialized transaction.
+    pub async fn change_clash_mode(&self, mode: ClashMode) -> Result<()> {
+        if handle::Handle::global().is_exiting() {
+            return Err(anyhow!("Application is exiting"));
+        }
+
+        let _update_guard = self.update_lock.lock().await;
+
+        let clash = Config::clash().await;
+        let mut mapping = Mapping::new();
+        mapping.insert(Value::from("mode"), Value::from(mode.as_str()));
+        clash.edit_draft(|draft| draft.patch_config(&mapping));
+
+        if let Err(save_error) = clash.latest_arc().save_config().await {
+            clash.discard();
+            let rollback_result = clash.data_arc().save_config().await;
+            return match rollback_result {
+                Ok(()) => Err(save_error),
+                Err(rollback_error) => Err(anyhow!(
+                    "Failed to persist mode change: {save_error}; failed to restore previous mode: {rollback_error}"
+                )),
+            };
+        }
+
+        self.set_last_update(Instant::now());
+        let update_error = match self.perform_config_update().await {
+            Ok((true, _)) => None,
+            Ok((false, error_msg)) => Some(anyhow!("{error_msg}")),
+            Err(error) => Some(error),
+        };
+
+        if let Some(update_error) = update_error {
+            clash.discard();
+            return match clash.data_arc().save_config().await {
+                Ok(()) => Err(update_error),
+                Err(rollback_error) => Err(anyhow!(
+                    "{update_error}; failed to restore previous mode: {rollback_error}"
+                )),
+            };
+        }
+
+        clash.apply();
+        Ok(())
+    }
+
+    /// Generate and validate a restart candidate without replacing the current
+    /// runtime file or stopping the core until the candidate is known-good.
+    pub(super) async fn prepare_runtime_for_restart(&self) -> Result<()> {
+        if let Err(error) = Config::generate().await {
+            Config::runtime().await.discard();
+            return Err(error);
+        }
+
+        let check_path = match Config::generate_file(ConfigType::Check).await {
+            Ok(path) => path,
+            Err(error) => {
+                Config::runtime().await.discard();
+                return Err(error);
+            }
+        };
+        let check_path = match dirs::path_to_str(&check_path) {
+            Ok(path) => path,
+            Err(error) => {
+                Config::runtime().await.discard();
+                return Err(error);
+            }
+        };
+
+        match CoreConfigValidator::validate_config_file(check_path, None).await {
+            Ok((true, _)) => {}
+            Ok((false, error_msg)) => {
+                Config::runtime().await.discard();
+                return Err(anyhow!("Restart configuration rejected: {error_msg}"));
+            }
+            Err(error) => {
+                Config::runtime().await.discard();
+                return Err(error);
+            }
+        }
+
+        if let Err(error) = Config::generate_file(ConfigType::Run).await {
+            Config::runtime().await.discard();
+            return Err(error);
+        }
+        Config::runtime().await.apply();
+        Ok(())
     }
 
     /// 用户显式保存配置时使用，必须立即重新生成并应用运行配置。

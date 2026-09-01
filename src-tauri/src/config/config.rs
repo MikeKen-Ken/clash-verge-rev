@@ -5,7 +5,7 @@ use crate::{
     core::{
         CoreManager,
         handle::{self, Handle},
-        service, tray,
+        service,
         validate::CoreConfigValidator,
     },
     enhance,
@@ -22,6 +22,17 @@ use std::{collections::HashSet, path::PathBuf};
 use tauri_plugin_clash_verge_sysinfo::is_current_app_handle_admin;
 use tokio::sync::OnceCell;
 use tokio::time::sleep;
+
+/// The persisted flag is the user's desired state; live privilege determines
+/// whether TUN can currently be effective without rewriting that preference.
+pub fn effective_tun_enabled(desired: Option<bool>, has_privilege: bool) -> bool {
+    desired.unwrap_or(false) && has_privilege
+}
+
+pub async fn tun_privilege_available() -> bool {
+    let handle = Handle::app_handle();
+    is_current_app_handle_admin(handle) || service::is_service_available().await.is_ok()
+}
 
 pub struct Config {
     clash_config: Draft<IClashTemp>,
@@ -66,37 +77,6 @@ impl Config {
         Self::ensure_default_profile_items().await?;
 
         clash_verge_i18n::sync_locale(Some("en"));
-
-        // init Tun mode
-        let handle = Handle::app_handle();
-        let is_admin = is_current_app_handle_admin(handle);
-        let is_service_available = service::is_service_available().await.is_ok();
-        let verge = Self::verge().await;
-        let current_tun_mode = verge.latest_arc().enable_tun_mode;
-        
-        if !is_admin && !is_service_available {
-            // Disable TUN mode if admin/service is not available
-            verge.edit_draft(|d| {
-                d.enable_tun_mode = Some(false);
-            });
-            verge.apply();
-            let _ = tray::Tray::global().update_menu().await;
-
-            // 分离数据获取和异步调用避免Send问题
-            let verge_data = Self::verge().await.latest_arc();
-            logging_error!(Type::Core, verge_data.save_file().await);
-        } else if current_tun_mode.is_none() {
-            // Auto-enable TUN mode if it's not set and admin/service is available
-            verge.edit_draft(|d| {
-                d.enable_tun_mode = Some(true);
-            });
-            verge.apply();
-            let _ = tray::Tray::global().update_menu().await;
-
-            // 分离数据获取和异步调用避免Send问题
-            let verge_data = Self::verge().await.latest_arc();
-            logging_error!(Type::Core, verge_data.save_file().await);
-        }
 
         let validation_result = Self::generate_and_validate().await?;
 
@@ -371,4 +351,13 @@ mod tests {
         let box_iruntime_size = std::mem::size_of_val(&draft);
         assert_eq!(box_iruntime_size, std::mem::size_of::<Draft<Box<IRuntime>>>());
     }
+
+    #[test]
+    fn effective_tun_requires_live_privilege() {
+        assert!(!effective_tun_enabled(Some(true), false));
+        assert!(effective_tun_enabled(Some(true), true));
+        assert!(!effective_tun_enabled(Some(false), true));
+        assert!(!effective_tun_enabled(None, true));
+    }
+
 }

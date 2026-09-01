@@ -27,7 +27,10 @@ impl CoreManager {
             RunningMode::NotRunning | RunningMode::Sidecar => self.start_core_by_sidecar().await,
         }?;
 
-        if Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false) {
+        if crate::config::effective_tun_enabled(
+            Config::verge().await.latest_arc().enable_tun_mode,
+            crate::config::tun_privilege_available().await,
+        ) {
             if let Err(err) = crate::utils::mihomo_ipc::post_traffic_reset().await {
                 logging!(
                     warn,
@@ -68,6 +71,7 @@ impl CoreManager {
 
     async fn restart_core_locked(&self) -> Result<()> {
         logging!(info, Type::Core, "Restarting core");
+        self.prepare_runtime_for_restart().await?;
         self.stop_core_locked().await?;
         self.start_core_locked().await
     }
@@ -113,7 +117,11 @@ impl CoreManager {
         use crate::{config::Config, constants::timing};
         use backoff::{Error as BackoffError, ExponentialBackoff};
 
-        let needs_service = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
+        let needs_service = Config::verge()
+            .await
+            .latest_arc()
+            .enable_tun_mode
+            .unwrap_or(false);
 
         if !needs_service {
             return;

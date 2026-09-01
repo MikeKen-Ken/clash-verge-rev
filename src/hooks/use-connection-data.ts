@@ -16,6 +16,7 @@ import {
 
 import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
+import { useSystemState } from "./use-system-state";
 import { useVerge } from "./use-verge";
 import {
   DEFAULT_CLOSED_CONNECTIONS_LIMIT,
@@ -286,7 +287,8 @@ const mergeConnectionSnapshot = (
 
 export const useConnectionData = () => {
   const { verge } = useVerge();
-  const tunEnabled = verge?.enable_tun_mode ?? false;
+  const { isTunModeAvailable } = useSystemState();
+  const tunEnabled = (verge?.enable_tun_mode ?? false) && isTunModeAvailable;
   const [setting] = useConnectionSetting();
   const closedLimit: ClosedConnectionsLimit =
     setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNECTIONS_LIMIT;
@@ -294,7 +296,7 @@ export const useConnectionData = () => {
   /**
    * sessionStartMs marks the beginning of the "current traffic session".
    * Kept at module scope so route switches won't reset it.
-   * Resets whenever TUN mode is toggled.
+   * Resets whenever effective TUN state changes.
    * Used by consumers (e.g. the connections page) to exclude per-connection
    * upload/download values that accumulated before this point.
    */
@@ -324,7 +326,7 @@ export const useConnectionData = () => {
    * traffic baseline: the raw core cumulative totals at the moment
    * this session started. Subtracted from live totals so that the home-page
    * upload/download stats also start from 0 each session.
-   * Resets on TUN toggle (via sessionStartMs dependency).
+   * Resets on effective TUN changes (via sessionStartMs dependency).
    */
   const normalizeTotals = (data: ConnectionMonitorData): ConnectionMonitorData => {
     const baseline = globalTrafficBaseline;

@@ -82,8 +82,9 @@ import { closeLanConnections } from "@/utils/close-connections";
 import getSystem from "@/utils/get-system";
 import parseTraffic from "@/utils/parse-traffic";
 
-const MODES = ["rule", "global", "direct", "offline"] as const;
+const MODES = ["rule", "global", "direct", "script", "offline"] as const;
 type Mode = (typeof MODES)[number];
+const MODE_BUTTONS = ["rule", "global", "direct", "offline"] as const satisfies readonly Mode[];
 const MODE_SET = new Set<string>(MODES);
 const isMode = (value: unknown): value is Mode =>
   typeof value === "string" && MODE_SET.has(value);
@@ -141,7 +142,7 @@ const ProxyPage = () => {
     [nonDirectTraffic.upload],
   );
 
-  const modeList = useMemo(() => MODES, []);
+  const modeList = useMemo(() => MODE_BUTTONS, []);
   const visible = useVisibility();
   const wasVisibleRef = useRef(visible);
 
@@ -189,9 +190,7 @@ const ProxyPage = () => {
   }, [availableRegions, regionFilter]);
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
-    if (mode !== uiMode && verge?.auto_close_connection) {
-      closeAllConnections();
-    }
+    const previous = uiMode;
     setUiMode(mode);
     try {
       localStorage.setItem(STORAGE_KEY_UI_MODE, mode);
@@ -200,15 +199,26 @@ const ProxyPage = () => {
     }
     // 切换规则/全局/直连后 1 分钟内不发送 fallback 切换通知（与 TUN/系统代理一致）
     markProxyModeChanged();
-    await patchClashMode(mode);
-    refreshClashConfig();
+    try {
+      await patchClashMode(mode);
+      refreshClashConfig();
+    } catch {
+      setUiMode(previous);
+      try {
+        localStorage.setItem(STORAGE_KEY_UI_MODE, previous);
+      } catch {
+        // ignore
+      }
+    }
   });
 
   // 后端 mode 非法时只修正后端，不改变前端按钮状态（uiMode 仅由用户点击维护）
   useEffect(() => {
     const raw = clashConfig?.mode?.toLowerCase();
     if (raw && !isMode(raw)) {
-      patchClashMode("rule").then(() => refreshClashConfig());
+      void patchClashMode("rule")
+        .then(() => refreshClashConfig())
+        .catch(() => {});
     }
   }, [clashConfig?.mode, refreshClashConfig]);
 

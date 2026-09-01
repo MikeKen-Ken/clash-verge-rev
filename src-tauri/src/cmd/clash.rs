@@ -3,7 +3,7 @@ use crate::feat;
 use crate::utils::dirs;
 use crate::{
     cmd::StringifyErr as _,
-    config::{ClashInfo, Config},
+    config::{ClashInfo, ClashMode, Config},
     constants,
     core::{CoreManager, handle, validate::CoreConfigValidator},
 };
@@ -35,8 +35,8 @@ pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
 /// 修改Clash模式
 #[tauri::command]
 pub async fn patch_clash_mode(payload: String) -> CmdResult {
-    feat::change_clash_mode(payload).await;
-    Ok(())
+    let mode = ClashMode::try_from(payload.as_str()).stringify_err()?;
+    feat::change_clash_mode(mode).await.stringify_err()
 }
 
 /// 切换Clash核心

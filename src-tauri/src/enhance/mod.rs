@@ -15,7 +15,7 @@ use self::{
     tun::use_tun,
 };
 use crate::{
-    config::{runtime::IRuntime, Config, IVerge},
+    config::{ClashMode, Config, IVerge, runtime::IRuntime},
     constants,
     session_rules,
     utils::{dirs, tmpl},
@@ -116,7 +116,10 @@ async fn get_config_values() -> ConfigValues {
 
     let (clash_core, enable_tun, enable_tun_override, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
-        enable_tun_mode.unwrap_or(false),
+        crate::config::effective_tun_enabled(
+            *enable_tun_mode,
+            crate::config::tun_privilege_available().await,
+        ),
         false, // TUN 覆写已取消，不再根据设置覆写 TUN 配置
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
@@ -733,11 +736,13 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     }
 
     // 直连/全局模式：仅覆盖 rules 和 dns，不切换代理组，界面 groups 保持不变
-    let mode = clash_config
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_lowercase())
-        .unwrap_or_else(|| "rule".into());
+    let mode = match clash_config.get("mode").and_then(|value| value.as_str()) {
+        Some(raw_mode) => ClashMode::try_from(raw_mode).unwrap_or_else(|error| {
+            logging!(warn, Type::Config, "{error}; falling back to rule mode");
+            ClashMode::Rule
+        }),
+        None => ClashMode::Rule,
+    };
     let prev_runtime_config = Config::runtime().await.latest_arc().config.clone();
 
     // 保留用户经 patch_runtime_config 热改的顶层项（含「屏蔽广告」）；否则 generate 会按订阅默认值覆盖，磁盘运行配置与核心 PATCH 不一致
@@ -756,7 +761,7 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     // dns settings
     config = apply_dns_settings(config, enable_dns_settings).await;
 
-    config = finalize_runtime_config(config, enable_tun, &mode);
+    config = finalize_runtime_config(config, enable_tun, mode);
 
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
@@ -764,18 +769,27 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     (config, exists_keys_set, result_map)
 }
 
-fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: &str) -> Mapping {
+fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: ClashMode) -> Mapping {
     // Merge/订阅可能重新带回无效组成员；最终应用前再清理一次，避免核心加载失败或 UI 显示幽灵节点
     config = cleanup_proxy_groups(config);
 
-    if mode == "rule" {
-        config = session_rules::apply_to_config(config);
-    }
-
-    if mode == "direct" || mode == "global" {
-        config = apply_direct_global_overrides(config, mode);
-    } else if mode == "offline" {
-        config = apply_offline_overrides(config);
+    // UI 的规则/全局/直连/离线都落成核心 mode=rule + 规则改写。
+    // 禁止 clash_config 合并后，订阅或 Merge 里的 mode: global 会漏进运行配置：
+    // 按钮显示 Rule，核心却走内置 GLOBAL，看起来像「切回规则仍是全局」。
+    match mode {
+        ClashMode::Direct | ClashMode::Global => {
+            config = apply_direct_global_overrides(config, mode);
+        }
+        ClashMode::Offline => {
+            config = apply_offline_overrides(config);
+        }
+        ClashMode::Rule => {
+            config.insert("mode".into(), Value::from("rule"));
+            config = session_rules::apply_to_config(config);
+        }
+        ClashMode::Script => {
+            config.insert("mode".into(), Value::from("script"));
+        }
     }
 
     // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
@@ -800,15 +814,15 @@ fn apply_offline_overrides(mut config: Mapping) -> Mapping {
 /// 直连/全局模式下覆盖运行配置的 rules，不改变 proxy-groups，界面不切换组。
 /// 强制 mode: rule，使核心按规则选策略：全局走 MATCH,Auto（策略组 Auto），直连走 MATCH,Direct（策略 Direct），而非核心内置的 GLOBAL/DIRECT。
 /// 不修改顶层 nameserver / dns.nameserver，保留配置原有 DNS。
-fn apply_direct_global_overrides(mut config: Mapping, mode: &str) -> Mapping {
+fn apply_direct_global_overrides(mut config: Mapping, mode: ClashMode) -> Mapping {
     // 强制 rule 模式，否则核心会按 mode: global/direct 用内置 GLOBAL/DIRECT，忽略我们的 MATCH 规则
     config.insert("mode".into(), Value::from("rule"));
 
     // rules: 直连只保留 MATCH,Direct（走策略 Direct）；全局只保留 MATCH,Auto（走策略组 Auto 的当前节点）
-    let match_rule = if mode == "direct" {
-        "MATCH,Direct"
-    } else {
-        "MATCH,Auto"
+    let match_rule = match mode {
+        ClashMode::Direct => "MATCH,Direct",
+        ClashMode::Global => "MATCH,Auto",
+        _ => unreachable!("only direct/global modes use direct/global overrides"),
     };
     config.insert(
         "rules".into(),
@@ -1013,7 +1027,7 @@ tun:
         IRuntime::restore_runtime_patch_after_merge(Some(&prev_runtime), &mut merged);
         assert_eq!(merged.get("allow-lan").and_then(|v| v.as_bool()), Some(true));
 
-        let config = finalize_runtime_config(merged, false, "direct");
+        let config = finalize_runtime_config(merged, false, ClashMode::Direct);
         let tun = config
             .get("tun")
             .and_then(|v| v.as_mapping())
@@ -1046,6 +1060,57 @@ tun:
     }
 
     #[test]
+    fn rule_mode_overrides_leaked_global_mode_and_keeps_profile_rules() {
+        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+mode: global
+rules:
+  - DOMAIN,example.com,PROXY
+  - MATCH,Auto
+"#,
+        )
+        .expect("yaml");
+        let config = super::finalize_runtime_config(config, false, ClashMode::Rule);
+        assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
+        let rules = config
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rules");
+        assert!(
+            rules
+                .iter()
+                .any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")),
+            "switching UI back to rule must restore profile rules, not keep core GLOBAL",
+        );
+        assert!(
+            !rules
+                .iter()
+                .all(|r| r.as_str() == Some("MATCH,Auto")),
+            "rule mode must not collapse to the global MATCH,Auto override",
+        );
+    }
+
+    #[test]
+    fn script_mode_remains_script_and_keeps_profile_rules() {
+        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+mode: rule
+rules:
+  - DOMAIN,example.com,PROXY
+  - MATCH,Auto
+"#,
+        )
+        .expect("yaml");
+        let config = super::finalize_runtime_config(config, false, ClashMode::Script);
+        assert_eq!(config.get("mode").and_then(|value| value.as_str()), Some("script"));
+        let rules = config
+            .get("rules")
+            .and_then(|value| value.as_sequence())
+            .expect("rules");
+        assert!(rules.iter().any(|rule| rule.as_str() == Some("DOMAIN,example.com,PROXY")));
+    }
+
+    #[test]
     fn offline_mode_overrides_rules_to_match_reject() {
         let mut config: Mapping = serde_yaml_ng::from_str(
             r#"
@@ -1056,7 +1121,7 @@ rules:
 "#,
         )
         .expect("yaml");
-        let config = finalize_runtime_config(config, false, "offline");
+        let config = finalize_runtime_config(config, false, ClashMode::Offline);
         assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
         let rules = config
             .get("rules")

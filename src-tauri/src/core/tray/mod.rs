@@ -1,4 +1,4 @@
-use crate::config::{IProfilePreview, IVerge};
+use crate::config::{ClashMode, IProfilePreview, IVerge};
 use crate::core::service;
 use crate::core::tray::menu_def::TrayAction;
 use crate::module::lightweight;
@@ -45,8 +45,11 @@ pub struct Tray {
 impl TrayState {
     async fn get_tray_icon(verge: &IVerge) -> (bool, Vec<u8>) {
         let system_mode = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
-        match (*system_mode, *tun_mode) {
+        let tun_mode = crate::config::effective_tun_enabled(
+            verge.enable_tun_mode,
+            crate::config::tun_privilege_available().await,
+        );
+        match (*system_mode, tun_mode) {
             (true, true) => Self::get_tun_tray_icon(verge).await,
             (true, false) => Self::get_sysproxy_tray_icon(verge).await,
             (false, true) => Self::get_tun_tray_icon(verge).await,
@@ -209,7 +212,6 @@ impl Tray {
     async fn update_menu_internal(&self, app_handle: &AppHandle) -> Result<()> {
         let verge = Config::verge().await.latest_arc();
         let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
         let tun_mode_available =
             is_current_app_handle_admin(app_handle) || service::is_service_available().await.is_ok();
         let mode = {
@@ -218,9 +220,9 @@ impl Tray {
                 .latest_arc()
                 .0
                 .get("mode")
-                .map(|val| val.as_str().unwrap_or("rule"))
-                .unwrap_or("rule")
-                .to_owned()
+                .and_then(|value| value.as_str())
+                .and_then(|raw_mode| ClashMode::try_from(raw_mode).ok())
+                .unwrap_or(ClashMode::Rule)
         };
         let profiles_config = Config::profiles().await;
         let profiles_arc = profiles_config.latest_arc();
@@ -232,9 +234,12 @@ impl Tray {
                 let _ = tray.set_menu(Some(
                     create_tray_menu(
                         app_handle,
-                        Some(mode.as_str()),
+                        mode,
                         *system_proxy,
-                        *tun_mode,
+                        crate::config::effective_tun_enabled(
+                            verge.enable_tun_mode,
+                            tun_mode_available,
+                        ),
                         tun_mode_available,
                         profiles_preview,
                         is_lightweight_mode,
@@ -313,7 +318,10 @@ impl Tray {
 
         let verge = Config::verge().await.latest_arc();
         let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
+        let tun_mode = crate::config::effective_tun_enabled(
+            verge.enable_tun_mode,
+            crate::config::tun_privilege_available().await,
+        );
 
         let switch_map = {
             let mut map = std::collections::HashMap::new();
@@ -648,15 +656,13 @@ fn create_proxy_menu_item(
 
 async fn create_tray_menu(
     app_handle: &AppHandle,
-    mode: Option<&str>,
+    current_proxy_mode: ClashMode,
     system_proxy_enabled: bool,
     tun_mode_enabled: bool,
     tun_mode_available: bool,
     profiles_preview: Vec<IProfilePreview<'_>>,
     is_lightweight_mode: bool,
 ) -> Result<tauri::menu::Menu<Wry>> {
-    let current_proxy_mode = mode.unwrap_or("");
-
     // TODO: should update tray menu again when it was timeout error
     let proxy_nodes_data = tokio::time::timeout(
         Duration::from_millis(1000),
@@ -734,7 +740,7 @@ async fn create_tray_menu(
         MenuIds::RULE_MODE,
         &texts.rule_mode,
         true,
-        current_proxy_mode == "rule",
+        current_proxy_mode == ClashMode::Rule,
         hotkeys.get("clash_mode_rule").map(|s| s.as_str()),
     )?;
 
@@ -743,7 +749,7 @@ async fn create_tray_menu(
         MenuIds::GLOBAL_MODE,
         &texts.global_mode,
         true,
-        current_proxy_mode == "global",
+        current_proxy_mode == ClashMode::Global,
         hotkeys.get("clash_mode_global").map(|s| s.as_str()),
     )?;
 
@@ -752,7 +758,7 @@ async fn create_tray_menu(
         MenuIds::DIRECT_MODE,
         &texts.direct_mode,
         true,
-        current_proxy_mode == "direct",
+        current_proxy_mode == ClashMode::Direct,
         hotkeys.get("clash_mode_direct").map(|s| s.as_str()),
     )?;
 
@@ -761,7 +767,7 @@ async fn create_tray_menu(
         MenuIds::OFFLINE_MODE,
         "Offline",
         true,
-        current_proxy_mode == "offline",
+        current_proxy_mode == ClashMode::Offline,
         None::<&str>,
     )?;
 
@@ -769,10 +775,11 @@ async fn create_tray_menu(
         None
     } else {
         let current_mode_text = match current_proxy_mode {
-            "global" => clash_verge_i18n::t!("tray.global"),
-            "direct" => clash_verge_i18n::t!("tray.direct"),
-            "offline" => std::borrow::Cow::Borrowed("Offline"),
-            _ => clash_verge_i18n::t!("tray.rule"),
+            ClashMode::Global => clash_verge_i18n::t!("tray.global"),
+            ClashMode::Direct => clash_verge_i18n::t!("tray.direct"),
+            ClashMode::Script => std::borrow::Cow::Borrowed("Script"),
+            ClashMode::Offline => std::borrow::Cow::Borrowed("Offline"),
+            ClashMode::Rule => clash_verge_i18n::t!("tray.rule"),
         };
         let outbound_modes_label = format!("{} ({})", texts.outbound_modes, current_mode_text);
         Some(Submenu::with_id_and_items(
@@ -947,7 +954,14 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
                 // Removing the the "tray_" prefix and "_mode" suffix
                 let mode = &mode[5..mode.len() - 5];
                 logging!(info, Type::ProxyMode, "Switch Proxy Mode To: {}", mode);
-                feat::change_clash_mode(mode.into()).await;
+                match ClashMode::try_from(mode) {
+                    Ok(mode) => {
+                        let _ = feat::change_clash_mode(mode).await;
+                    }
+                    Err(error) => {
+                        logging!(error, Type::ProxyMode, "{error}");
+                    }
+                }
             }
             MenuIds::DASHBOARD => {
                 logging!(info, Type::Tray, "Tray menu clicked: open window");

@@ -71,7 +71,10 @@ pub async fn clean_async() -> bool {
     // 关闭 Tun 模式 + 停止核心服务
     let core_task = tokio::task::spawn(async {
         logging!(info, Type::System, "disable tun");
-        let tun_enabled = Config::verge().await.data_arc().enable_tun_mode.unwrap_or(false);
+        let tun_enabled = crate::config::effective_tun_enabled(
+            Config::verge().await.data_arc().enable_tun_mode,
+            crate::config::tun_privilege_available().await,
+        );
         if tun_enabled {
             let disable_tun = serde_json::json!({ "tun": { "enable": false } });
 

@@ -1,12 +1,10 @@
 use crate::{
     config::Config,
-    core::{CoreManager, handle, tray},
+    core::{CoreManager, handle},
     feat::clean_async,
-    process::AsyncHandler,
     utils::{self, resolve::reset_resolve_done},
 };
-use clash_verge_logging::{Type, logging, logging_error};
-use serde_yaml_ng::{Mapping, Value};
+use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 
 /// Restart the Clash core
@@ -47,65 +45,15 @@ pub async fn restart_app() {
     app_handle.restart();
 }
 
-fn after_change_clash_mode() {
-    AsyncHandler::spawn(move || async {
-        let mihomo = handle::Handle::mihomo().await;
-        match mihomo.get_connections().await {
-            Ok(connections) => {
-                if let Some(connections_array) = connections.connections {
-                    for connection in connections_array {
-                        let _ = mihomo.close_connection(&connection.id).await;
-                    }
-                    drop(mihomo);
-                }
-            }
-            Err(err) => {
-                logging!(error, Type::Core, "Failed to get connections: {err}");
-            }
-        }
-    });
-}
-
-/// Change Clash mode (rule/global/direct/script).
-/// 直连/全局模式不切换代理组：只改运行配置的 rules 和 dns，界面 groups 保持不变。
-pub async fn change_clash_mode(mode: String) {
-    let mut mapping = Mapping::new();
-    mapping.insert(Value::from("mode"), Value::from(mode.as_str()));
-    logging!(debug, Type::Core, "change clash mode to {mode}");
-
-    // 先写入 mode 到 clash 配置（供 UI 与 enhance 读取）
-    Config::clash().await.edit_draft(|d| d.patch_config(&mapping));
-    Config::clash().await.apply();
-    let clash_data = Config::clash().await.data_arc();
-    let _ = clash_data.save_config().await;
-
-    // 任意模式切换都走「重新生成 + 应用」：直连/全局时 enhance 会覆盖 rules+dns，规则/脚本时不再覆盖，恢复完整配置
-    match crate::core::CoreManager::global().update_config().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
-            logging_error!(
-                Type::Tray,
-                tray::Tray::global()
-                    .update_icon(&Config::verge().await.data_arc())
-                    .await
-            );
-            let is_auto_close_connection =
-                Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
-            if is_auto_close_connection {
-                after_change_clash_mode();
-            }
-        }
-        Err(err) => logging!(error, Type::Core, "update_config after mode change: {err}"),
-    }
-}
-
 /// Test connection delay to a URL
 pub async fn test_delay(url: String) -> anyhow::Result<u32> {
     use crate::utils::network::{NetworkManager, ProxyType};
     use tokio::time::Instant;
 
-    let tun_mode = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
+    let tun_mode = crate::config::effective_tun_enabled(
+        Config::verge().await.latest_arc().enable_tun_mode,
+        crate::config::tun_privilege_available().await,
+    );
 
     // 如果是TUN模式，不使用代理，否则使用自身代理
     let proxy_type = if !tun_mode {
