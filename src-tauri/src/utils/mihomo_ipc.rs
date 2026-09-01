@@ -390,8 +390,9 @@ pub async fn put_rules_reload(path: &str) -> Result<()> {
         anyhow::bail!("core does not support PUT /rules; update mihomo");
     }
     if !response.status().is_success() {
+        let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        anyhow::bail!("PUT /rules failed: {} {body}", response.status());
+        anyhow::bail!("PUT /rules failed: {status} {body}");
     }
     Ok(())
 }

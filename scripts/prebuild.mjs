@@ -19,10 +19,9 @@ import { log_debug, log_error, log_info, log_success } from "./utils.mjs";
 
 /**
  * Prebuild script with optimization features:
- * 1. Skip downloading mihomo core when the cached sidecar matches the pinned version
- * 2. Cache version information for 1 hour to avoid repeated version checks
- * 3. Use file hash to detect changes and skip unnecessary chmod/copy operations
- * 4. Use --force or -f flag to force re-download and update all resources
+ * 1. Skip downloading mihomo core when the cached sidecar matches version.txt
+ * 2. Use file hash to detect changes and skip unnecessary chmod/copy operations
+ * 3. Use --force or -f flag to force re-download and update all resources
  *
  */
 
@@ -76,10 +75,6 @@ function parseJsonText(text) {
   return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 
-function readJsonFileSync(filePath) {
-  return parseJsonText(fs.readFileSync(filePath, "utf-8"));
-}
-
 // =======================
 // Version Cache
 // =======================
@@ -102,15 +97,6 @@ async function saveVersionCache(cache) {
   } catch (err) {
     log_debug("Failed to save version cache:", err.message);
   }
-}
-async function getCachedVersion(key) {
-  const cache = await loadVersionCache();
-  const cached = cache[key];
-  if (cached && Date.now() - cached.timestamp < 3600000) {
-    log_info(`Using cached version for ${key}: ${cached.version}`);
-    return cached.version;
-  }
-  return null;
 }
 async function setCachedVersion(key, version) {
   const cache = await loadVersionCache();
@@ -175,14 +161,13 @@ async function updateHashCache(targetPath) {
 }
 
 // =======================
-// 单一自定义内核（MikeKen-Ken fork，钉死当前对接版本）
+// 单一自定义内核（MikeKen-Ken fork，跟随 Prerelease-Alpha/version.txt）
 // =======================
 // 仅打包 `verge-mihomo-custom`，下载自自有仓库 MikeKen-Ken/mihomo。
-// 版本以 scripts/mihomo.pin.json 为准（与 Android gitlink 对齐），不再跟随浮动 version.txt。
-const META_CUSTOM_PIN_PATH = path.join(cwd, "scripts/mihomo.pin.json");
-const META_CUSTOM_PIN = readJsonFileSync(META_CUSTOM_PIN_PATH);
-const META_CUSTOM_ROLLING_TAG =
-  META_CUSTOM_PIN.releaseTag || "Prerelease-Alpha";
+// 每次 prebuild 读取滚动 tag 上的 version.txt，打包当时最新的 GitHub 产物。
+const META_CUSTOM_REPO = "MikeKen-Ken/mihomo";
+const META_CUSTOM_ROLLING_TAG = "Prerelease-Alpha";
+const META_CUSTOM_VERSION_URL = `https://github.com/${META_CUSTOM_REPO}/releases/download/${META_CUSTOM_ROLLING_TAG}/version.txt`;
 let META_CUSTOM_VERSION;
 const META_CUSTOM_RELEASE_CACHE = new Map();
 
@@ -191,20 +176,15 @@ function sleep(ms) {
 }
 
 function getMetaCustomReleaseTagCandidates() {
-  const tags = [];
-  const pinnedVersion = String(META_CUSTOM_PIN.version || "").trim();
-  if (pinnedVersion) tags.push(pinnedVersion);
-  if (!tags.includes(META_CUSTOM_ROLLING_TAG))
-    tags.push(META_CUSTOM_ROLLING_TAG);
-  return tags;
+  return [META_CUSTOM_ROLLING_TAG];
 }
 
 function getMetaCustomDownloadUrl(releaseTag, fileName) {
-  return `https://github.com/${META_CUSTOM_PIN.repo}/releases/download/${releaseTag}/${fileName}`;
+  return `https://github.com/${META_CUSTOM_REPO}/releases/download/${releaseTag}/${fileName}`;
 }
 
 function getMetaCustomReleaseTagApi(releaseTag) {
-  return `https://api.github.com/repos/${META_CUSTOM_PIN.repo}/releases/tags/${releaseTag}`;
+  return `https://api.github.com/repos/${META_CUSTOM_REPO}/releases/tags/${releaseTag}`;
 }
 
 function createFetchOptions() {
@@ -238,6 +218,31 @@ async function fetchText(url, options) {
   return (await response.text()).trim();
 }
 
+async function fetchAlphaVersionFromReleaseApi(options) {
+  const release = await fetchAlphaRelease(META_CUSTOM_ROLLING_TAG, options);
+  const versionAsset = release.assets?.find((asset) => asset.name === "version.txt");
+  if (!versionAsset?.browser_download_url && !versionAsset?.url) {
+    throw new Error("version.txt asset not found in Prerelease-Alpha release");
+  }
+  if (versionAsset.url) {
+    const assetResp = await fetch(versionAsset.url, {
+      ...options,
+      method: "GET",
+      headers: {
+        ...options.headers,
+        Accept: "application/octet-stream",
+      },
+    });
+    if (assetResp.ok) {
+      return (await assetResp.text()).trim();
+    }
+  }
+  if (versionAsset.browser_download_url) {
+    return await fetchText(versionAsset.browser_download_url, options);
+  }
+  throw new Error("unable to download version.txt from release assets");
+}
+
 async function fetchAlphaRelease(releaseTag, options) {
   if (META_CUSTOM_RELEASE_CACHE.has(releaseTag)) {
     return META_CUSTOM_RELEASE_CACHE.get(releaseTag);
@@ -256,8 +261,8 @@ async function fetchAlphaRelease(releaseTag, options) {
 }
 
 async function downloadAlphaAssetViaApi(fileName, outPath, options) {
-  // Pin bumps often land while mihomo CI is still publishing the immutable
-  // tag. Drop stale API payloads so retries can see a just-published release.
+  // version.txt can land a minute before the platform zip on the rolling tag.
+  // Drop stale API payloads so retries can see a just-published release.
   META_CUSTOM_RELEASE_CACHE.clear();
   const releaseTags = getMetaCustomReleaseTagCandidates();
   let lastError;
@@ -302,7 +307,7 @@ async function downloadAlphaAssetViaApi(fileName, outPath, options) {
 
   throw new Error(
     `Alpha release asset not found: ${fileName}. Tried tags: ${releaseTags.join(", ")}. ` +
-      `Prerelease-Alpha only keeps the latest build; pin version must match an immutable tag or current rolling release. ` +
+      `Prerelease-Alpha only keeps the latest build; version.txt must match current rolling assets. ` +
       `${lastError?.message || ""}`.trim(),
   );
 }
@@ -317,19 +322,29 @@ const META_CUSTOM_ASSET_MAP = {
 };
 
 // =======================
-// Resolve pinned custom mihomo version（自有仓库，不跟浮动 tip）
+// Fetch latest custom mihomo version from rolling version.txt
 // =======================
 async function getLatestCustomVersion() {
-  const pinned = String(META_CUSTOM_PIN.version || "").trim();
-  if (!pinned) {
-    log_error(`mihomo pin missing version: ${META_CUSTOM_PIN_PATH}`);
+  const options = createFetchOptions();
+
+  try {
+    try {
+      META_CUSTOM_VERSION = await fetchText(META_CUSTOM_VERSION_URL, options);
+    } catch (directErr) {
+      log_debug(
+        `Direct custom version URL failed, fallback to API: ${directErr.message}`,
+      );
+      META_CUSTOM_VERSION = await fetchAlphaVersionFromReleaseApi(options);
+    }
+    if (!META_CUSTOM_VERSION) {
+      throw new Error("Prerelease-Alpha version.txt is empty");
+    }
+    log_info(`MikeKen-Ken mihomo version: ${META_CUSTOM_VERSION}`);
+    await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
+  } catch (err) {
+    log_error("Error fetching custom mihomo version:", err.message);
     process.exit(1);
   }
-  META_CUSTOM_VERSION = pinned;
-  log_info(
-    `MikeKen-Ken mihomo pinned: ${META_CUSTOM_VERSION} (commit ${String(META_CUSTOM_PIN.commit || "").slice(0, 8)})`,
-  );
-  await setCachedVersion("META_CUSTOM_VERSION", META_CUSTOM_VERSION);
 }
 
 // =======================
@@ -819,7 +834,7 @@ const tasks = [
     name: "verge-mihomo-custom",
     func: () =>
       getLatestCustomVersion().then(() => resolveSidecar(clashMetaCustom())),
-    // Immutable tag can lag the pin by 1–2 minutes; 5 instant retries always lose that race.
+    // Rolling assets can lag version.txt by 1–2 minutes; 5 instant retries always lose that race.
     retry: 8,
     retryDelayMs: 15000,
   },
