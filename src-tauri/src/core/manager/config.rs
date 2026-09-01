@@ -114,6 +114,14 @@ impl CoreManager {
                 Config::runtime().await.apply();
                 Ok(())
             }
+            Err(error) if crate::utils::mihomo_ipc::is_rules_reload_unsupported(&error) => {
+                logging!(
+                    info,
+                    Type::Core,
+                    "PUT /rules unavailable, falling back to full reload: {error}"
+                );
+                self.apply_config(run_path).await
+            }
             Err(error) => {
                 Config::runtime().await.discard();
                 Err(error)

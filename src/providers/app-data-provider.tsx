@@ -423,11 +423,15 @@ export const AppDataProvider = ({
       }, 200);
     };
 
-    // 仅刷新 clash 配置（如 log-level 变更），不刷新代理、不重置 fallback 测速，避免触发 group 健康检测
+    // Refresh clash config and the live rule list (mode switch hot-swaps
+    // rules). Do not refresh proxies or reset fallback health checks.
     const handleRefreshClashConfigOnly = () => {
       scheduleTimeout(() => {
         refreshClashConfig().catch((error) =>
           console.warn("[DataProvider] Clash config refresh failed:", error),
+        );
+        refreshRules().catch((error) =>
+          console.warn("[DataProvider] Rules refresh failed:", error),
         );
       }, 200);
     };

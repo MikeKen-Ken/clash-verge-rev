@@ -15,6 +15,24 @@ pub async fn change_clash_mode(mode: ClashMode) -> Result<()> {
         return Err(error);
     }
 
+    // Close after the matcher swap (same order as Android PatchMode) so new
+    // reconnects use the updated rules. Skip on apply failure so rollback
+    // keeps existing flows.
+    let auto_close = Config::verge()
+        .await
+        .latest_arc()
+        .auto_close_connection
+        .unwrap_or(true);
+    if auto_close
+        && let Err(err) = handle::Handle::mihomo().await.close_all_connections().await
+    {
+        logging!(
+            error,
+            Type::Core,
+            "Failed to close all connections after mode switch: {err}"
+        );
+    }
+
     handle::Handle::refresh_clash_config_only();
     logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
     logging_error!(

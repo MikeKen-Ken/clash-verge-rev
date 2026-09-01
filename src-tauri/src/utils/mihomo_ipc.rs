@@ -371,13 +371,20 @@ pub async fn put_configs_reload(path: &str) -> Result<()> {
     Ok(())
 }
 
+const RULES_RELOAD_UNSUPPORTED: &str = "core does not support PUT /rules; update mihomo";
+
 /// PUT `/rules` — replace the live rule matcher without ApplyConfig.
 ///
 /// Mode switch only changes `rules`. A full `PUT /configs?force=true` suspends
 /// the tunnel, recreates TUN, and zeros connections. This endpoint keeps
 /// existing connections and already-loaded rule-providers.
+///
+/// Parse of a large runtime YAML (GEOIP/GEOSITE) uses the same budget as a
+/// full reload. A 404 means an older sidecar; callers may fall back to
+/// `PUT /configs`.
 pub async fn put_rules_reload(path: &str) -> Result<()> {
-    let (client, headers) = build_ipc_client(Duration::from_secs(5)).await?;
+    let (client, headers) =
+        build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
     let response = client
         .request(Method::PUT, "http://localhost/rules")
         .headers(headers)
@@ -387,7 +394,7 @@ pub async fn put_rules_reload(path: &str) -> Result<()> {
         .context("send PUT /rules")?;
 
     if response.status() == StatusCode::NOT_FOUND {
-        anyhow::bail!("core does not support PUT /rules; update mihomo");
+        anyhow::bail!("{RULES_RELOAD_UNSUPPORTED}");
     }
     if !response.status().is_success() {
         let status = response.status();
@@ -395,4 +402,21 @@ pub async fn put_rules_reload(path: &str) -> Result<()> {
         anyhow::bail!("PUT /rules failed: {status} {body}");
     }
     Ok(())
+}
+
+pub fn is_rules_reload_unsupported(err: &anyhow::Error) -> bool {
+    err.to_string().contains("does not support PUT /rules")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_rules_reload_unsupported;
+
+    #[test]
+    fn detects_unsupported_put_rules() {
+        let err = anyhow::anyhow!("core does not support PUT /rules; update mihomo");
+        assert!(is_rules_reload_unsupported(&err));
+        let other = anyhow::anyhow!("PUT /rules failed: 400 bad yaml");
+        assert!(!is_rules_reload_unsupported(&other));
+    }
 }
