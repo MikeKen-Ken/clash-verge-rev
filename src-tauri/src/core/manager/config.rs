@@ -72,12 +72,10 @@ impl CoreManager {
         }
 
         self.set_last_update(Instant::now());
-        // Mode switch only rewrites MATCH (or restores profile rules). Skip sidecar
-        // `mihomo -t -d <live app dir>`: it shares the running core's pipe/provider
-        // files and is a common reason the first subsequent PUT /configs hangs.
-        let update_error = match self.perform_config_update_force().await {
-            Ok((true, _)) => None,
-            Ok((false, error_msg)) => Some(anyhow!("{error_msg}")),
+        // Mode switch only rewrites MATCH / restores profile rules. Hot-swap the
+        // rule matcher so TUN, inbounds, and live connections stay up.
+        let update_error = match self.apply_mode_rules_only().await {
+            Ok(()) => None,
             Err(error) => Some(error),
         };
 
@@ -93,6 +91,34 @@ impl CoreManager {
 
         clash.apply();
         Ok(())
+    }
+
+    async fn apply_mode_rules_only(&self) -> Result<()> {
+        Config::generate().await?;
+        let run_path = match Config::generate_file(ConfigType::Run).await {
+            Ok(path) => path,
+            Err(error) => {
+                Config::runtime().await.discard();
+                return Err(error);
+            }
+        };
+        let path = dirs::path_to_str(&run_path)?;
+        logging!(
+            info,
+            Type::Core,
+            "Applying mode rules without full reload: {}",
+            run_path.display()
+        );
+        match crate::utils::mihomo_ipc::put_rules_reload(path).await {
+            Ok(()) => {
+                Config::runtime().await.apply();
+                Ok(())
+            }
+            Err(error) => {
+                Config::runtime().await.discard();
+                Err(error)
+            }
+        }
     }
 
     /// Generate and validate a restart candidate without replacing the current

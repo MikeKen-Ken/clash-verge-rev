@@ -1091,6 +1091,48 @@ rules:
     }
 
     #[test]
+    fn global_mode_keeps_rule_providers_for_hot_swap_back_to_rule() {
+        let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
+            r#"
+mode: rule
+rule-providers:
+  ads:
+    type: http
+    behavior: domain
+    url: https://example.com/ads.mrs
+    path: ./ruleset/ads.mrs
+rules:
+  - RULE-SET,ads,REJECT
+  - MATCH,PROXY
+"#,
+        )
+        .expect("yaml");
+        let global = super::finalize_runtime_config(config.clone(), false, ClashMode::Global);
+        assert!(
+            global.get("rule-providers").and_then(|v| v.as_mapping()).is_some(),
+            "global override must not drop rule-providers; rule mode hot-swap reuses them",
+        );
+        let global_rules = global
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("global rules");
+        assert_eq!(global_rules.len(), 1);
+        assert_eq!(global_rules[0].as_str(), Some("MATCH,Auto"));
+
+        let rule = super::finalize_runtime_config(config, false, ClashMode::Rule);
+        let rule_rows = rule
+            .get("rules")
+            .and_then(|v| v.as_sequence())
+            .expect("rule mode rules");
+        assert!(
+            rule_rows
+                .iter()
+                .any(|row| row.as_str() == Some("RULE-SET,ads,REJECT")),
+            "switching back to rule must restore RULE-SET lines",
+        );
+    }
+
+    #[test]
     fn script_mode_remains_script_and_keeps_profile_rules() {
         let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
             r#"

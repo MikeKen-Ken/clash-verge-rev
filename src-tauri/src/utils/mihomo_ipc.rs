@@ -370,3 +370,28 @@ pub async fn put_configs_reload(path: &str) -> Result<()> {
     }
     Ok(())
 }
+
+/// PUT `/rules` — replace the live rule matcher without ApplyConfig.
+///
+/// Mode switch only changes `rules`. A full `PUT /configs?force=true` suspends
+/// the tunnel, recreates TUN, and zeros connections. This endpoint keeps
+/// existing connections and already-loaded rule-providers.
+pub async fn put_rules_reload(path: &str) -> Result<()> {
+    let (client, headers) = build_ipc_client(Duration::from_secs(5)).await?;
+    let response = client
+        .request(Method::PUT, "http://localhost/rules")
+        .headers(headers)
+        .json(&serde_json::json!({ "path": path }))
+        .send()
+        .await
+        .context("send PUT /rules")?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        anyhow::bail!("core does not support PUT /rules; update mihomo");
+    }
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("PUT /rules failed: {} {body}", response.status());
+    }
+    Ok(())
+}
