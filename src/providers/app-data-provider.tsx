@@ -27,11 +27,6 @@ import {
 } from "@/services/proxy-connectivity-stats";
 import { syncConnectivityPersistenceToDisk } from "@/services/proxy-connectivity-sync";
 import {
-  connectivitySyncCheckPeriodMs,
-  isConnectivityWebdavReady,
-  mergeConnectivityStatsIfDue,
-} from "@/services/proxy-connectivity-webdav-sync";
-import {
   applyStartupLiveConnectivityOrder,
   createDelayTestEarlyPicker,
   isAutoSelectGroupType,
@@ -56,22 +51,6 @@ export const AppDataProvider = ({
       void syncConnectivityPersistenceToDisk();
     });
   }, []);
-
-  useEffect(() => {
-    if (!isConnectivityWebdavReady(verge)) return;
-    const intervalHours = verge?.connectivity_sync_interval_hours ?? 24;
-    const run = () => {
-      void mergeConnectivityStatsIfDue(intervalHours).catch(() => {
-        // Automatic sync retries at the next check; manual sync surfaces errors.
-      });
-    };
-    run();
-    const timer = window.setInterval(
-      run,
-      connectivitySyncCheckPeriodMs(intervalHours),
-    );
-    return () => window.clearInterval(timer);
-  }, [verge]);
 
   useEffect(() => {
     setDefaultHealthCheck({

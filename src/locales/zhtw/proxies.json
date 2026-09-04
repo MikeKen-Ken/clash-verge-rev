@@ -74,7 +74,8 @@
       "httpsRequired": "連通統計同步需要 HTTPS WebDAV 位址",
       "mergeFailed": "合併連通統計失敗",
       "intervalSaveFailed": "儲存自動合併間隔失敗",
-      "mergeSucceeded": "已從 {{count}} 台裝置合併連通統計"
+      "mergeSucceeded": "已從 {{count}} 台裝置合併連通統計",
+      "intervalHint": "透過 WebDAV 依所選間隔自動與其他裝置合併連通性統計。設定好 WebDAV 後會先合併一次，之後依距上次成功合併的時間間隔執行。"
     }
   },
   "feedback": {

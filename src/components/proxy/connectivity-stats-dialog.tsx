@@ -10,7 +10,6 @@ import {
   DialogTitle,
   IconButton,
   FormControl,
-  InputLabel,
   List,
   ListItem,
   ListItemText,
@@ -22,9 +21,9 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { useTranslation } from "react-i18next";
 
+import { TooltipIcon } from "@/components/base";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import { showNotice } from "@/services/notice-service";
@@ -164,10 +163,7 @@ export const ConnectivityStatsDialog = ({
         }),
       );
     } catch (error) {
-      showNotice.error(
-        t("proxies.page.connectivityStats.mergeFailed"),
-        error,
-      );
+      showNotice.error(t("proxies.page.connectivityStats.mergeFailed"), error);
     } finally {
       setSyncing(false);
     }
@@ -204,7 +200,7 @@ export const ConnectivityStatsDialog = ({
           alignItems="center"
           gap={1.5}
           flexWrap="wrap"
-          sx={{ mb: 2 }}
+          sx={{ mb: 2, pt: 0.5 }}
         >
           <Button
             variant="contained"
@@ -217,38 +213,42 @@ export const ConnectivityStatsDialog = ({
               ? t("proxies.page.connectivityStats.merging")
               : t("proxies.page.connectivityStats.mergeNow")}
           </Button>
-          <FormControl size="small" sx={{ minWidth: 190 }}>
-            <InputLabel id="connectivity-sync-interval-label">
-              {t("proxies.page.connectivityStats.intervalLabel")}
-            </InputLabel>
-            <Select
-              labelId="connectivity-sync-interval-label"
-              label={t("proxies.page.connectivityStats.intervalLabel")}
-              value={syncIntervalHours}
-              onChange={(event) => {
-                void patchVerge({
-                  connectivity_sync_interval_hours: Number(event.target.value),
-                }).catch((error) => {
-                  showNotice.error(
-                    t("proxies.page.connectivityStats.intervalSaveFailed"),
-                    error,
-                  );
-                });
-              }}
-            >
-              {CONNECTIVITY_SYNC_INTERVAL_OPTIONS.map((hours) => (
-                <MenuItem key={hours} value={hours}>
-                  {hours === 168
-                    ? t("proxies.page.connectivityStats.interval7Days")
-                    : hours === 1
-                      ? t("proxies.page.connectivityStats.intervalHour")
-                      : t("proxies.page.connectivityStats.intervalHours", {
-                          hours,
-                        })}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box display="flex" alignItems="center" gap={0.5} minWidth={0}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <Select
+                aria-label={t("proxies.page.connectivityStats.intervalLabel")}
+                value={syncIntervalHours}
+                onChange={(event) => {
+                  void patchVerge({
+                    connectivity_sync_interval_hours: Number(
+                      event.target.value,
+                    ),
+                  }).catch((error) => {
+                    showNotice.error(
+                      t("proxies.page.connectivityStats.intervalSaveFailed"),
+                      error,
+                    );
+                  });
+                }}
+              >
+                {CONNECTIVITY_SYNC_INTERVAL_OPTIONS.map((hours) => (
+                  <MenuItem key={hours} value={hours}>
+                    {hours === 168
+                      ? t("proxies.page.connectivityStats.interval7Days")
+                      : hours === 1
+                        ? t("proxies.page.connectivityStats.intervalHour")
+                        : t("proxies.page.connectivityStats.intervalHours", {
+                            hours,
+                          })}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TooltipIcon
+              title={t("proxies.page.connectivityStats.intervalHint")}
+              aria-label={t("proxies.page.connectivityStats.intervalLabel")}
+            />
+          </Box>
         </Box>
         <List sx={{ py: 0, minHeight: 250 }}>
           {rows.length === 0 ? (

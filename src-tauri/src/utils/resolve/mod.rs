@@ -13,7 +13,11 @@ use crate::{
         tray::Tray,
     },
     feat,
-    module::{auto_backup::AutoBackupManager, lightweight::auto_lightweight_boot},
+    module::{
+        auto_backup::AutoBackupManager,
+        connectivity_sync_schedule::ConnectivitySyncScheduler,
+        lightweight::auto_lightweight_boot,
+    },
     process::AsyncHandler,
     utils::{init, server, window_manager::WindowManager},
 };
@@ -77,6 +81,7 @@ pub fn resolve_setup_async() {
             init_hotkey(),
             init_auto_lightweight_boot(),
             init_auto_backup(),
+            init_connectivity_sync(),
         );
     });
 }
@@ -135,6 +140,13 @@ pub(super) async fn init_auto_lightweight_boot() {
 
 pub(super) async fn init_auto_backup() {
     logging_error!(Type::Setup, AutoBackupManager::global().init().await);
+}
+
+pub(super) async fn init_connectivity_sync() {
+    logging_error!(
+        Type::Setup,
+        ConnectivitySyncScheduler::global().init().await
+    );
 }
 
 pub fn init_signal() {

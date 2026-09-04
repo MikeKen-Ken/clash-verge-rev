@@ -84,7 +84,8 @@
       "httpsRequired": "Connectivity statistics sync requires an HTTPS WebDAV URL",
       "mergeFailed": "Failed to merge connectivity statistics",
       "intervalSaveFailed": "Failed to save automatic merge interval",
-      "mergeSucceeded": "Connectivity statistics merged from {{count}} devices"
+      "mergeSucceeded": "Connectivity statistics merged from {{count}} devices",
+      "intervalHint": "Automatically merge this device with other devices over WebDAV. The first merge runs after WebDAV is configured; later merges follow this interval from the last successful merge."
     }
   },
   "feedback": {

@@ -1,7 +1,10 @@
 use crate::{
     config::{Config, IVerge},
     core::{CoreManager, handle, hotkey, logger::Logger, sysopt, tray},
-    module::{auto_backup::AutoBackupManager, lightweight},
+    module::{
+        auto_backup::AutoBackupManager, connectivity_sync_schedule::ConnectivitySyncScheduler,
+        lightweight,
+    },
 };
 use anyhow::Result;
 use bitflags::bitflags;
@@ -280,6 +283,10 @@ pub async fn patch_verge(patch: &IVerge, not_save_file: bool) -> Result<()> {
     }
     Config::verge().await.apply();
     logging_error!(Type::Backup, AutoBackupManager::global().refresh_settings().await);
+    logging_error!(
+        Type::Network,
+        ConnectivitySyncScheduler::global().refresh_settings().await
+    );
     if !not_save_file {
         // 分离数据获取和异步调用
         let verge_data = Config::verge().await.data_arc();
