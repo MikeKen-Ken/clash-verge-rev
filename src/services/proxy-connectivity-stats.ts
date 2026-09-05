@@ -36,6 +36,7 @@ interface DayCounts {
 
 interface ProxyConnectivityEntry {
   days: Record<string, DayCounts>;
+  ls?: number;
 }
 
 interface StatsFileV2 {
@@ -161,12 +162,24 @@ function pruneEmptyProxyEntries(
     }
     if (Object.keys(days).length !== Object.keys(entry.days).length) {
       changed = true;
-      next[name] = { days };
+      next[name] = retainLastSuccess({ days }, entry.ls);
     } else {
       next[name] = entry;
     }
   }
   return { store: next, changed };
+}
+
+function retainLastSuccess(
+  entry: ProxyConnectivityEntry,
+  lastSuccessAt: number | undefined,
+): ProxyConnectivityEntry {
+  if (lastSuccessAt && lastSuccessAt > 0) {
+    return { ...entry, ls: lastSuccessAt };
+  }
+  const next = { ...entry };
+  delete next.ls;
+  return next;
 }
 
 function loadStore(): Record<string, ProxyConnectivityEntry> {
@@ -453,6 +466,7 @@ export interface ConnectivityScoreRow {
   weightedSuccess: number;
   weightedFailure: number;
   effectiveAvgDelayMs: number;
+  lastSuccessAt: number;
   hasStats: boolean;
 }
 
@@ -465,7 +479,8 @@ export function listConnectivityScoreRows(
 ): ConnectivityScoreRow[] {
   if (proxyNames.length === 0) return [];
 
-  const { global, byProxy } = collectWeightedStatsFromStore(loadStore());
+  const store = loadStore();
+  const { global, byProxy } = collectWeightedStatsFromStore(store);
   const priorDelayMs = computePriorEffectiveDelayMs(global);
 
   const keyed = proxyNames.map((name, index) => {
@@ -482,6 +497,7 @@ export function listConnectivityScoreRows(
           stats,
           priorDelayMs,
         ),
+        lastSuccessAt: store[name]?.ls ?? 0,
         hasStats,
       } satisfies ConnectivityScoreRow,
     };

@@ -46,10 +46,16 @@ fn is_zero(value: &u64) -> bool {
     *value == 0
 }
 
+fn is_zero_i64(value: &i64) -> bool {
+    *value == 0
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 struct ProxyEntry {
     #[serde(default)]
     days: HashMap<String, DayCounts>,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    ls: i64,
 }
 
 type StatsData = HashMap<String, ProxyEntry>;
@@ -191,7 +197,13 @@ fn subtract(current: &StatsData, imported: &StatsData) -> StatsData {
             }
         }
         if !days.is_empty() {
-            result.insert(proxy.clone(), ProxyEntry { days });
+            result.insert(
+                proxy.clone(),
+                ProxyEntry {
+                    days,
+                    ls: entry.ls.max(0),
+                },
+            );
         }
     }
     result
@@ -206,6 +218,7 @@ fn add_into(target: &mut StatsData, source: &StatsData) {
             total.f = total.f.saturating_add(counts.f).min(MAX_SAFE_COUNT);
             total.ds = total.ds.saturating_add(counts.ds).min(MAX_SAFE_COUNT);
         }
+        target_entry.ls = target_entry.ls.max(0).max(entry.ls.max(0));
     }
 }
 
@@ -492,6 +505,7 @@ mod tests {
                         ds: 100,
                     },
                 )]),
+                ls: 0,
             },
         )])
     }
@@ -520,6 +534,20 @@ mod tests {
             &Local::now().format("%Y-%m-%d").to_string(),
         );
         assert_eq!((counts.s, counts.f), (8, 3));
+    }
+
+    #[test]
+    fn merge_keeps_the_latest_last_success_time() {
+        let mut left = data(3, 1);
+        left.get_mut("node").unwrap().ls = 100;
+        let mut right = data(5, 2);
+        right.get_mut("node").unwrap().ls = 250;
+        let mut merged = StatsData::new();
+        add_into(&mut merged, &left);
+        add_into(&mut merged, &right);
+        assert_eq!(merged["node"].ls, 250);
+        let own = subtract(&right, &left);
+        assert_eq!(own["node"].ls, 250);
     }
 
     #[test]

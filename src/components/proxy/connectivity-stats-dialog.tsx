@@ -64,12 +64,25 @@ function formatCount(n: number): string {
   return n >= 10 ? n.toFixed(0) : n.toFixed(1);
 }
 
+function formatLastSuccess(unixSeconds: number | undefined): string {
+  if (!unixSeconds || unixSeconds <= 0) return "Last success —";
+  const date = new Date(unixSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return "Last success —";
+  return `Last success ${new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)}`;
+}
+
 function formatRowSecondary(row: ConnectivityScoreRow): string {
   if (!row.hasStats) return "No statistics";
   const delay = Number.isFinite(row.effectiveAvgDelayMs)
     ? `${Math.round(row.effectiveAvgDelayMs)}ms`
     : "—";
-  return `Score ${row.score.toFixed(3)} · Success ${formatCount(row.weightedSuccess)} · Failure ${formatCount(row.weightedFailure)} · Effective delay ${delay}`;
+  return `Score ${row.score.toFixed(3)} · Success ${formatCount(row.weightedSuccess)} · Failure ${formatCount(row.weightedFailure)} · Effective delay ${delay} · ${formatLastSuccess(row.lastSuccessAt)}`;
 }
 
 export type ConnectivityStatsDialogProps = {
