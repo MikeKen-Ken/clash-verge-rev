@@ -6,12 +6,13 @@ use crate::process::AsyncHandler;
 use crate::utils::mihomo_ipc::{self, NetworkRecoveryStatus};
 use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use coordinator::RecoveryGate;
+use fingerprint::NetworkFingerprint;
 
 const NETWORK_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const NETWORK_SETTLE_DELAY: Duration = Duration::from_millis(750);
@@ -113,10 +114,7 @@ async fn wait_for_typed_recovery_support() -> bool {
     }
 }
 
-async fn observe_network_change(
-    previous: &mut Option<u64>,
-    recovery_gate: &mut RecoveryGate,
-) {
+async fn observe_network_change(previous: &mut Option<NetworkFingerprint>, recovery_gate: &mut RecoveryGate) {
     let Some(current) = capture_or_log("poll network fingerprint").await else {
         return;
     };
@@ -132,31 +130,33 @@ async fn observe_network_change(
     let Some(settled) = capture_or_log("settled network fingerprint").await else {
         return;
     };
-    if settled == old {
+    if settled == old || settled != current {
         return;
     }
-    *previous = Some(settled);
-    recover_once(
+    let Some(kind) = settled.change_from(old) else {
+        return;
+    };
+    if recover_once(
         recovery_gate,
         Some(settled),
+        kind,
         "desktop route, interface, or DNS changed",
     )
-    .await;
+    .await
+    {
+        *previous = Some(settled);
+    }
 }
 
-async fn recover_from_resume(previous: &mut Option<u64>, recovery_gate: &mut RecoveryGate) {
+async fn recover_from_resume(previous: &mut Option<NetworkFingerprint>, recovery_gate: &mut RecoveryGate) {
     tokio::time::sleep(NETWORK_SETTLE_DELAY).await;
     let fingerprint = capture_or_log("resume network fingerprint").await.or(*previous);
-    if let Some(current) = fingerprint {
-        *previous = Some(current);
+    if recover_once(recovery_gate, fingerprint, "route-changed", "desktop resumed").await {
+        *previous = fingerprint;
     }
-    recover_once(recovery_gate, fingerprint, "desktop resumed").await;
 }
 
-async fn check_escalation(
-    last_sequence: &mut u64,
-    last_restart: &mut Option<Instant>,
-) -> MonitorAction {
+async fn check_escalation(last_sequence: &mut u64, last_restart: &mut Option<Instant>) -> MonitorAction {
     let report = match mihomo_ipc::get_network_recovery_status().await {
         Ok(NetworkRecoveryStatus::Supported(report)) => report,
         Ok(NetworkRecoveryStatus::Unsupported) => {
@@ -209,13 +209,13 @@ async fn check_escalation(
     MonitorAction::RetryLater
 }
 
-async fn capture() -> Result<u64> {
+async fn capture() -> Result<NetworkFingerprint> {
     AsyncHandler::spawn_blocking(fingerprint::capture)
         .await
         .context("network fingerprint task failed")?
 }
 
-async fn capture_or_log(operation: &str) -> Option<u64> {
+async fn capture_or_log(operation: &str) -> Option<NetworkFingerprint> {
     match capture().await {
         Ok(fingerprint) => Some(fingerprint),
         Err(err) => {
@@ -227,22 +227,22 @@ async fn capture_or_log(operation: &str) -> Option<u64> {
 
 async fn recover_once(
     recovery_gate: &mut RecoveryGate,
-    fingerprint: Option<u64>,
+    fingerprint: Option<NetworkFingerprint>,
+    kind: &str,
     reason: &str,
-) {
+) -> bool {
     let now = Instant::now();
-    if recovery_gate.is_duplicate(fingerprint, now) {
-        logging!(
-            info,
-            Type::Network,
-            "Coalesced duplicate network recovery: {reason}"
-        );
-        return;
+    if recovery_gate.is_duplicate(fingerprint, kind, now) {
+        logging!(info, Type::Network, "Coalesced duplicate network recovery: {reason}");
+        return true;
     }
 
-    match mihomo_ipc::post_typed_network_recovery("route-changed", reason).await {
+    match mihomo_ipc::post_typed_network_recovery(kind, reason).await {
         Ok(NetworkRecoveryStatus::Supported(report)) => {
-            recovery_gate.record_success(fingerprint, Instant::now());
+            if report.error.is_some() || report.coalesced {
+                return false;
+            }
+            recovery_gate.record_success(fingerprint, kind, Instant::now());
             logging!(
                 info,
                 Type::Network,
@@ -254,6 +254,7 @@ async fn recover_once(
                 report.restart_recommended,
                 report.error.as_deref().unwrap_or("none")
             );
+            return true;
         }
         Ok(NetworkRecoveryStatus::Unsupported) => logging!(
             info,
@@ -266,4 +267,5 @@ async fn recover_once(
             "Network changed, but Mihomo recovery was unavailable: {err}"
         ),
     }
+    false
 }
