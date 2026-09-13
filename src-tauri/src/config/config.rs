@@ -85,12 +85,6 @@ impl Config {
             handle::Handle::notice_message(msg_type, msg_content);
         }
 
-        {
-            let profiles = Self::profiles().await.data_arc();
-            // Logging error internally
-            let _ = profiles.cleanup_orphaned_files().await;
-        }
-
         Ok(())
     }
 

@@ -511,8 +511,11 @@ fn apply_builtin_scripts(mut config: Mapping, clash_core: Option<String>, enable
     config
 }
 
+#[cfg(test)]
+mod upstream_regression_tests;
+
 fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
-    const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
+    const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS", "PASS-RULE"];
 
     let proxy_names = config
         .get("proxies")

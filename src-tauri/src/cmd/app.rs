@@ -52,7 +52,8 @@ pub async fn export_text_file(destination: String, content: String) -> CmdResult
 /// 打开网页链接
 #[tauri::command]
 pub fn open_web_url(url: String) -> CmdResult<()> {
-    open::that(url.as_str()).stringify_err()
+    let url = crate::utils::web_url::normalize_web_url(url.as_str()).stringify_err()?;
+    open::that(url).stringify_err()
 }
 
 /// 打开与「允许应用通过防火墙」相关的系统界面

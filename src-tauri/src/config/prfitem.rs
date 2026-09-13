@@ -353,13 +353,11 @@ impl PrfItem {
             },
         };
 
-        let home = match header.get("profile-web-page-url") {
-            Some(value) => {
-                let str_value = value.to_str().unwrap_or("");
-                Some(str_value.into())
-            }
-            None => None,
-        };
+        let home = header
+            .get("profile-web-page-url")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| crate::utils::web_url::normalize_web_url(value).ok())
+            .map(Into::into);
 
         let uid = help::get_uid("R").into();
         let file = format!("{uid}.yaml").into();

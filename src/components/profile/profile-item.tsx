@@ -17,7 +17,6 @@ import {
   Menu,
   CircularProgress,
 } from "@mui/material";
-import { open } from "@tauri-apps/plugin-shell";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useEffect, useReducer, useState } from "react";
@@ -34,6 +33,7 @@ import {
   updateProfile,
   saveProfileFile,
   getNextUpdateTime,
+  openWebUrl,
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import { useLoadingCache, useSetLoadingCache } from "@/services/states";
@@ -124,7 +124,7 @@ export const ProfileItem = (props: Props) => {
         }
 
         const nextUpdate = await getNextUpdateTime(itemData.uid);
-          debugLog(`Next update time result:`, nextUpdate);
+        debugLog(`Next update time result:`, nextUpdate);
 
         if (nextUpdate) {
           const nextUpdateDate = dayjs(nextUpdate * 1000);
@@ -289,7 +289,7 @@ export const ProfileItem = (props: Props) => {
 
   const onOpenHome = () => {
     setAnchorEl(null);
-    open(itemData.home ?? "");
+    void openWebUrl(itemData.home ?? "");
   };
 
   const onEditInfo = () => {
@@ -404,12 +404,12 @@ export const ProfileItem = (props: Props) => {
   const urlModeMenu: ContextMenuItem[] = [
     ...(hasHome
       ? [
-        {
-          label: menuLabels.home,
-          handler: onOpenHome,
-          disabled: false,
-        } satisfies ContextMenuItem,
-      ]
+          {
+            label: menuLabels.home,
+            handler: onOpenHome,
+            disabled: false,
+          } satisfies ContextMenuItem,
+        ]
       : []),
     {
       label: menuLabels.select,
@@ -719,7 +719,9 @@ export const ProfileItem = (props: Props) => {
 
           {hasHome && (
             <IconButton
-              title={t("profiles.components.profileItem.tooltips.openDashboard")}
+              title={t(
+                "profiles.components.profileItem.tooltips.openDashboard",
+              )}
               sx={{
                 position: "absolute",
                 p: "3px",

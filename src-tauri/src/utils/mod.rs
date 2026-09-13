@@ -13,4 +13,5 @@ pub mod server;
 pub mod singleton;
 pub mod tmpl;
 pub mod wall_clock;
+pub mod web_url;
 pub mod window_manager;
