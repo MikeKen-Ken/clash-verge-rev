@@ -1,5 +1,6 @@
 mod coordinator;
 mod fingerprint;
+mod notifications;
 
 use crate::core::CoreManager;
 use crate::process::AsyncHandler;
@@ -51,6 +52,13 @@ pub fn recover_after_resume() {
 }
 
 async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
+    let _route_notifications = notifications::register().map_err(|error| {
+        logging!(
+            info,
+            Type::Network,
+            "Route notifications unavailable ({error}); retaining polling"
+        );
+    });
     tokio::time::sleep(NETWORK_INITIAL_DELAY).await;
     if !wait_for_typed_recovery_support().await {
         return;
@@ -59,9 +67,12 @@ async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
     let mut recovery_gate = RecoveryGate::new(DUPLICATE_RECOVERY_WINDOW);
     let mut last_sequence = 0;
     let mut last_restart = None;
+    let mut poll = tokio::time::interval(NETWORK_POLL_INTERVAL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    poll.tick().await;
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(NETWORK_POLL_INTERVAL) => {
+            _ = poll.tick() => {
                 match check_escalation(&mut last_sequence, &mut last_restart).await {
                     MonitorAction::Observe => {
                         observe_network_change(&mut previous, &mut recovery_gate).await;
@@ -69,6 +80,11 @@ async fn run(mut events: mpsc::Receiver<NetworkEvent>) {
                     MonitorAction::RetryLater => {}
                     MonitorAction::Stop => return,
                 }
+            }
+            _ = notifications::changed() => {
+                // Bursts collapse into one pending wake; never force a reset
+                // solely because an unrelated interface generated a callback.
+                observe_network_change(&mut previous, &mut recovery_gate).await;
             }
             event = events.recv() => {
                 let Some(event) = event else {
@@ -115,6 +131,7 @@ async fn wait_for_typed_recovery_support() -> bool {
 }
 
 async fn observe_network_change(previous: &mut Option<NetworkFingerprint>, recovery_gate: &mut RecoveryGate) {
+    let detected = Instant::now();
     let Some(current) = capture_or_log("poll network fingerprint").await else {
         return;
     };
@@ -145,6 +162,12 @@ async fn observe_network_change(previous: &mut Option<NetworkFingerprint>, recov
     .await
     {
         *previous = Some(settled);
+        logging!(
+            info,
+            Type::Network,
+            "Network change detection-to-reset={}ms kind={kind}",
+            detected.elapsed().as_millis()
+        );
     }
 }
 
