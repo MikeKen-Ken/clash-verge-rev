@@ -7,6 +7,7 @@ import {
   getRules,
 } from "tauri-plugin-mihomo-api";
 
+import { AutoDelayDetection } from "@/components/proxy/auto-delay-detection";
 import {
   markManualDelayCheckStarted,
   markManualProxySelectionStarted,
@@ -198,6 +199,7 @@ export const AppDataProvider = ({
         name: g.name,
         type: g.type,
         members: memberNamesFromGroupAll(g.all),
+        timeout: getGroupDelayTimeout(g, false),
       }));
       await applyStartupLiveConnectivityOrder(orderTargets);
       await refreshProxy().catch(() => {});
@@ -240,7 +242,11 @@ export const AppDataProvider = ({
         delayManager.endBulkDelaySession();
         await stopDelayTestEarlyPickers(pickers);
       }
-      await applyStartupLiveConnectivityOrder(orderTargets);
+      await applyStartupLiveConnectivityOrder(
+        orderTargets,
+        undefined,
+        bulkReuseMap,
+      );
       await refreshProxy();
       pollingCountRef.current += 1;
       scheduleNextPoll();
@@ -616,5 +622,10 @@ export const AppDataProvider = ({
     refreshAll,
   ]);
 
-  return <AppDataContext value={value}>{children}</AppDataContext>;
+  return (
+    <AppDataContext value={value}>
+      <AutoDelayDetection />
+      {children}
+    </AppDataContext>
+  );
 };

@@ -139,11 +139,18 @@ export async function applyLiveConnectivityOrderToGroup(
 }
 
 /**
- * 启动时按积分重排 url-test/fallback。url-test 钉第一个可用节点；fallback 清钉。
+ * Startup reorders groups; only completed successful tests may pin a URL-test
+ * node. Before results exist, preserve its current selection. Fallback unpins.
  */
 export async function applyStartupLiveConnectivityOrder(
-  groups: Array<{ name: string; type?: string; members: string[] }>,
+  groups: Array<{
+    name: string;
+    type?: string;
+    members: string[];
+    timeout?: number;
+  }>,
   manualOverrides?: { has(name: string): boolean },
+  testResults?: ReadonlyMap<string, { delay: number }>,
 ): Promise<void> {
   const targets = groups.filter(
     (group) =>
@@ -174,9 +181,17 @@ export async function applyStartupLiveConnectivityOrder(
         await clearProxyGroupManualSelection(group.name);
         return;
       }
-      const first = group.members.find(
-        (name) => name && name !== "DIRECT" && name !== "REJECT",
-      );
+      const first = group.members.find((name) => {
+        const delay = testResults?.get(name)?.delay;
+        return (
+          name &&
+          name !== "DIRECT" &&
+          name !== "REJECT" &&
+          delay != null &&
+          delay > 0 &&
+          delay < (group.timeout ?? 5000)
+        );
+      });
       if (first) {
         await forceSelectGroupProxy(group.name, first);
       }

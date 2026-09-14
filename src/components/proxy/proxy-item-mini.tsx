@@ -68,7 +68,7 @@ function ProxyItemMiniInner(props: Props) {
   const historyDelay = proxy.history?.[proxy.history.length - 1]?.delay;
 
   const updateDelay = useCallback(() => {
-    const cachedUpdate = delayManager.getDelayUpdate(proxyName, groupName);
+    const cachedUpdate = delayManager.getProxyDelayUpdate(proxy, groupName);
     if (cachedUpdate) {
       setDelayState({ ...cachedUpdate });
       return;
