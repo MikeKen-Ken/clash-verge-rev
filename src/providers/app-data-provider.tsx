@@ -20,7 +20,11 @@ import {
   getSystemProxy,
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
-import delayManager, { setDefaultHealthCheck } from "@/services/delay";
+import delayManager, {
+  getGroupDelayTimeout,
+  setDefaultHealthCheck,
+  type DelayUpdate,
+} from "@/services/delay";
 import {
   buildConnectivityScoreContext,
   hydrateConnectivityStatsFromDisk,
@@ -200,12 +204,16 @@ export const AppDataProvider = ({
 
       delayManager.beginBulkDelaySession();
       const pickers: DelayTestEarlyPicker[] = [];
+      const bulkReuseMap = new Map<string, DelayUpdate>();
       try {
-        await Promise.allSettled(
-          urlTestOrFallback.map(async (g) => {
-            const timeout = g.timeout ?? 5000;
+        // Share one worker budget across groups, as in manual Test All.
+        // Parallel groups multiply IPC requests and overwrite shared nodes with
+        // queue timeouts even when their network probes would succeed.
+        for (const g of urlTestOrFallback) {
+          try {
+            const timeout = getGroupDelayTimeout(g, false);
             const names = memberNamesFromGroupAll(g.all);
-            if (names.length === 0) return;
+            if (names.length === 0) continue;
             const scoreContext = buildConnectivityScoreContext();
             const orderedNames = orderedMemberNamesByConnectivity(
               names,
@@ -219,12 +227,15 @@ export const AppDataProvider = ({
             pickers.push(picker);
             delayManager.markGroupDelayTesting(g.name, orderedNames);
             await delayManager.checkListDelay(orderedNames, g.name, timeout, {
+              bulkReuseMap,
               onNodeSettled: (proxyName, delay) =>
                 picker.onResult(proxyName, delay),
             });
             await picker.flush();
-          }),
-        );
+          } catch (error) {
+            console.error("Startup delay check failed for group:", g.name, error);
+          }
+        }
       } finally {
         delayManager.endBulkDelaySession();
         await stopDelayTestEarlyPickers(pickers);
