@@ -1,19 +1,9 @@
-/**
- * 已关闭连接持久化：使用 IndexedDB，避免 localStorage 容量与阻塞问题。
- * IndexedDB 容量大（通常数百 MB）、异步、不阻塞主线程。
- *
- * 写盘采用节流：连接 WS 约每秒刷新，完整快照可达数十 MB，
- * 禁止同步每帧写入；合并为间隔写盘，并在切后台时刷出挂起数据。
- */
-
+/** One authoritative closed-history record, with throttled atomic snapshot writes. */
 const DB_NAME = "verge_connections";
 const DB_VERSION = 1;
 const STORE_NAME = "closed";
 const KEY = "list";
-/** 完整连接快照（活跃+已关闭），用于重新进入连接页时恢复列表，避免空白 */
 const SNAPSHOT_KEY = "snapshot";
-
-/** 写盘最小间隔（毫秒）：连续变更时最多按此频率落盘 */
 export const CONNECTION_PERSIST_THROTTLE_MS = 30_000;
 
 export interface ConnectionSnapshot {
@@ -22,17 +12,16 @@ export interface ConnectionSnapshot {
   activeConnections: IConnectionsItem[];
   closedConnections: IConnectionsItem[];
 }
-
 export interface ConnectionPersistOptions {
-  /** 立即写盘（清除列表、主动 flush），跳过节流 */
   immediate?: boolean;
 }
-
+type StoredSnapshot = Omit<ConnectionSnapshot, "closedConnections">;
 let pendingClosed: IConnectionsItem[] | null = null;
-let pendingSnapshot: ConnectionSnapshot | null = null;
-let closedTimer: ReturnType<typeof setTimeout> | null = null;
-let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSnapshot: StoredSnapshot | null = null;
+let latestClosed: IConnectionsItem[] | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
 let lifecycleHooked = false;
+let writes: Promise<void> = Promise.resolve();
 
 function openDb(): Promise<IDBDatabase> {
   if (typeof window === "undefined" || !window.indexedDB) {
@@ -42,234 +31,154 @@ function openDb(): Promise<IDBDatabase> {
     const req = window.indexedDB.open(DB_NAME, DB_VERSION);
     req.onerror = () => reject(req.error);
     req.onsuccess = () => resolve(req.result);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME))
         db.createObjectStore(STORE_NAME);
-      }
     };
   });
 }
 
-function ensureLifecycleFlush() {
-  if (lifecycleHooked || typeof window === "undefined") return;
-  lifecycleHooked = true;
-  const onHidden = () => {
-    if (document.visibilityState === "hidden") {
+function schedulePersist() {
+  if (!lifecycleHooked && typeof window !== "undefined") {
+    lifecycleHooked = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") void flushConnectionPersist();
+    });
+    window.addEventListener("pagehide", () => {
       void flushConnectionPersist();
-    }
-  };
-  document.addEventListener("visibilitychange", onHidden);
-  window.addEventListener("pagehide", () => {
-    void flushConnectionPersist();
-  });
-}
-
-function writeClosedNow(closed: IConnectionsItem[]): Promise<void> {
-  if (typeof window === "undefined" || !window.indexedDB) {
-    return Promise.resolve();
-  }
-  return openDb()
-    .then(
-      (db) =>
-        new Promise<void>((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, "readwrite");
-          const store = tx.objectStore(STORE_NAME);
-          const req = store.put(closed, KEY);
-          req.onsuccess = () => {
-            db.close();
-            resolve();
-          };
-          req.onerror = () => {
-            db.close();
-            reject(req.error);
-          };
-        }),
-    )
-    .catch((): void => {
-      // ignore quota or other errors
-    }) as Promise<void>;
-}
-
-function writeSnapshotNow(data: ConnectionSnapshot): Promise<void> {
-  if (typeof window === "undefined" || !window.indexedDB) {
-    return Promise.resolve();
-  }
-  const toStore: ConnectionSnapshot = {
-    ...data,
-    uploadTotal: 0,
-    downloadTotal: 0,
-  };
-  return openDb()
-    .then(
-      (db) =>
-        new Promise<void>((resolve, reject) => {
-          const tx = db.transaction(STORE_NAME, "readwrite");
-          const store = tx.objectStore(STORE_NAME);
-          const req = store.put(toStore, SNAPSHOT_KEY);
-          req.onsuccess = () => {
-            db.close();
-            resolve();
-          };
-          req.onerror = () => {
-            db.close();
-            reject(req.error);
-          };
-        }),
-    )
-    .catch((): void => { }) as Promise<void>;
-}
-
-function scheduleClosedPersist() {
-  if (closedTimer != null) return;
-  closedTimer = setTimeout(() => {
-    closedTimer = null;
-    const data = pendingClosed;
-    pendingClosed = null;
-    if (data == null) return;
-    void writeClosedNow(data).then(() => {
-      if (pendingClosed != null) scheduleClosedPersist();
     });
-  }, CONNECTION_PERSIST_THROTTLE_MS);
+  }
+  if (timer == null) {
+    timer = setTimeout(() => {
+      void flushConnectionPersist();
+    }, CONNECTION_PERSIST_THROTTLE_MS);
+  }
 }
 
-function scheduleSnapshotPersist() {
-  if (snapshotTimer != null) return;
-  snapshotTimer = setTimeout(() => {
-    snapshotTimer = null;
-    const data = pendingSnapshot;
-    pendingSnapshot = null;
-    if (data == null) return;
-    void writeSnapshotNow(data).then(() => {
-      if (pendingSnapshot != null) scheduleSnapshotPersist();
-    });
-  }, CONNECTION_PERSIST_THROTTLE_MS);
-}
-
-export async function getClosedConnectionsFromStorage(): Promise<
-  IConnectionsItem[]
-> {
+async function writeNow(
+  closed: IConnectionsItem[] | null,
+  snapshot: StoredSnapshot | null,
+) {
+  const db = await openDb();
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readonly");
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      // Request success is not a commit: an aborted transaction must not resolve early.
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error);
       const store = tx.objectStore(STORE_NAME);
-      const req = store.get(KEY);
-      req.onsuccess = () => {
-        db.close();
-        const value = req.result;
-        if (value == null) {
-          resolve([]);
-          return;
-        }
-        const arr = Array.isArray(value) ? value : [];
-        resolve(arr as IConnectionsItem[]);
-      };
-      req.onerror = () => {
-        db.close();
-        reject(req.error);
-      };
+      if (closed != null) store.put(closed, KEY);
+      if (snapshot != null) store.put(snapshot, SNAPSHOT_KEY);
     });
-  } catch {
-    return [];
+  } finally {
+    db.close();
   }
+}
+
+/** Serialize flushes so an older write cannot overtake an explicit clear. */
+export function flushConnectionPersist(): Promise<void> {
+  if (timer != null) clearTimeout(timer);
+  timer = null;
+  const closed = pendingClosed;
+  const snapshot = pendingSnapshot;
+  pendingClosed = null;
+  pendingSnapshot = null;
+  if (closed == null && snapshot == null) return writes;
+  writes = writes
+    .then(() => writeNow(closed, snapshot))
+    .catch(() => {
+      // Best-effort storage; allow a later snapshot to retry after a failure.
+      if (latestClosed === closed) latestClosed = null;
+    });
+  return writes;
 }
 
 export function setClosedConnectionsInStorage(
   closed: IConnectionsItem[],
   options?: ConnectionPersistOptions,
 ): Promise<void> {
-  ensureLifecycleFlush();
-  if (options?.immediate) {
-    pendingClosed = null;
-    if (closedTimer != null) {
-      clearTimeout(closedTimer);
-      closedTimer = null;
-    }
-    return writeClosedNow(closed);
-  }
+  latestClosed = closed;
   pendingClosed = closed;
-  scheduleClosedPersist();
-  return Promise.resolve();
-}
-
-export async function getConnectionSnapshot(): Promise<ConnectionSnapshot | null> {
-  try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(SNAPSHOT_KEY);
-      req.onsuccess = () => {
-        db.close();
-        const value = req.result;
-        if (value == null || typeof value !== "object") {
-          resolve(null);
-          return;
-        }
-        const v = value as ConnectionSnapshot;
-        // Cumulative totals come from the live core WebSocket; never rehydrate stale values from IndexedDB.
-        resolve({
-          uploadTotal: 0,
-          downloadTotal: 0,
-          activeConnections: Array.isArray(v.activeConnections)
-            ? v.activeConnections
-            : [],
-          closedConnections: Array.isArray(v.closedConnections)
-            ? v.closedConnections
-            : [],
-        });
-      };
-      req.onerror = () => {
-        db.close();
-        reject(req.error);
-      };
-    });
-  } catch {
-    return null;
-  }
+  schedulePersist();
+  return options?.immediate ? flushConnectionPersist() : Promise.resolve();
 }
 
 export function setConnectionSnapshot(
   data: ConnectionSnapshot,
   options?: ConnectionPersistOptions,
 ): void {
-  ensureLifecycleFlush();
-  const toStore: ConnectionSnapshot = {
-    ...data,
+  // Immutable snapshots reuse history when it has not changed.
+  if (latestClosed !== data.closedConnections) {
+    latestClosed = data.closedConnections;
+    pendingClosed = data.closedConnections;
+  }
+  pendingSnapshot = {
     uploadTotal: 0,
     downloadTotal: 0,
+    activeConnections: data.activeConnections,
   };
-  if (options?.immediate) {
-    pendingSnapshot = null;
-    if (snapshotTimer != null) {
-      clearTimeout(snapshotTimer);
-      snapshotTimer = null;
-    }
-    void writeSnapshotNow(toStore);
-    return;
-  }
-  pendingSnapshot = toStore;
-  scheduleSnapshotPersist();
+  schedulePersist();
+  if (options?.immediate) void flushConnectionPersist();
 }
 
-/** 立即写出挂起的已关闭列表与快照（切后台 / 卸载时调用） */
-export async function flushConnectionPersist(): Promise<void> {
-  if (closedTimer != null) {
-    clearTimeout(closedTimer);
-    closedTimer = null;
+async function readState(): Promise<{
+  snapshot: ConnectionSnapshot | null;
+  closed: IConnectionsItem[];
+}> {
+  await writes;
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const snapshotRequest = store.get(SNAPSHOT_KEY);
+      const closedRequest = store.get(KEY);
+      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => {
+        const raw = snapshotRequest.result as ConnectionSnapshot | undefined;
+        // Legacy embedded history is a fallback only. An explicit empty list wins.
+        const closed = Array.isArray(closedRequest.result)
+          ? closedRequest.result
+          : Array.isArray(raw?.closedConnections)
+            ? raw.closedConnections
+            : [];
+        resolve({
+          closed,
+          snapshot:
+            raw && typeof raw === "object"
+              ? {
+                  uploadTotal: 0,
+                  downloadTotal: 0,
+                  activeConnections: Array.isArray(raw.activeConnections)
+                    ? raw.activeConnections
+                    : [],
+                  closedConnections: closed,
+                }
+              : null,
+        });
+      };
+    });
+  } finally {
+    db.close();
   }
-  if (snapshotTimer != null) {
-    clearTimeout(snapshotTimer);
-    snapshotTimer = null;
+}
+
+export async function getConnectionSnapshot(): Promise<ConnectionSnapshot | null> {
+  try {
+    return (await readState()).snapshot;
+  } catch {
+    return null;
   }
-  const closed = pendingClosed;
-  pendingClosed = null;
-  const snapshot = pendingSnapshot;
-  pendingSnapshot = null;
-  const tasks: Promise<void>[] = [];
-  if (closed != null) tasks.push(writeClosedNow(closed));
-  if (snapshot != null) tasks.push(writeSnapshotNow(snapshot));
-  if (tasks.length === 0) return;
-  await Promise.all(tasks);
+}
+export async function getClosedConnectionsFromStorage(): Promise<
+  IConnectionsItem[]
+> {
+  try {
+    return (await readState()).closed;
+  } catch {
+    return [];
+  }
 }
