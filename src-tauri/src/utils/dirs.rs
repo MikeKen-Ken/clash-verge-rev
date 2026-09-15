@@ -54,8 +54,10 @@ pub fn app_home_dir() -> Result<PathBuf> {
         return Ok(PathBuf::from(app_dir).join(".config").join(APP_ID));
     }
 
-    // 避免在Handle未初始化时崩溃
-    let app_handle = handle::Handle::app_handle();
+    // Storage callers can use their fallback before Tauri is initialized (e.g. unit tests).
+    let app_handle = crate::APP_HANDLE
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("App handle not initialized"))?;
 
     match app_handle.path().data_dir() {
         Ok(dir) => Ok(dir.join(APP_ID)),
@@ -248,5 +250,16 @@ impl PathBufExec for PathBuf {
             logging!(info, Type::File, "Removed file: {:?}", self);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn app_home_dir_without_app_handle_returns_error() {
+        assert!(crate::APP_HANDLE.get().is_none());
+        assert!(!super::PORTABLE_FLAG.get().copied().unwrap_or(false));
+        let error = super::app_home_dir().expect_err("missing handle must return an error, not panic");
+        assert_eq!(error.to_string(), "App handle not initialized");
     }
 }

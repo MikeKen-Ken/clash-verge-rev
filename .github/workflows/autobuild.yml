@@ -61,12 +61,21 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run prebuild ${{ matrix.target }} --force
+      - name: Prepare frontend placeholder for Rust tests only
+        shell: bash
+        run: |
+          if [ ! -d dist ]; then
+            mkdir -p dist
+            printf '%s\n' '<!doctype html><title>clash-verge tests</title>' > dist/index.html
+          fi
       - name: Test before touching release tags or assets
         shell: bash
         run: |
           pnpm exec tsc --noEmit
           node --test scripts/network-health.test.cjs scripts/connection-merge.test.cjs scripts/profile-activation.test.cjs
           cargo test --locked --lib profile_
+          cargo test --locked --lib enhance::tests::
+          cargo test --locked --lib app_home_dir_without_app_handle_returns_error
           cargo test --locked --lib network_recovery
 
   update_tag:

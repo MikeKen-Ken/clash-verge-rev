@@ -1159,7 +1159,7 @@ rules:
 
     #[test]
     fn offline_mode_overrides_rules_to_match_reject() {
-        let mut config: Mapping = serde_yaml_ng::from_str(
+        let config: Mapping = serde_yaml_ng::from_str(
             r#"
 mode: rule
 rules:
