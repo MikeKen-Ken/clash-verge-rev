@@ -188,7 +188,7 @@ export const trimClosedConnectionsByMaxCount = (
     .slice(0, max);
 };
 
-const mergeConnectionSnapshot = (
+export const mergeConnectionSnapshot = (
   payload: IConnections,
   previous: ConnectionMonitorData = initConnData,
 ): ConnectionMonitorData => {

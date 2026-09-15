@@ -49,7 +49,7 @@ pub struct RuleProviderPreviewRuleDto {
     pub policy: String,
 }
 
-async fn build_ipc_client(timeout: Duration) -> Result<(reqwest::Client, HeaderMap)> {
+pub(crate) async fn build_ipc_client(timeout: Duration) -> Result<(reqwest::Client, HeaderMap)> {
     let socket_path = IClashTemp::guard_external_controller_ipc();
     let secret = Config::clash().await.data_arc().get_client_info().secret;
 

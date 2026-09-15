@@ -166,12 +166,12 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 
 /// 更新配置文件
 #[tauri::command]
-pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
+pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult<feat::ProfileUpdateResult> {
     match feat::update_profile(&index, option.as_ref(), true, true).await {
         Ok(result) => {
             feat::handle_update_retry_side_effects(&index, result);
             let _: () = Config::profiles().await.apply();
-            Ok(())
+            Ok(result)
         }
         Err(e) => {
             Config::profiles().await.discard();

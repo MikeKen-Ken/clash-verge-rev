@@ -1,3 +1,4 @@
+import { ProfileActivationStatus } from "@/components/profile/profile-activation-status";
 import {
   closestCenter,
   DndContext,
@@ -479,6 +480,7 @@ const ProfilePage = () => {
 
   const updateAllRemoteAndMerge = useLockFn(async (source: string) => {
     showNotice.info(`${source}: starting remote rule update`, 1500);
+    let failedUpdates = 0;
     const throttleMutate = throttle(mutateProfiles, 2000, {
       trailing: true,
     });
@@ -487,6 +489,7 @@ const ProfilePage = () => {
         await updateProfile(uid);
         throttleMutate();
       } catch (err: any) {
+        failedUpdates++;
         console.error(`Failed to update subscription ${uid}:`, err);
       } finally {
         setLoadingCache((cache) => ({ ...cache, [uid]: false }));
@@ -504,6 +507,11 @@ const ProfilePage = () => {
       });
     });
 
+    if (failedUpdates > 0) {
+      showNotice.error(`${failedUpdates} subscription updates or activations failed. Merge was not started.`);
+      await mutateProfiles();
+      return;
+    }
     showNotice.success(`${source}: remote rule update complete; starting merge`, 2000);
     await onGenerateMergedProfile();
   });
@@ -1194,6 +1202,7 @@ const ProfilePage = () => {
         </Box>
       }
     >
+      <ProfileActivationStatus />
       <Stack
         direction="row"
         spacing={1}

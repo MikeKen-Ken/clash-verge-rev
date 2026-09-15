@@ -1,3 +1,5 @@
+import { checkProfileOutcome, type ProfileUpdateOutcome } from "./profile-activation";
+import { mutate } from "swr";
 import { invoke } from "@tauri-apps/api/core";
 import dayjs from "dayjs";
 import { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
@@ -63,7 +65,13 @@ export async function reorderProfile(activeId: string, overId: string) {
 
 export async function updateProfile(index: string, option?: IProfileOption) {
   await flushConnectivityPersistenceSync();
-  return invoke<void>("update_profile", { index, option });
+  try {
+    const outcome = await invoke<ProfileUpdateOutcome>("update_profile", { index, option });
+    checkProfileOutcome(outcome);
+    return outcome;
+  } finally {
+    await mutate("profileActivation");
+  }
 }
 
 export async function applyManualConnectivityProxyOrder() {

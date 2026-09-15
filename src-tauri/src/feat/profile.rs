@@ -119,15 +119,7 @@ async fn should_update_profile(uid: &String, ignore_auto_update: bool) -> Result
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileUpdateResult {
-    /// 非远程、禁止自动更新等，未尝试下载
-    Skipped,
-    /// 订阅文件已成功拉取并写入
-    DownloadSucceeded,
-    /// 直连与代理方式均拉取失败
-    DownloadFailed,
-}
+pub use super::profile_activation::ProfileUpdateResult;
 
 enum PerformUpdateResult {
     Succeeded(bool),
@@ -223,6 +215,7 @@ pub async fn update_profile(
     auto_refresh: bool,
     ignore_auto_update: bool,
 ) -> Result<ProfileUpdateResult> {
+    let _guard = super::profile_activation::UPDATE_LOCK.lock().await;
     logging!(info, Type::Config, "[订阅更新] 开始更新订阅 {}", uid);
     let url_opt = should_update_profile(uid, ignore_auto_update).await?;
 
@@ -230,20 +223,13 @@ pub async fn update_profile(
         Some((url, opt)) => match perform_profile_update(uid, &url, opt.as_ref(), option).await? {
             PerformUpdateResult::Succeeded(is_current) => {
                 if auto_refresh && is_current {
-                    logging!(info, Type::Config, "[订阅更新] 更新内核配置");
-                    match CoreManager::global().update_config().await {
-                        Ok(_) => {
-                            logging!(info, Type::Config, "[订阅更新] 更新成功");
-                            handle::Handle::refresh_clash();
-                        }
-                        Err(err) => {
-                            logging!(error, Type::Config, "[订阅更新] 更新失败: {}", err);
-                            handle::Handle::notice_message("update_failed", format!("{err}"));
-                            logging!(error, Type::Config, "{err}");
-                        }
+                    super::profile_activation::activate_downloaded_profile(uid).await?
+                } else {
+                    if is_current {
+                        super::profile_activation::record_activation(uid, ProfileUpdateResult::DownloadSucceeded);
                     }
+                    ProfileUpdateResult::DownloadSucceeded
                 }
-                ProfileUpdateResult::DownloadSucceeded
             }
             PerformUpdateResult::Failed => ProfileUpdateResult::DownloadFailed,
         },
@@ -257,6 +243,11 @@ pub async fn update_profile(
 pub fn handle_update_retry_side_effects(uid: &str, result: ProfileUpdateResult) {
     use crate::core::profile_update_retry::ProfileUpdateRetry;
 
+    if result.downloaded() {
+        ProfileUpdateRetry::global().cancel_failure_retries(uid);
+        return;
+    }
+
     match result {
         ProfileUpdateResult::DownloadFailed => {
             let uid_owned = uid.to_string();
@@ -266,10 +257,7 @@ pub fn handle_update_retry_side_effects(uid: &str, result: ProfileUpdateResult) 
                 }
             });
         }
-        ProfileUpdateResult::DownloadSucceeded => {
-            ProfileUpdateRetry::global().cancel_failure_retries(uid);
-        }
-        ProfileUpdateResult::Skipped => {}
+        _ => {}
     }
 }
 

@@ -23,10 +23,56 @@ jobs:
       tag_name: autobuild
       force_build: ${{ github.event_name == 'workflow_dispatch' }}
 
+  regression-tests:
+    name: Recovery and connection regression checks
+    needs: check_commit
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          token: ${{ secrets.MIHOMO_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.91.0'
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+      - uses: pnpm/action-setup@v4.2.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.13.0'
+          cache: pnpm
+      - name: Prepare matching core and dependencies
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.MIHOMO_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.MIHOMO_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run prebuild ${{ matrix.target }} --force
+      - name: Test before touching release tags or assets
+        shell: bash
+        run: |
+          pnpm exec tsc --noEmit
+          node --test scripts/network-health.test.cjs scripts/connection-merge.test.cjs scripts/profile-activation.test.cjs
+          cargo test --locked --lib profile_
+          cargo test --locked --lib network_recovery
+
   update_tag:
     name: Update tag
     runs-on: ubuntu-latest
-    needs: check_commit
+    needs: [check_commit, regression-tests]
     if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     steps:
       - name: Checkout repository

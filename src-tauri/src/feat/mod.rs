@@ -3,6 +3,8 @@ mod clash;
 mod config;
 mod connectivity_sync;
 mod profile;
+pub mod profile_activation;
+mod profile_update_outcome;
 mod proxy;
 mod proxy_mode;
 mod ui_preferences;

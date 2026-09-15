@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { BasePage } from "@/components/base";
 import SettingSystem from "@/components/setting/setting-system";
+import { NetworkHealthPanel } from "@/components/setting/network-health";
 import { showNotice } from "@/services/notice-service";
 
 const SettingPage = () => {
@@ -13,7 +14,7 @@ const SettingPage = () => {
   };
 
   return (
-    <BasePage title={t("settings.page.title")}>
+    <BasePage title={t("settings.page.title")} header={<NetworkHealthPanel />}>
       <Box
         className="setting-panel"
         sx={{

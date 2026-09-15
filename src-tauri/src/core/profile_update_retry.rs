@@ -105,7 +105,7 @@ impl ProfileUpdateRetry {
                     .await;
 
                 match result {
-                    feat::ProfileUpdateResult::DownloadSucceeded => {
+                    feat::ProfileUpdateResult::DownloadSucceeded | feat::ProfileUpdateResult::Applied | feat::ProfileUpdateResult::ActivationFailed => {
                         logging!(
                             info,
                             Type::Timer,
