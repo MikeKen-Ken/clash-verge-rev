@@ -776,6 +776,9 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: ClashMod
     // Merge/订阅可能重新带回无效组成员；最终应用前再清理一次，避免核心加载失败或 UI 显示幽灵节点
     config = cleanup_proxy_groups(config);
 
+    // Apply profile ad rules before mode overrides so direct/global/offline keep only their MATCH rule.
+    config = apply_proxy_ads_block(config);
+
     // UI 的规则/全局/直连/离线都落成核心 mode=rule + 规则改写。
     // 禁止 clash_config 合并后，订阅或 Merge 里的 mode: global 会漏进运行配置：
     // 按钮显示 Rule，核心却走内置 GLOBAL，看起来像「切回规则仍是全局」。
@@ -797,7 +800,6 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: ClashMod
 
     // Merge/订阅常含 tun.enable:true；须在最终阶段应用 TUN 开关，否则 UI 关闭 TUN 仍实际启用
     config = use_tun(config, enable_tun);
-    config = apply_proxy_ads_block(config);
     config = connectivity_order::apply_connectivity_proxy_order(config);
     use_sort(config)
 }
@@ -1113,6 +1115,7 @@ rules:
         )
         .expect("yaml");
         let global = super::finalize_runtime_config(config.clone(), false, ClashMode::Global);
+        assert_eq!(global.get("mode").and_then(|v| v.as_str()), Some("rule"));
         assert!(
             global.get("rule-providers").and_then(|v| v.as_mapping()).is_some(),
             "global override must not drop rule-providers; rule mode hot-swap reuses them",
