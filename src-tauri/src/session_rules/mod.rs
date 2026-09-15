@@ -86,33 +86,34 @@ fn load_from_disk() -> Vec<SessionRule> {
 
 fn persist_rules(rules: &[SessionRule]) {
     #[cfg(test)]
+    let _ = rules;
+
+    #[cfg(not(test))]
     {
-        return;
-    }
+        let path = match storage_path() {
+            Ok(path) => path,
+            Err(err) => {
+                logging!(error, Type::File, "Failed to save temporary rules path: {err}");
+                return;
+            }
+        };
 
-    let path = match storage_path() {
-        Ok(path) => path,
-        Err(err) => {
-            logging!(error, Type::File, "Failed to save temporary rules path: {err}");
-            return;
+        let payload = RulesFile {
+            v: default_version(),
+            rules: rules.to_vec(),
+        };
+
+        let raw = match serde_json::to_string_pretty(&payload) {
+            Ok(raw) => raw,
+            Err(err) => {
+                logging!(error, Type::File, "Failed to serialize temporary rules: {err}");
+                return;
+            }
+        };
+
+        if let Err(err) = std::fs::write(path, raw) {
+            logging!(error, Type::File, "Failed to write temporary rules file: {err}");
         }
-    };
-
-    let payload = RulesFile {
-        v: default_version(),
-        rules: rules.to_vec(),
-    };
-
-    let raw = match serde_json::to_string_pretty(&payload) {
-        Ok(raw) => raw,
-        Err(err) => {
-            logging!(error, Type::File, "Failed to serialize temporary rules: {err}");
-            return;
-        }
-    };
-
-    if let Err(err) = std::fs::write(path, raw) {
-        logging!(error, Type::File, "Failed to write temporary rules file: {err}");
     }
 }
 

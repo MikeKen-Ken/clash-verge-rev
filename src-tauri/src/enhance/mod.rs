@@ -967,7 +967,9 @@ pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
 #[allow(clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::cleanup_proxy_groups;
+    use super::{cleanup_proxy_groups, finalize_runtime_config};
+    use crate::config::ClashMode;
+    use serde_yaml_ng::Mapping;
 
     #[test]
     fn finalizers_reassert_runtime_state_after_merge_reapply() {
