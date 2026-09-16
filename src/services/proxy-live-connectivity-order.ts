@@ -46,6 +46,7 @@ export function orderedMemberNamesByConnectivity(
 export type DelayTestEarlyPicker = {
   onResult: (name: string, delay: number) => void;
   stop: () => void;
+  /** Drain writes; after stop(), also release the pin owned by this test. */
   flush: () => Promise<void>;
 };
 
@@ -59,6 +60,7 @@ export function createDelayTestEarlyPicker(input: {
   let best: string | null = null;
   let queue: Promise<void> = Promise.resolve();
   let stopped = false;
+  let ownsPin = false;
 
   const pick = (name: string, delay: number) => {
     if (stopped || input.isCancelled?.()) return;
@@ -80,6 +82,7 @@ export function createDelayTestEarlyPicker(input: {
       if (stopped || input.isCancelled?.() || best !== node) return;
       try {
         await forceSelectGroupProxy(groupName, node);
+        ownsPin = true;
       } catch (error) {
         console.warn(
           `[LiveConnectivityOrder] early pick failed: ${groupName} -> ${node}`,
@@ -94,8 +97,14 @@ export function createDelayTestEarlyPicker(input: {
     stop() {
       stopped = true;
     },
-    flush() {
-      return queue;
+    async flush() {
+      await queue;
+      if (stopped && ownsPin) {
+        if (!input.isCancelled?.()) {
+          await clearProxyGroupManualSelection(input.groupName);
+        }
+        ownsPin = false;
+      }
     },
   };
 }
@@ -139,8 +148,8 @@ export async function applyLiveConnectivityOrderToGroup(
 }
 
 /**
- * Startup reorders groups; only completed successful tests may pin a URL-test
- * node. Before results exist, preserve its current selection. Fallback unpins.
+ * Startup reorders groups. Completed successful tests return groups to automatic
+ * selection; before results exist, preserve the current selection.
  */
 export async function applyStartupLiveConnectivityOrder(
   groups: Array<{
@@ -176,11 +185,6 @@ export async function applyStartupLiveConnectivityOrder(
   await Promise.allSettled(
     orderedTargets.map(async (group) => {
       if (manualOverrides?.has(group.name)) return;
-      const type = group.type?.toLowerCase();
-      if (type === "fallback") {
-        await clearProxyGroupManualSelection(group.name);
-        return;
-      }
       const first = group.members.find((name) => {
         const delay = testResults?.get(name)?.delay;
         return (
@@ -193,7 +197,7 @@ export async function applyStartupLiveConnectivityOrder(
         );
       });
       if (first) {
-        await forceSelectGroupProxy(group.name, first);
+        await clearProxyGroupManualSelection(group.name);
       }
     }),
   );
@@ -229,7 +233,7 @@ export async function applyLiveConnectivityOrderForGroups(
 }
 
 /**
- * 测速后按积分重排。url-test 钉本轮第一个成功的评分节点；fallback 清钉后走列表。
+ * 测速后按积分重排，自动组解除测速固定并恢复自动选择。
  * 测速期间用户手动选过的组不改钉。
  */
 export async function switchGroupsAfterDelayTest(input: {
@@ -246,15 +250,10 @@ export async function switchGroupsAfterDelayTest(input: {
   const ops: Array<Promise<unknown>> = [];
   for (const group of groups) {
     if (manualOverrides.has(group.name)) continue;
-    const type = group.type?.toLowerCase();
-    if (type === "url-test" || type === "urltest") {
-      const pin = firstSuccessByGroup?.get(group.name);
-      if (pin) {
-        ops.push(forceSelectGroupProxy(group.name, pin));
-      }
-      continue;
-    }
-    if (type === "fallback") {
+    if (
+      isAutoSelectGroupType(group.type) &&
+      firstSuccessByGroup?.has(group.name)
+    ) {
       ops.push(clearProxyGroupManualSelection(group.name));
     }
   }

@@ -106,6 +106,8 @@ async function scenario(automatic) {
       orderedMemberNamesByConnectivity: (x) => x,
       createDelayTestEarlyPicker: () => ({ onResult: noop, flush: asyncNoop }),
       stopDelayTestEarlyPickers: asyncNoop,
+      beginDelayCheckManualOverrideTracking: () => noop,
+      hasDelayCheckManualOverride: () => false,
       pollingCountRef: { current: 0 },
       scheduleNextPoll: noop,
       getGroupDelayTimeout: delay.getGroupDelayTimeout,

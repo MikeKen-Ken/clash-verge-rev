@@ -909,13 +909,13 @@ export const ProxyGroups = (props: Props) => {
             });
           }
 
-          // 测速后仅 fallback 清钉；url-test 已按评分第一节点固定。测速期间用户手动选过的组保留。
+          // 自动组结束测速后均清钉；测速期间用户手动选择的组保留。
           const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
             const type = g.type?.toLowerCase();
             return (
               !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
               !hasDelayCheckManualOverride(g.name) &&
-              type === "fallback"
+              isAutoSelectGroupType(type)
             );
           });
           await Promise.allSettled(
@@ -924,10 +924,12 @@ export const ProxyGroups = (props: Props) => {
             ),
           );
           if (current) {
-            const fallbackNames = new Set(
+            const automaticNames = new Set(
               availableGroups
                 .filter(
-                  (g: IProxyGroupItem) => g.type?.toLowerCase() === "fallback",
+                  (g: IProxyGroupItem) =>
+                    !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
+                    isAutoSelectGroupType(g.type),
                 )
                 .map((g: IProxyGroupItem) => g.name),
             );
@@ -935,7 +937,7 @@ export const ProxyGroups = (props: Props) => {
               const name = s.name;
               if (!name) return true;
               return (
-                !fallbackNames.has(name) || hasDelayCheckManualOverride(name)
+                !automaticNames.has(name) || hasDelayCheckManualOverride(name)
               );
             });
             if (next.length !== (current.selected ?? []).length) {

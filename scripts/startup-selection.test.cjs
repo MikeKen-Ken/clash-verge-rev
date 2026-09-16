@@ -32,7 +32,7 @@ function setup() {
   return { module, groups, calls };
 }
 
-test("finalization retains the verified backup instead of the failed score leader", async () => {
+test("only the verified backup is temporarily pinned; finalization never pins again", async () => {
   const { module, groups, calls } = setup();
   const picker = module.createDelayTestEarlyPicker({
     groupName: "Auto",
@@ -51,7 +51,7 @@ test("finalization retains the verified backup instead of the failed score leade
       ["healthy", { delay: 75 }],
     ]),
   );
-  assert.deepEqual(calls, ["healthy", "healthy"]);
+  assert.deepEqual(calls, ["healthy"]);
 });
 
 test("unmeasured, failed, over-timeout or manually overridden groups are not pinned", async () => {

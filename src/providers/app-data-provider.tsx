@@ -21,6 +21,10 @@ import {
   getSystemProxy,
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
+import {
+  beginDelayCheckManualOverrideTracking,
+  hasDelayCheckManualOverride,
+} from "@/services/delay-check-manual-override";
 import delayManager, {
   getGroupDelayTimeout,
   setDefaultHealthCheck,
@@ -132,7 +136,10 @@ export const AppDataProvider = ({
 
   // 首次加载代理数据后轮询刷新，直到至少有一个组的 now 变化或达到最大次数，使 Selector 等组的 now 与核心一致
   useEffect(() => {
-    if (!proxiesData?.groups?.length || initialNowAllGroupsRef.current != null) {
+    if (
+      !proxiesData?.groups?.length ||
+      initialNowAllGroupsRef.current != null
+    ) {
       return;
     }
     const groups = proxiesData.groups as IProxyGroupItem[];
@@ -195,61 +202,72 @@ export const AppDataProvider = ({
     };
 
     const run = async () => {
-      const orderTargets = urlTestOrFallback.map((g) => ({
-        name: g.name,
-        type: g.type,
-        members: memberNamesFromGroupAll(g.all),
-        timeout: getGroupDelayTimeout(g, false),
-      }));
-      await applyStartupLiveConnectivityOrder(orderTargets);
-      await refreshProxy().catch(() => {});
-
-      delayManager.beginBulkDelaySession();
-      const pickers: DelayTestEarlyPicker[] = [];
-      const bulkReuseMap = new Map<string, DelayUpdate>();
+      const endManualOverrideTracking = beginDelayCheckManualOverrideTracking();
+      const manualOverrides = { has: hasDelayCheckManualOverride };
       try {
-        // Share one worker budget across groups, as in manual Test All.
-        // Parallel groups multiply IPC requests and overwrite shared nodes with
-        // queue timeouts even when their network probes would succeed.
-        for (const g of urlTestOrFallback) {
-          try {
-            const timeout = getGroupDelayTimeout(g, false);
-            const names = memberNamesFromGroupAll(g.all);
-            if (names.length === 0) continue;
-            const scoreContext = buildConnectivityScoreContext();
-            const orderedNames = orderedMemberNamesByConnectivity(
-              names,
-              scoreContext,
-            );
-            const picker = createDelayTestEarlyPicker({
-              groupName: g.name,
-              orderedNames,
-              timeoutMs: timeout,
-            });
-            pickers.push(picker);
-            delayManager.markGroupDelayTesting(g.name, orderedNames);
-            await delayManager.checkListDelay(orderedNames, g.name, timeout, {
-              bulkReuseMap,
-              onNodeSettled: (proxyName, delay) =>
-                picker.onResult(proxyName, delay),
-            });
-            await picker.flush();
-          } catch (error) {
-            console.error("Startup delay check failed for group:", g.name, error);
+        const orderTargets = urlTestOrFallback.map((g) => ({
+          name: g.name,
+          type: g.type,
+          members: memberNamesFromGroupAll(g.all),
+          timeout: getGroupDelayTimeout(g, false),
+        }));
+        await applyStartupLiveConnectivityOrder(orderTargets, manualOverrides);
+        await refreshProxy().catch(() => {});
+
+        delayManager.beginBulkDelaySession();
+        const pickers: DelayTestEarlyPicker[] = [];
+        const bulkReuseMap = new Map<string, DelayUpdate>();
+        try {
+          // Share one worker budget across groups, as in manual Test All.
+          // Parallel groups multiply IPC requests and overwrite shared nodes with
+          // queue timeouts even when their network probes would succeed.
+          for (const g of urlTestOrFallback) {
+            try {
+              const timeout = getGroupDelayTimeout(g, false);
+              const names = memberNamesFromGroupAll(g.all);
+              if (names.length === 0) continue;
+              const scoreContext = buildConnectivityScoreContext();
+              const orderedNames = orderedMemberNamesByConnectivity(
+                names,
+                scoreContext,
+              );
+              const picker = createDelayTestEarlyPicker({
+                groupName: g.name,
+                orderedNames,
+                timeoutMs: timeout,
+                isCancelled: () => hasDelayCheckManualOverride(g.name),
+              });
+              pickers.push(picker);
+              delayManager.markGroupDelayTesting(g.name, orderedNames);
+              await delayManager.checkListDelay(orderedNames, g.name, timeout, {
+                bulkReuseMap,
+                onNodeSettled: (proxyName, delay) =>
+                  picker.onResult(proxyName, delay),
+              });
+              await picker.flush();
+            } catch (error) {
+              console.error(
+                "Startup delay check failed for group:",
+                g.name,
+                error,
+              );
+            }
           }
+        } finally {
+          delayManager.endBulkDelaySession();
+          await stopDelayTestEarlyPickers(pickers);
         }
+        await applyStartupLiveConnectivityOrder(
+          orderTargets,
+          manualOverrides,
+          bulkReuseMap,
+        );
+        await refreshProxy();
+        pollingCountRef.current += 1;
+        scheduleNextPoll();
       } finally {
-        delayManager.endBulkDelaySession();
-        await stopDelayTestEarlyPickers(pickers);
+        endManualOverrideTracking();
       }
-      await applyStartupLiveConnectivityOrder(
-        orderTargets,
-        undefined,
-        bulkReuseMap,
-      );
-      await refreshProxy();
-      pollingCountRef.current += 1;
-      scheduleNextPoll();
     };
     void run();
 
@@ -440,7 +458,10 @@ export const AppDataProvider = ({
         );
         registerCleanup(unlistenProfile);
       } catch (error) {
-        console.error("[AppDataProvider] Failed to listen for profile events:", error);
+        console.error(
+          "[AppDataProvider] Failed to listen for profile events:",
+          error,
+        );
       }
 
       try {
@@ -463,7 +484,10 @@ export const AppDataProvider = ({
           unlistenProxy();
         });
       } catch (error) {
-        console.warn("[AppDataProvider] Failed to set up Tauri event listener:", error);
+        console.warn(
+          "[AppDataProvider] Failed to set up Tauri event listener:",
+          error,
+        );
 
         const fallbackHandlers: Array<[string, EventListener]> = [
           ["verge://refresh-clash-config", handleRefreshClash],
