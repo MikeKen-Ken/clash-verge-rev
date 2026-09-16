@@ -1,7 +1,6 @@
 import {
   applyGroupProxyOrder,
   clearProxyGroupManualSelection,
-  forceSelectGroupProxy,
 } from "@/services/cmds";
 import {
   buildConnectivityScoreContext,
@@ -46,7 +45,7 @@ export function orderedMemberNamesByConnectivity(
 export type DelayTestEarlyPicker = {
   onResult: (name: string, delay: number) => void;
   stop: () => void;
-  /** Drain writes; after stop(), also release the pin owned by this test. */
+  /** Drain automatic-order writes. Delay testing never owns a manual pin. */
   flush: () => Promise<void>;
 };
 
@@ -60,7 +59,6 @@ export function createDelayTestEarlyPicker(input: {
   let best: string | null = null;
   let queue: Promise<void> = Promise.resolve();
   let stopped = false;
-  let ownsPin = false;
 
   const pick = (name: string, delay: number) => {
     if (stopped || input.isCancelled?.()) return;
@@ -81,8 +79,9 @@ export function createDelayTestEarlyPicker(input: {
     queue = queue.then(async () => {
       if (stopped || input.isCancelled?.() || best !== node) return;
       try {
-        await forceSelectGroupProxy(groupName, node);
-        ownsPin = true;
+        // Let the core choose the first healthy member; never persist a manual
+        // selection merely because a test completed before another one.
+        await applyGroupProxyOrder(groupName, input.orderedNames);
       } catch (error) {
         console.warn(
           `[LiveConnectivityOrder] early pick failed: ${groupName} -> ${node}`,
@@ -99,17 +98,11 @@ export function createDelayTestEarlyPicker(input: {
     },
     async flush() {
       await queue;
-      if (stopped && ownsPin) {
-        if (!input.isCancelled?.()) {
-          await clearProxyGroupManualSelection(input.groupName);
-        }
-        ownsPin = false;
-      }
     },
   };
 }
 
-/** 停止提前切节点，并等已发出的固定请求结束，避免测速清钉后又被钉回去。 */
+/** Stop automatic-order updates and drain requests already in flight. */
 export async function stopDelayTestEarlyPickers(
   pickers: Array<DelayTestEarlyPicker | null | undefined>,
 ): Promise<void> {

@@ -29,9 +29,24 @@ async function scenario(automatic) {
     }
   }
   const modules = new Map();
+  const orders = new Map();
+  let pinWrites = 0;
   const stubs = {
     "@/services/proxy-connectivity-stats": {
       hydrateConnectivityStatsFromDisk: asyncNoop,
+      buildConnectivityScoreContext: () => ({}),
+    },
+    "@/services/proxy-region-sort": {
+      sortProxiesByConnectivity: (names) => names,
+    },
+    "@/services/cmds": {
+      applyGroupProxyOrder: async (group, names) => {
+        orders.set(group, Array.from(names));
+      },
+      clearProxyGroupManualSelection: asyncNoop,
+      forceSelectGroupProxy: async () => {
+        pinWrites++;
+      },
     },
     "@/utils/debug": { debugLog: noop },
     "tauri-plugin-mihomo-api": {
@@ -97,15 +112,11 @@ async function scenario(automatic) {
       compilerOptions: { target: ts.ScriptTarget.ES2022 },
     }).outputText;
     await vm.runInNewContext(code, {
+      ...load(path.join(root, "src/services/proxy-live-connectivity-order.ts")),
       urlTestOrFallback: groups,
       delayManager: manager,
       refreshProxy: asyncNoop,
-      applyStartupLiveConnectivityOrder: asyncNoop,
-      memberNamesFromGroupAll: (x) => x,
       buildConnectivityScoreContext: () => ({}),
-      orderedMemberNamesByConnectivity: (x) => x,
-      createDelayTestEarlyPicker: () => ({ onResult: noop, flush: asyncNoop }),
-      stopDelayTestEarlyPickers: asyncNoop,
       beginDelayCheckManualOverrideTracking: () => noop,
       hasDelayCheckManualOverride: () => false,
       pollingCountRef: { current: 0 },
@@ -113,6 +124,18 @@ async function scenario(automatic) {
       getGroupDelayTimeout: delay.getGroupDelayTimeout,
       Map,
     });
+    assert.equal(
+      pinWrites,
+      0,
+      "Actual startup and reused results must never pin nodes",
+    );
+    for (const group of groups) {
+      assert.deepEqual(
+        orders.get(group.name),
+        names,
+        "Every group receives the full priority order",
+      );
+    }
   }
   const succeeded = names.filter(
     (name) => manager.getDelay(name, "Auto") > 0,

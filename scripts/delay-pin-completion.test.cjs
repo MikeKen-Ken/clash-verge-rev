@@ -73,7 +73,7 @@ for (const userSelects of [false, true]) {
           assert.equal(tracking, true);
           options.onNodeSettled("node", 50);
           options.bulkReuseMap.set("node", { delay: 50 });
-          // Let the temporary selection finish, then model an explicit choice.
+          // Let the automatic ordering finish, then model an explicit choice.
           await Promise.resolve();
           await Promise.resolve();
           if (userSelects) {
@@ -101,7 +101,7 @@ for (const type of ["URLTest", "Fallback"]) {
       });
       picker.onResult("node", 50);
       await picker.flush();
-      assert.equal(getPin(), "node", "temporary pin is allowed during testing");
+      assert.equal(getPin(), "", "delay testing must never create a pin");
       await module.stopDelayTestEarlyPickers([picker]);
       const groups = [{ name: "Auto", type, members: ["node"] }];
       if (startup) {
@@ -126,7 +126,7 @@ for (const type of ["URLTest", "Fallback"]) {
   }
 }
 
-test("exception cleanup releases the temporary pin", async () => {
+test("interrupted delay testing never creates a pin", async () => {
   const { module, getPin } = setup();
   const picker = module.createDelayTestEarlyPicker({
     groupName: "Auto",

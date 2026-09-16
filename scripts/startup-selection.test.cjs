@@ -32,7 +32,7 @@ function setup() {
   return { module, groups, calls };
 }
 
-test("only the verified backup is temporarily pinned; finalization never pins again", async () => {
+test("delay testing never creates a manual pin", async () => {
   const { module, groups, calls } = setup();
   const picker = module.createDelayTestEarlyPicker({
     groupName: "Auto",
@@ -51,7 +51,7 @@ test("only the verified backup is temporarily pinned; finalization never pins ag
       ["healthy", { delay: 75 }],
     ]),
   );
-  assert.deepEqual(calls, ["healthy"]);
+  assert.deepEqual(calls, []);
 });
 
 test("unmeasured, failed, over-timeout or manually overridden groups are not pinned", async () => {
