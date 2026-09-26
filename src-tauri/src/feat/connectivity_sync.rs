@@ -76,6 +76,8 @@ struct LocalSyncMetadata {
     last_others: StatsData,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     reset_watermarks: ResetWatermarks,
+    #[serde(default, skip_serializing_if = "clear_all_absent")]
+    clear_all: ResetGeneration,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -89,6 +91,8 @@ struct SyncState {
     last_others: StatsData,
     #[serde(default)]
     resets: ResetWatermarks,
+    #[serde(default, skip_serializing_if = "clear_all_absent")]
+    clear_all: ResetGeneration,
     #[serde(default)]
     last_sync_at: i64,
 }
@@ -97,6 +101,7 @@ struct LocalMergeOutcome {
     own: StatsData,
     merged: StatsData,
     resets: ResetWatermarks,
+    clear_all: ResetGeneration,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,6 +132,7 @@ fn load_state() -> Result<SyncState, Error> {
     state.v = PROTOCOL_VERSION;
     prune(&mut state.last_others);
     state.resets = sanitize_reset_watermarks(&state.resets)?;
+    state.clear_all = sanitize_clear_all(&state.clear_all)?;
     Ok(state)
 }
 
@@ -154,6 +160,7 @@ fn parse_local_stats_file(raw: &str) -> Result<StatsFile, Error> {
     if let Some(sync) = file.sync.as_mut() {
         prune(&mut sync.last_others);
         sync.reset_watermarks = sanitize_reset_watermarks(&sync.reset_watermarks)?;
+        sync.clear_all = sanitize_clear_all(&sync.clear_all)?;
     }
     Ok(file)
 }
@@ -227,6 +234,7 @@ fn prepare_local_merge(
     fallback_others: &StatsData,
     remote_others: &StatsData,
     active_resets: &ResetWatermarks,
+    active_clear_all: &ResetGeneration,
 ) -> Result<(String, LocalMergeOutcome), Error> {
     let mut current = parse_local_stats_file(current_raw)?;
     let embedded_resets = current
@@ -234,12 +242,22 @@ fn prepare_local_merge(
         .as_ref()
         .map(|sync| sync.reset_watermarks.clone())
         .unwrap_or_default();
+    let embedded_clear_all = current
+        .sync
+        .as_ref()
+        .map(|sync| sync.clear_all.clone())
+        .unwrap_or_default();
     let active_resets = merge_reset_watermarks([&embedded_resets, active_resets])?;
+    let active_clear_all = merge_clear_all([&embedded_clear_all, active_clear_all])?;
     let mut baseline = current
         .sync
         .as_ref()
         .map(|sync| sync.last_others.clone())
         .unwrap_or_else(|| fallback_others.clone());
+    if active_clear_all > embedded_clear_all {
+        current.data.clear();
+        baseline.clear();
+    }
     for (name, generation) in &active_resets {
         if embedded_resets
             .get(name)
@@ -261,6 +279,7 @@ fn prepare_local_merge(
         sync: Some(LocalSyncMetadata {
             last_others: remote_others.clone(),
             reset_watermarks: active_resets.clone(),
+            clear_all: active_clear_all.clone(),
         }),
     };
     Ok((
@@ -269,6 +288,7 @@ fn prepare_local_merge(
             own,
             merged,
             resets: active_resets,
+            clear_all: active_clear_all,
         },
     ))
 }
@@ -367,17 +387,22 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     }
 
     let local_raw = connectivity_order::read_connectivity_stats_file().map_err(Error::msg)?;
-    let local_resets = parse_local_stats_file(&local_raw)?
-        .sync
-        .map(|sync| sync.reset_watermarks)
-        .unwrap_or_default();
+    let local_sync = parse_local_stats_file(&local_raw)?.sync.unwrap_or_default();
+    let local_resets = local_sync.reset_watermarks;
+    let local_clear_all = local_sync.clear_all;
     let active_resets = merge_reset_watermarks(
         [&state.resets, &local_resets]
             .into_iter()
             .chain(newest_by_device.values().map(|item| &item.resets)),
     )?;
+    let active_clear_all = merge_clear_all(
+        [&state.clear_all, &local_clear_all]
+            .into_iter()
+            .chain(newest_by_device.values().map(|item| &item.clear_all)),
+    )?;
     let mut remote_others = StatsData::new();
     for (device_id, snapshot) in &mut newest_by_device {
+        retain_snapshot_for_clear_all(snapshot, &active_clear_all);
         filter_snapshot_data(snapshot, &active_resets);
         if device_id != &state.device_id {
             add_into(&mut remote_others, &snapshot.data);
@@ -387,12 +412,14 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     let fallback_others = state.last_others.clone();
     let transaction_others = remote_others.clone();
     let transaction_resets = active_resets.clone();
+    let transaction_clear_all = active_clear_all.clone();
     let local_merge = connectivity_order::transact_connectivity_stats_file(|current_raw| {
         let (replacement, outcome) = prepare_local_merge(
             current_raw,
             &fallback_others,
             &transaction_others,
             &transaction_resets,
+            &transaction_clear_all,
         )
         .map_err(|error| error.to_string())?;
         Ok((replacement, outcome))
@@ -403,6 +430,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     // Keep reset filtering monotonic across an upload failure without marking
     // the merge successful or committing its revision/imported baseline.
     state.resets = local_merge.resets.clone();
+    state.clear_all = local_merge.clear_all.clone();
     save_state(&state)?;
 
     let own_remote_revision = newest_by_device
@@ -424,6 +452,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         resets: local_merge.resets.clone(),
         generations: generations_for(&local_merge.own, &local_merge.resets),
         data: local_merge.own,
+        clear_all: local_merge.clear_all.clone(),
     };
     let own_path = format!(
         "{REMOTE_DEVICES_DIR}/{}",
@@ -436,6 +465,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     state.revision = revision;
     state.last_others = remote_others;
     state.resets = local_merge.resets;
+    state.clear_all = local_merge.clear_all;
     state.last_sync_at = now;
     save_state(&state)?;
 
@@ -452,40 +482,47 @@ pub async fn reset_connectivity_statistics(proxy_name: Option<&str>) -> Result<(
     let fallback_others = state.last_others.clone();
     let device_id = state.device_id.clone();
     let state_resets = state.resets.clone();
-    let (next_others, next_resets) =
+    let state_clear_all = state.clear_all.clone();
+    let selected_name = proxy_name.filter(|name| !name.is_empty()).map(str::to_string);
+    let (next_others, next_resets, next_clear_all) =
         connectivity_order::transact_connectivity_stats_file(|current_raw| {
             let mut current =
                 parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
             let embedded = current.sync.take().unwrap_or_else(|| LocalSyncMetadata {
                 last_others: fallback_others.clone(),
                 reset_watermarks: ResetWatermarks::new(),
+                clear_all: ResetGeneration::default(),
             });
             let active = merge_reset_watermarks([&state_resets, &embedded.reset_watermarks])
                 .map_err(|error| error.to_string())?;
-            let names = reset_names(
-                proxy_name,
-                &current.data,
-                &embedded.last_others,
-                &active,
-            );
-            let resets = advance_reset_watermarks(&active, names.iter().cloned(), &device_id)
+            let base_clear_all = merge_clear_all([&state_clear_all, &embedded.clear_all])
                 .map_err(|error| error.to_string())?;
-            let mut last_others = embedded.last_others;
-            for name in &names {
-                current.data.remove(name);
-                last_others.remove(name);
-            }
+            let (resets, clear_all, last_others) = if let Some(name) = selected_name.clone() {
+                let resets = advance_reset_watermarks(&active, [name.clone()], &device_id)
+                    .map_err(|error| error.to_string())?;
+                let mut last_others = embedded.last_others;
+                current.data.remove(&name);
+                last_others.remove(&name);
+                (resets, base_clear_all, last_others)
+            } else {
+                let clear_all = advance_clear_all(&base_clear_all, &device_id)
+                    .map_err(|error| error.to_string())?;
+                current.data.clear();
+                (active, clear_all, StatsData::new())
+            };
             current.sync = Some(LocalSyncMetadata {
                 last_others: last_others.clone(),
                 reset_watermarks: resets.clone(),
+                clear_all: clear_all.clone(),
             });
             let replacement =
                 serde_json::to_string(&current).map_err(|error| error.to_string())?;
-            Ok((replacement, (last_others, resets)))
+            Ok((replacement, (last_others, resets, clear_all)))
         })
         .map_err(Error::msg)?;
     state.last_others = next_others;
     state.resets = next_resets;
+    state.clear_all = next_clear_all;
     save_state(&state)
 }
 
@@ -561,6 +598,7 @@ mod tests {
             resets: ResetWatermarks::new(),
             generations: ResetWatermarks::new(),
             data: StatsData::new(),
+            clear_all: ResetGeneration::default(),
         };
         assert!(snapshot_matches(
             &snapshot,
@@ -627,6 +665,7 @@ mod tests {
             resets: ResetWatermarks::new(),
             generations: ResetWatermarks::new(),
             data: StatsData::new(),
+            clear_all: ResetGeneration::default(),
         };
 
         assert!(newest_complete_snapshot(vec![Some(valid), None]).is_none());
@@ -646,6 +685,7 @@ mod tests {
             &fallback,
             &remote,
             &ResetWatermarks::new(),
+            &ResetGeneration::default(),
         )
         .unwrap();
         let day = Local::now().format("%Y-%m-%d").to_string();
@@ -664,6 +704,7 @@ mod tests {
             sync: Some(LocalSyncMetadata {
                 last_others: data(5, 1),
                 reset_watermarks: ResetWatermarks::new(),
+                clear_all: ResetGeneration::default(),
             }),
         };
         let stale_fallback = StatsData::new();
@@ -673,6 +714,7 @@ mod tests {
             &stale_fallback,
             &remote,
             &ResetWatermarks::new(),
+            &ResetGeneration::default(),
         )
         .unwrap();
         let day = Local::now().format("%Y-%m-%d").to_string();
@@ -689,6 +731,7 @@ mod tests {
             sync: Some(LocalSyncMetadata {
                 last_others: data(200, 0),
                 reset_watermarks: ResetWatermarks::new(),
+                clear_all: ResetGeneration::default(),
             }),
         };
         let resets = HashMap::from([(
@@ -703,6 +746,7 @@ mod tests {
             &StatsData::new(),
             &StatsData::new(),
             &resets,
+            &ResetGeneration::default(),
         )
         .unwrap();
 
@@ -726,6 +770,7 @@ mod tests {
             sync: Some(LocalSyncMetadata {
                 last_others: StatsData::new(),
                 reset_watermarks: resets.clone(),
+                clear_all: ResetGeneration::default(),
             }),
         };
         let (_, outcome) = prepare_local_merge(
@@ -733,6 +778,7 @@ mod tests {
             &StatsData::new(),
             &StatsData::new(),
             &resets,
+            &ResetGeneration::default(),
         )
         .unwrap();
 
@@ -799,9 +845,74 @@ mod tests {
                 },
             )]),
             data: data(300, 0),
+            clear_all: ResetGeneration::default(),
         };
         filter_snapshot_data(&mut stale, &active);
         assert!(!stale.data.contains_key("node"));
+    }
+
+    #[test]
+    fn clear_all_drops_a_node_this_device_never_stored() {
+        let active = ResetGeneration {
+            counter: 1,
+            device_id: "device-a".into(),
+        };
+        let mut stale = DeviceSnapshot {
+            v: PROTOCOL_VERSION,
+            device_id: "device-b".into(),
+            revision: 2,
+            slot: 0,
+            updated_at: 1,
+            resets: ResetWatermarks::new(),
+            generations: ResetWatermarks::new(),
+            data: data(300, 0),
+            clear_all: ResetGeneration::default(),
+        };
+        retain_snapshot_for_clear_all(&mut stale, &active);
+        assert!(stale.data.is_empty());
+
+        let mut fresh = DeviceSnapshot {
+            v: PROTOCOL_VERSION,
+            device_id: "device-b".into(),
+            revision: 4,
+            slot: 0,
+            updated_at: 2,
+            resets: ResetWatermarks::new(),
+            generations: ResetWatermarks::new(),
+            data: data(4, 0),
+            clear_all: active.clone(),
+        };
+        retain_snapshot_for_clear_all(&mut fresh, &active);
+        assert!(fresh.data.contains_key("node"));
+    }
+
+    #[test]
+    fn newer_clear_all_drops_local_history() {
+        let clear_all = ResetGeneration {
+            counter: 1,
+            device_id: "device-a".into(),
+        };
+        let current = StatsFile {
+            v: STORE_VERSION,
+            data: data(300, 0),
+            sync: Some(LocalSyncMetadata {
+                last_others: data(200, 0),
+                reset_watermarks: ResetWatermarks::new(),
+                clear_all: ResetGeneration::default(),
+            }),
+        };
+        let (_, outcome) = prepare_local_merge(
+            &serde_json::to_string(&current).unwrap(),
+            &StatsData::new(),
+            &StatsData::new(),
+            &ResetWatermarks::new(),
+            &clear_all,
+        )
+        .unwrap();
+
+        assert!(outcome.own.is_empty());
+        assert!(outcome.merged.is_empty());
+        assert_eq!(outcome.clear_all, clear_all);
     }
 
     #[test]

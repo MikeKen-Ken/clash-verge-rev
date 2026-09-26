@@ -246,7 +246,9 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
 
     if (!diskHasData) {
       const existing = loadStore();
-      if (Object.keys(existing).length > 0) {
+      // An empty file that already has sync metadata is a finished clear-all.
+      // Copying localStorage back would restore the counters the wipe removed.
+      if (Object.keys(existing).length > 0 && !diskCarriesSyncMetadata(raw)) {
         persistStore(existing);
         return;
       }
@@ -261,6 +263,15 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
     }
   } catch {
     // ignore hydrate failure
+  }
+}
+
+function diskCarriesSyncMetadata(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as { _sync?: unknown };
+    return typeof parsed === "object" && parsed !== null && parsed._sync != null;
+  } catch {
+    return false;
   }
 }
 

@@ -32,6 +32,8 @@ pub(super) struct DeviceSnapshot {
     pub(super) generations: ResetWatermarks,
     #[serde(default)]
     pub(super) data: StatsData,
+    #[serde(default, skip_serializing_if = "clear_all_absent")]
+    pub(super) clear_all: ResetGeneration,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -146,6 +148,7 @@ pub(super) fn snapshot_matches(
         && snapshot.revision % SNAPSHOT_SLOT_COUNT as u64 == snapshot.slot as u64
         && sanitize_reset_watermarks(&snapshot.resets).is_ok()
         && sanitize_reset_watermarks(&snapshot.generations).is_ok()
+        && sanitize_clear_all(&snapshot.clear_all).is_ok()
         && snapshot
             .generations
             .iter()
@@ -231,6 +234,60 @@ pub(super) fn device_limit_exceeded(
     let devices: HashSet<&str> = listed.iter().map(|item| item.device_id.as_str()).collect();
     devices.len() > MAX_REMOTE_DEVICES
         || (!devices.contains(own_device_id) && devices.len() >= MAX_REMOTE_DEVICES)
+}
+
+pub(super) fn clear_all_absent(value: &ResetGeneration) -> bool {
+    value.counter == 0 && value.device_id.is_empty()
+}
+
+pub(super) fn sanitize_clear_all(value: &ResetGeneration) -> Result<ResetGeneration, Error> {
+    if clear_all_absent(value) {
+        return Ok(ResetGeneration::default());
+    }
+    if value.counter == 0 || value.counter > MAX_SAFE_COUNT || !valid_device_id(&value.device_id) {
+        return Err(Error::msg("invalid connectivity clear-all generation"));
+    }
+    Ok(value.clone())
+}
+
+pub(super) fn merge_clear_all<'a>(
+    parts: impl IntoIterator<Item = &'a ResetGeneration>,
+) -> Result<ResetGeneration, Error> {
+    let mut best = ResetGeneration::default();
+    for part in parts {
+        let generation = sanitize_clear_all(part)?;
+        if generation > best {
+            best = generation;
+        }
+    }
+    Ok(best)
+}
+
+pub(super) fn advance_clear_all(
+    current: &ResetGeneration,
+    device_id: &str,
+) -> Result<ResetGeneration, Error> {
+    let current = sanitize_clear_all(current)?;
+    if !valid_device_id(device_id) {
+        return Err(Error::msg("invalid connectivity device id"));
+    }
+    if current.counter >= MAX_SAFE_COUNT {
+        return Err(Error::msg("connectivity clear-all generation overflow"));
+    }
+    Ok(ResetGeneration {
+        counter: current.counter + 1,
+        device_id: device_id.to_string(),
+    })
+}
+
+/// Drop every counter in a snapshot recorded before the active clear-all.
+pub(super) fn retain_snapshot_for_clear_all(
+    snapshot: &mut DeviceSnapshot,
+    active: &ResetGeneration,
+) {
+    if &snapshot.clear_all != active {
+        snapshot.data.clear();
+    }
 }
 
 pub(super) fn filter_snapshot_data(snapshot: &mut DeviceSnapshot, active: &ResetWatermarks) {
