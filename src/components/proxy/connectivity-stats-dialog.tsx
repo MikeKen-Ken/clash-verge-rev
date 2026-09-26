@@ -39,6 +39,7 @@ import {
   isConnectivityWebdavHttps,
   mergeConnectivityStatsNow,
 } from "@/services/proxy-connectivity-webdav-sync";
+import { nativeConfirm } from "@/utils/native-confirm";
 
 /** 策略组类型：列表只展示叶子出站 */
 const PROXY_GROUP_TYPES = new Set([
@@ -141,7 +142,7 @@ export const ConnectivityStatsDialog = ({
 
   const handleClearAll = useLockFn(async () => {
     if (clearing) return;
-    const ok = window.confirm(
+    const ok = await nativeConfirm(
       "Clear connectivity statistics for all nodes? This action cannot be undone.",
     );
     if (!ok) return;
