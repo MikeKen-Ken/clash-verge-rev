@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // 缓存上限：依赖连接活跃度，按经验值给出，避免长时间运行后无界增长。
 // 图标缓存内容（base64）较大，上限相对小一些；路径映射条目轻量，可放宽。
@@ -115,106 +115,99 @@ export const useProcessIcon = () => {
   return { getIcon };
 };
 
+const cachedIcon = (
+  cache: Map<string, string | null>,
+  key: string | undefined,
+): string | null => {
+  if (!key || !cache.has(key)) return null;
+  return cache.get(key) ?? null;
+};
+
 /**
- * Synchronous hook to get cached process icon
- * Returns null if not cached, triggers fetch in background
+ * 列表行会被复用。图标必须跟着当前 key 走，不能停在这一行第一次取到的图上。
  */
-export const useProcessIconSync = (processPath: string | undefined) => {
-  const [icon, setIcon] = useState<string | null>(() => {
-    if (!processPath) return null;
-    return iconCache.get(processPath) ?? null;
-  });
-  const fetchedRef = useRef(false);
+const useTrackedIcon = (
+  cache: Map<string, string | null>,
+  cacheKey: string | undefined,
+  requestKey: string | undefined,
+  load: () => Promise<string | null>,
+) => {
+  const [icon, setIcon] = useState<string | null>(() => cachedIcon(cache, cacheKey));
+  const [seenKey, setSeenKey] = useState(cacheKey);
 
-  // 如果没有缓存，异步获取
-  if (processPath && !iconCache.has(processPath) && !fetchedRef.current) {
-    fetchedRef.current = true;
-
-    // 检查是否已有请求在进行中
-    if (!pendingRequests.has(processPath)) {
-      const request = invoke<string | null>("get_process_icon", { processPath })
-        .then((result) => {
-          lruSet(iconCache, processPath, result, MAX_ICON_CACHE_ENTRIES);
-          pendingRequests.delete(processPath);
-          setIcon(result);
-          return result;
-        })
-        .catch((err) => {
-          console.warn(`Failed to get icon for ${processPath}:`, err);
-          lruSet(iconCache, processPath, null, MAX_ICON_CACHE_ENTRIES);
-          pendingRequests.delete(processPath);
-          return null;
-        });
-
-      pendingRequests.set(processPath, request);
-    } else {
-      // 等待已有请求完成
-      pendingRequests.get(processPath)!.then((result) => {
-        setIcon(result);
-      });
-    }
+  if (seenKey !== cacheKey) {
+    setSeenKey(cacheKey);
+    setIcon(cachedIcon(cache, cacheKey));
   }
+
+  useEffect(() => {
+    if (!cacheKey || !requestKey) return;
+    if (cache.has(cacheKey)) {
+      setIcon(cache.get(cacheKey) ?? null);
+      return;
+    }
+
+    let cancelled = false;
+    const apply = (result: string | null) => {
+      lruSet(cache, cacheKey, result, MAX_ICON_CACHE_ENTRIES);
+      pendingRequests.delete(requestKey);
+      if (!cancelled) setIcon(result);
+      return result;
+    };
+
+    const existing = pendingRequests.get(requestKey);
+    if (existing) {
+      void existing.then((result) => {
+        if (!cancelled) setIcon(result);
+      });
+    } else {
+      const request = load()
+        .then(apply)
+        .catch((err) => {
+          console.warn(`Failed to get icon for ${cacheKey}:`, err);
+          return apply(null);
+        });
+      pendingRequests.set(requestKey, request);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cache, cacheKey, load, requestKey]);
 
   return icon;
 };
 
 /**
- * Synchronous hook to get cached process icon by process name
- * First tries to find path from cache, then calls backend API directly
+ * Synchronous hook to get cached process icon.
+ * Returns null if not cached, triggers fetch in background.
+ */
+export const useProcessIconSync = (processPath: string | undefined) => {
+  const load = useCallback(
+    () => invoke<string | null>("get_process_icon", { processPath }),
+    [processPath],
+  );
+  return useTrackedIcon(iconCache, processPath, processPath, load);
+};
+
+/**
+ * Synchronous hook to get cached process icon by process name.
+ * Uses a known executable path when connection data has already provided one.
  */
 export const useProcessIconByNameSync = (processName: string | undefined) => {
-  const [icon, setIcon] = useState<string | null>(() => {
-    if (!processName) return null;
-    const key = processName.toLowerCase();
-    return iconByNameCache.get(key) ?? null;
-  });
-  const fetchedRef = useRef(false);
-
-  // 如果没有缓存，异步获取
-  if (processName && !fetchedRef.current) {
-    const key = processName.toLowerCase();
-
-    if (iconByNameCache.has(key)) {
-      if (icon !== iconByNameCache.get(key)) {
-        setIcon(iconByNameCache.get(key) ?? null);
-      }
-    } else {
-      fetchedRef.current = true;
-      const requestKey = `name:${key}`;
-
-      // 检查是否已有请求在进行中
-      if (!pendingRequests.has(requestKey)) {
-        // 先尝试使用已知的路径
-        const knownPath = processNameToPathCache.get(key);
-
-        const request = (knownPath
-          ? invoke<string | null>("get_process_icon", { processPath: knownPath })
-          : invoke<string | null>("get_process_icon_by_name", { processName })
-        )
-          .then((result) => {
-            lruSet(iconByNameCache, key, result, MAX_ICON_CACHE_ENTRIES);
-            pendingRequests.delete(requestKey);
-            setIcon(result);
-            return result;
-          })
-          .catch((err) => {
-            console.warn(`Failed to get icon for process ${processName}:`, err);
-            lruSet(iconByNameCache, key, null, MAX_ICON_CACHE_ENTRIES);
-            pendingRequests.delete(requestKey);
-            return null;
-          });
-
-        pendingRequests.set(requestKey, request);
-      } else {
-        // 等待已有请求完成
-        pendingRequests.get(requestKey)!.then((result) => {
-          setIcon(result);
-        });
-      }
-    }
-  }
-
-  return icon;
+  const key = processName?.toLowerCase();
+  const load = useCallback(() => {
+    const knownPath = key ? processNameToPathCache.get(key) : undefined;
+    return knownPath
+      ? invoke<string | null>("get_process_icon", { processPath: knownPath })
+      : invoke<string | null>("get_process_icon_by_name", { processName });
+  }, [key, processName]);
+  return useTrackedIcon(
+    iconByNameCache,
+    key,
+    key ? `name:${key}` : undefined,
+    load,
+  );
 };
 
 /**

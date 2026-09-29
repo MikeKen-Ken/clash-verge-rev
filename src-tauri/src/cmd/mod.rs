@@ -11,6 +11,7 @@ pub mod connectivity;
 pub mod lightweight;
 pub mod network;
 pub mod network_diagnostics;
+pub mod process_icon;
 pub mod profile;
 pub mod profile_activation;
 pub mod proxy;
