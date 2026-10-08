@@ -203,6 +203,9 @@ pub struct IVerge {
 
     pub verge_http_enabled: Option<bool>,
 
+    /// LAN share port set by the refresh button. Overrides the profile's `mixed-port` when present.
+    pub lan_mixed_port: Option<u16>,
+
     /// WebDAV 配置 (加密存储)
     #[serde(
         serialize_with = "serialize_encrypted",
@@ -551,6 +554,7 @@ impl IVerge {
         patch!(verge_socks_enabled);
         patch!(verge_port);
         patch!(verge_http_enabled);
+        patch!(lan_mixed_port);
         patch!(enable_system_proxy);
         patch!(enable_proxy_guard);
         patch!(enable_bypass_check);

@@ -184,6 +184,7 @@ mod app_init {
             cmd::update_proxy_chain_config_in_runtime,
             cmd::apply_manual_connectivity_proxy_order,
             cmd::patch_runtime_config,
+            cmd::refresh_lan_port,
             cmd::invoke_uwp_tool,
             cmd::copy_clash_env,
             cmd::sync_tray_proxy_selection,

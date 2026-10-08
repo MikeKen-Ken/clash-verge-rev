@@ -976,6 +976,7 @@ interface IVergeConfig {
   verge_tproxy_enabled?: boolean;
   verge_socks_enabled?: boolean;
   verge_http_enabled?: boolean;
+  lan_mixed_port?: number;
   enable_proxy_guard?: boolean;
   enable_bypass_check?: boolean;
   use_default_bypass?: boolean;

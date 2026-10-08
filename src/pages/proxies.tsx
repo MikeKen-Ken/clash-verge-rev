@@ -58,6 +58,7 @@ import {
   openWindowsFirewallAllowedAppsSettings,
   patchClashMode,
   patchRuntimeConfig,
+  refreshLanPort,
 } from "@/services/cmds";
 import {
   DELAY_CHECK_CONCURRENCY_PRESETS,
@@ -296,6 +297,18 @@ const ProxyPage = () => {
 
   const handleRefreshProxy = useLockFn(async () => {
     await refreshProxy();
+  });
+
+  const handleRefreshLanPort = useLockFn(async () => {
+    try {
+      const port = await refreshLanPort();
+      await Promise.all([mutateClash(), mutateVerge()]);
+      showNotice.success(
+        `LAN port changed to ${port}. Devices need the new address to connect.`,
+      );
+    } catch (err) {
+      showNotice.error(err);
+    }
   });
 
   // 每次切回/打开该页面时，立即刷新一次，避免进入界面未及时更新数据
@@ -884,6 +897,7 @@ const ProxyPage = () => {
               localIp={preferredLanIpv4}
               allowLan={allowLan}
               ports={lanListenPorts}
+              onRefreshPort={handleRefreshLanPort}
             />
             <Tooltip title="Check for updates">
               <span>

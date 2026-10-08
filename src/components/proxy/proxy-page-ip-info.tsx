@@ -1,6 +1,8 @@
-import { alpha, Box, Tooltip, Typography } from "@mui/material";
+import SyncRounded from "@mui/icons-material/SyncRounded";
+import { alpha, Box, IconButton, Tooltip, Typography } from "@mui/material";
 import type { Theme } from "@mui/material/styles";
 import { useLockFn } from "ahooks";
+import { useState } from "react";
 
 import { showNotice } from "@/services/notice-service";
 
@@ -10,6 +12,8 @@ interface Props {
   allowLan?: boolean;
   /** 对外监听端口（mixed / http / socks 等） */
   ports?: number[];
+  /** 换成随机局域网端口；仅在 allow-lan 开启时显示按钮 */
+  onRefreshPort?: () => Promise<void>;
 }
 
 const buildEndpoints = (localIp: string | undefined, ports: number[]): string[] => {
@@ -21,7 +25,9 @@ export const ProxyPageIpInfo = ({
   localIp,
   allowLan = false,
   ports = [],
+  onRefreshPort,
 }: Props) => {
+  const [refreshingPort, setRefreshingPort] = useState(false);
   const endpoints = allowLan ? buildEndpoints(localIp, ports) : [];
   const displayText =
     endpoints.length > 0 ? endpoints.join("  ") : (localIp ?? "—");
@@ -59,6 +65,16 @@ export const ProxyPageIpInfo = ({
       }`,
   };
 
+  const handleRefreshPort = useLockFn(async () => {
+    if (!onRefreshPort) return;
+    setRefreshingPort(true);
+    try {
+      await onRefreshPort();
+    } finally {
+      setRefreshingPort(false);
+    }
+  });
+
   const tooltipTitle = !canCopy
     ? "Local IP"
     : allowLan && endpoints.length > 0
@@ -66,7 +82,7 @@ export const ProxyPageIpInfo = ({
       : "Click to copy local IP";
 
   return (
-    <Box sx={cardSx}>
+    <Box sx={{ ...cardSx, display: "flex", alignItems: "center", gap: 0.5 }}>
       <Tooltip title={tooltipTitle}>
         <Box
           role={canCopy ? "button" : undefined}
@@ -144,6 +160,30 @@ export const ProxyPageIpInfo = ({
           )}
         </Box>
       </Tooltip>
+      {allowLan && onRefreshPort ? (
+        <Tooltip title="Refresh LAN port">
+          <span>
+            <IconButton
+              size="small"
+              aria-label="Refresh LAN port"
+              disabled={refreshingPort}
+              onClick={() => void handleRefreshPort()}
+              sx={{
+                p: 0.25,
+                ...(refreshingPort && {
+                  "@keyframes lanPortSpin": {
+                    from: { transform: "rotate(0deg)" },
+                    to: { transform: "rotate(360deg)" },
+                  },
+                  "& svg": { animation: "lanPortSpin 1s linear infinite" },
+                }),
+              }}
+            >
+              <SyncRounded fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      ) : null}
     </Box>
   );
 };

@@ -145,6 +145,10 @@ export async function patchRuntimeConfig(payload: Partial<IConfigData>) {
   return invoke<void>("patch_runtime_config", { payload });
 }
 
+export async function refreshLanPort() {
+  return invoke<number>("refresh_lan_port");
+}
+
 /** @deprecated 请改用 patchRuntimeConfig，避免写入 clash_config。 */
 export async function patchClashConfig(payload: Partial<IConfigData>) {
   return patchRuntimeConfig(payload);

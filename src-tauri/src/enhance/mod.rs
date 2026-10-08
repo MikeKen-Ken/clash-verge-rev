@@ -760,6 +760,8 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         &[global_merge_snapshot, profile_merge_snapshot],
     );
     IRuntime::restore_runtime_patch_after_merge(prev_runtime_config.as_ref(), &mut config);
+    let lan_mixed_port = Config::verge().await.latest_arc().lan_mixed_port;
+    config = apply_lan_mixed_port(config, lan_mixed_port);
 
     // dns settings
     config = apply_dns_settings(config, enable_dns_settings).await;
@@ -802,6 +804,13 @@ fn finalize_runtime_config(mut config: Mapping, enable_tun: bool, mode: ClashMod
     config = use_tun(config, enable_tun);
     config = connectivity_order::apply_connectivity_proxy_order(config);
     use_sort(config)
+}
+
+fn apply_lan_mixed_port(mut config: Mapping, port: Option<u16>) -> Mapping {
+    if let Some(port) = port.filter(|p| *p != 0) {
+        config.insert("mixed-port".into(), Value::from(port));
+    }
+    config
 }
 
 /// 离线模式：强制 rule + MATCH,REJECT，拒绝全部流量。
