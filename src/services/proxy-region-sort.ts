@@ -174,7 +174,7 @@ export interface RegionOption {
   label: string;
 }
 
-/** 从非 Selector 组的所有节点名中收集可用地区（去重并保持常用地区优先） */
+/** 从非 Selector 组的所有节点名中收集可用地区，按英文国名 A–Z 排序 */
 export function listAvailableRegionsFromProxyGroups(
   groups: Array<{ type?: string; all?: Array<{ name: string }> }>,
 ): RegionOption[] {
@@ -189,23 +189,12 @@ export function listAvailableRegionsFromProxyGroups(
     }
   }
 
-  const priority = new Map(
-    DEFAULT_CUSTOM_PROXY_ORDER.map((flag, index) => [flag, index]),
-  );
-
   return Array.from(flagSet)
     .map((flag) => ({
       flag,
       label: REGION_FLAG_LABELS[flag] ?? flag,
     }))
-    .sort((a, b) => {
-      const pa = priority.get(a.flag as (typeof DEFAULT_CUSTOM_PROXY_ORDER)[number]);
-      const pb = priority.get(b.flag as (typeof DEFAULT_CUSTOM_PROXY_ORDER)[number]);
-      if (pa != null && pb != null) return pa - pb;
-      if (pa != null) return -1;
-      if (pb != null) return 1;
-      return a.label.localeCompare(b.label, "en");
-    });
+    .sort((a, b) => a.label.localeCompare(b.label, "en", { sensitivity: "base" }));
 }
 
 /** 仅根据节点名里的中文关键字识别归属；未命中返回 null */
