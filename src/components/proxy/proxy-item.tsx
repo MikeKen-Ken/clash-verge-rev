@@ -14,6 +14,7 @@ import { useLockFn } from "ahooks";
 import { useCallback, useEffect, useReducer } from "react";
 
 import { BaseLoading } from "@/components/base";
+import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
 import delayManager, {
   getGroupDelayTimeout,
   DelayUpdate,
@@ -171,7 +172,7 @@ export const ProxyItem = (props: Props) => {
               },
               backgroundColor: finalBgcolor,
               marginBottom: "8px",
-              height: "40px",
+              height: "48px",
               "html[data-liquid-glass='1'] &": {
                 backgroundColor: isSuccess
                   ? "rgba(6, 148, 61, 0.18)"
@@ -230,6 +231,13 @@ export const ProxyItem = (props: Props) => {
             display: isPreset ? "none" : "",
           }}
         >
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+            }}
+          >
           {delayValue === -2 && (
             <Widget>
               <BaseLoading />
@@ -282,6 +290,8 @@ export const ProxyItem = (props: Props) => {
               sx={{ fontSize: 16 }}
             />
           )}
+          <EffectiveDelayLabel proxyName={proxy.name} />
+          </Box>
         </ListItemIcon>
         {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (
           <span className="the-pin" title="manual">

@@ -63,6 +63,20 @@ export interface ConnectivityScoreContext {
 }
 
 let cachedStore: Record<string, ProxyConnectivityEntry> | null = null;
+const connectivityStatsListeners = new Set<() => void>();
+
+function notifyConnectivityStats() {
+  connectivityStatsListeners.forEach((listener) => {
+    listener();
+  });
+}
+
+export function subscribeConnectivityStats(listener: () => void): () => void {
+  connectivityStatsListeners.add(listener);
+  return () => {
+    connectivityStatsListeners.delete(listener);
+  };
+}
 
 function formatDayKey(date: Date): string {
   const y = date.getFullYear();
@@ -263,6 +277,8 @@ export async function hydrateConnectivityStatsFromDisk(): Promise<void> {
     }
   } catch {
     // ignore hydrate failure
+  } finally {
+    notifyConnectivityStats();
   }
 }
 
@@ -352,6 +368,34 @@ export function computePriorEffectiveDelayMs(
   const avg = global.delaySum / trials;
   if (!Number.isFinite(avg) || avg < 0) return CONNECTIVITY_FALLBACK_DELAY_MS;
   return avg;
+}
+
+let effectiveDelayCache: {
+  store: Record<string, ProxyConnectivityEntry>;
+  byProxy: Record<string, ProxyConnectivityStats>;
+  priorDelayMs: number;
+} | null = null;
+
+/** Card number for one node. Null when that node has no samples of its own. */
+export function effectiveDelayMsFor(proxyName: string): number | null {
+  if (!proxyName) return null;
+  const store = loadStore();
+  if (!effectiveDelayCache || effectiveDelayCache.store !== store) {
+    const { global, byProxy } = collectWeightedStatsFromStore(store);
+    effectiveDelayCache = {
+      store,
+      byProxy,
+      priorDelayMs: computePriorEffectiveDelayMs(global),
+    };
+  }
+  const stats = effectiveDelayCache.byProxy[proxyName];
+  if (!stats || (stats.success <= 0 && stats.failure <= 0)) return null;
+  const ms = computeSmoothedEffectiveAvgDelay(
+    stats,
+    effectiveDelayCache.priorDelayMs,
+  );
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return Math.round(ms);
 }
 
 /** avg = (Wds + k × priorDelay) / (Wn + k) */
@@ -447,6 +491,7 @@ export async function clearConnectivityStats(): Promise<void> {
       // The native reset is authoritative even if the UI cache cannot persist.
     }
   });
+  notifyConnectivityStats();
 }
 
 /** 清空单个节点的测速联通统计（写盘完成后再返回） */
@@ -468,6 +513,7 @@ export async function clearConnectivityStatsForProxy(
       // The native reset is authoritative even if the UI cache cannot persist.
     }
   });
+  notifyConnectivityStats();
 }
 
 /** 面板列表行：分数 + 加权成功/失败 + 平滑有效延迟 */

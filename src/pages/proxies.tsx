@@ -8,6 +8,8 @@ import NetworkCheckRounded from "@mui/icons-material/NetworkCheckRounded";
 import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
 import SystemUpdateAltRounded from "@mui/icons-material/SystemUpdateAltRounded";
+import VisibilityOffRounded from "@mui/icons-material/VisibilityOffRounded";
+import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import {
   alpha,
   Box,
@@ -170,6 +172,13 @@ const ProxyPage = () => {
   const { hideUnavailableNodes, setHideUnavailableNodes } =
     useHideUnavailableNodes();
   const [connectivityStatsOpen, setConnectivityStatsOpen] = useState(false);
+  const [showProxyDetail, setShowProxyDetail] = useState(() => {
+    try {
+      return localStorage.getItem("proxy-show-detail") !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serviceMenuAnchor, setServiceMenuAnchor] =
     useState<null | HTMLElement>(null);
@@ -769,6 +778,37 @@ const ProxyPage = () => {
                 </Tooltip>
               </>
             )}
+            <Tooltip
+              title={
+                showProxyDetail
+                  ? t("proxies.page.tooltips.showBasic")
+                  : t("proxies.page.tooltips.showDetail")
+              }
+            >
+              <IconButton
+                size="small"
+                aria-label={
+                  showProxyDetail
+                    ? t("proxies.page.tooltips.showBasic")
+                    : t("proxies.page.tooltips.showDetail")
+                }
+                onClick={() => {
+                  const next = !showProxyDetail;
+                  setShowProxyDetail(next);
+                  try {
+                    localStorage.setItem("proxy-show-detail", next ? "1" : "0");
+                  } catch {
+                    // The toggle still applies for this session.
+                  }
+                }}
+              >
+                {showProxyDetail ? (
+                  <VisibilityRounded fontSize="small" />
+                ) : (
+                  <VisibilityOffRounded fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Node connectivity statistics">
               <IconButton
                 size="small"
@@ -933,6 +973,7 @@ const ProxyPage = () => {
         chainConfigData={null}
         regionFilter={regionFilter || undefined}
         hideUnavailableNodes={hideUnavailableNodes}
+        showProxyDetail={showProxyDetail}
         onRegisterCheckAll={(runner) => {
           checkAllDelayRunnerRef.current = runner;
         }}

@@ -3,7 +3,6 @@ import { Box, Typography } from "@mui/material";
 import { memo, useMemo } from "react";
 
 import { ProxyGroupHeader } from "./proxy-group-header";
-import { ProxyHead } from "./proxy-head";
 import { ProxyItem } from "./proxy-item";
 import { ProxyItemMini } from "./proxy-item-mini";
 import type { HeadState } from "./use-head-state";
@@ -13,6 +12,7 @@ interface RenderProps {
   item: IRenderItem;
   indent: boolean;
   isChainMode?: boolean;
+  showProxyDetail: boolean;
   onHeadState: (groupName: string, patch: Partial<HeadState>) => void;
   onChangeProxy: (
     group: IRenderItem["group"],
@@ -34,13 +34,14 @@ const ProxyRenderInner = (props: RenderProps) => {
   const {
     indent,
     item,
+    showProxyDetail,
     onHeadState,
     onChangeProxy,
     getSelectedForGroup,
     getDisplayNowForGroup,
     getManualSelectionForGroup,
   } = props;
-  const { type, group, headState, proxy, proxyCol } = item;
+  const { type, group, proxy, proxyCol } = item;
   const groupInfo = useMemo(
     () => ({
       name: group.name,
@@ -74,7 +75,7 @@ const ProxyRenderInner = (props: RenderProps) => {
           itemDisplayName={itemDisplayName}
           selected={selectedName != null ? selectedName === name : false}
           showManualIcon={(fixedName ?? manualName) === name}
-          showType={headState?.showType}
+          showType={showProxyDetail}
           onClick={() =>
             onChangeProxy(group, proxyItem!, {
               isManualSelection: (fixedName ?? manualName) === name,
@@ -89,7 +90,7 @@ const ProxyRenderInner = (props: RenderProps) => {
     item.key,
     group,
     groupInfo,
-    headState?.showType,
+    showProxyDetail,
     onChangeProxy,
     getSelectedForGroup,
     getDisplayNowForGroup,
@@ -102,18 +103,6 @@ const ProxyRenderInner = (props: RenderProps) => {
         item={item}
         onHeadState={onHeadState}
         getDisplayNowForGroup={getDisplayNowForGroup}
-      />
-    );
-  }
-
-  if (type === 1) {
-    return (
-      <ProxyHead
-        sx={{ pl: 2, pr: 3, mt: indent ? 1 : 0.5, mb: 1 }}
-        url={group.testUrl}
-        groupName={group.name}
-        headState={headState!}
-        onHeadState={(p) => onHeadState(group.name, p)}
       />
     );
   }
@@ -136,7 +125,7 @@ const ProxyRenderInner = (props: RenderProps) => {
         itemDisplayName={itemDisplayName}
         selected={selectedName != null ? selectedName === name : false}
         showManualIcon={(fixedName ?? manualName) === name}
-        showType={headState?.showType}
+        showType={showProxyDetail}
         sx={{ py: 0, pl: 2 }}
         onClick={() =>
           onChangeProxy(group, proxy!, {

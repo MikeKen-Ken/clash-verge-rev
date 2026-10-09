@@ -2,6 +2,7 @@ import {
   ExpandLessRounded,
   ExpandMoreRounded,
 } from "@mui/icons-material";
+import { useEffect } from "react";
 import {
   alpha,
   Box,
@@ -14,6 +15,7 @@ import {
 
 import { useIconCache } from "@/hooks/use-icon-cache";
 import { useVerge } from "@/hooks/use-verge";
+import delayManager from "@/services/delay";
 import { useThemeMode } from "@/services/states";
 
 import type { HeadState } from "./use-head-state";
@@ -48,6 +50,13 @@ export const ProxyGroupHeader = ({
     typeof group.maxConnectTimes === "number" && group.maxConnectTimes > 0
       ? `${group.connectTimes ?? 0}/${group.maxConnectTimes}`
       : null;
+
+  useEffect(() => {
+    delayManager.setUrl(
+      group.name,
+      headState?.testUrl?.trim() || item.testUrl || "",
+    );
+  }, [group.name, headState?.testUrl, item.testUrl]);
 
   return (
     <ListItemButton

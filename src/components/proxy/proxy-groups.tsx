@@ -78,6 +78,7 @@ interface Props {
   chainConfigData?: string | null;
   regionFilter?: string;
   hideUnavailableNodes?: boolean;
+  showProxyDetail?: boolean;
   onRegisterCheckAll?: ((runner: (() => void) | null) => void) | null;
   onActiveSelectionChange?: (
     selection: {
@@ -117,6 +118,7 @@ export const ProxyGroups = (props: Props) => {
     chainConfigData,
     regionFilter,
     hideUnavailableNodes = false,
+    showProxyDetail = true,
     onRegisterCheckAll,
     onActiveSelectionChange,
   } = props;
@@ -552,6 +554,7 @@ export const ProxyGroups = (props: Props) => {
       renderList={renderList}
       indent={mode === "rule" || mode === "script"}
       isChainMode={isChainMode}
+      showProxyDetail={showProxyDetail}
       initialScrollTop={scrollPositionRef.current[mode]}
       onScroll={handleScroll as EventListener}
       onHeadState={onHeadState}

@@ -4,6 +4,7 @@ import { useLockFn } from "ahooks";
 import { memo, useCallback, useEffect, useReducer } from "react";
 
 import { BaseLoading } from "@/components/base";
+import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
 import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
@@ -197,6 +198,7 @@ function ProxyItemMiniInner(props: Props) {
               sx={{ fontSize: 16, mr: 0.5, display: "block" }}
             />
           )}
+        <EffectiveDelayLabel proxyName={proxyName} />
       </CellSide>
       {showManualIcon && groupType.includes("fallback") && (
         <span className="the-pin" title="manual">
@@ -321,6 +323,10 @@ const NowText = styled("span")(({ theme }) => ({
 }));
 
 const CellSide = styled("div")(({ theme }) => ({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  justifyContent: "center",
   marginLeft: 4,
   color: theme.palette.primary.main,
   flexShrink: 0,

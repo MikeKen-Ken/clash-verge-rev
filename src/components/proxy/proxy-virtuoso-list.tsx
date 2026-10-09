@@ -15,6 +15,7 @@ interface Props {
   renderList: IRenderItem[];
   indent: boolean;
   isChainMode?: boolean;
+  showProxyDetail: boolean;
   initialScrollTop?: number;
   onScroll?: EventListener;
   onHeadState: (groupName: string, patch: Partial<HeadState>) => void;
@@ -41,6 +42,7 @@ export const ProxyVirtuosoList = (props: Props) => {
     renderList,
     indent,
     isChainMode,
+    showProxyDetail,
     initialScrollTop,
     onScroll,
     onHeadState,
@@ -68,6 +70,7 @@ export const ProxyVirtuosoList = (props: Props) => {
         item={item}
         indent={indent}
         isChainMode={isChainMode}
+        showProxyDetail={showProxyDetail}
         onHeadState={onHeadState}
         onChangeProxy={onChangeProxy}
         getSelectedForGroup={getSelectedForGroup}
@@ -78,6 +81,7 @@ export const ProxyVirtuosoList = (props: Props) => {
     [
       indent,
       isChainMode,
+      showProxyDetail,
       onHeadState,
       onChangeProxy,
       getSelectedForGroup,
