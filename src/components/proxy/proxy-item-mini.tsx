@@ -8,11 +8,11 @@ import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
 import {
   PROXY_CARD_BG,
   PROXY_CARD_HOVER_BG,
-  PROXY_CARD_SELECTED_BG,
-  PROXY_CARD_SELECTED_HOVER_BG,
   PROXY_CARD_SELECTED_TEXT,
   PROXY_CARD_TEXT,
-  proxyDelayToneColor,
+  PROXY_DELAY_TIMEOUT_COLOR,
+  proxyCardSelectedBg,
+  proxyCardSelectedHoverBg,
 } from "@/components/proxy/proxy-card-colors";
 import delayManager, {
   getGroupDelayTimeout,
@@ -244,7 +244,9 @@ function miniPropsEqual(prev: Props, next: Props) {
 
 export const ProxyItemMini = memo(ProxyItemMiniInner, miniPropsEqual);
 
-const CellButton = styled("button")(() => {
+const CellButton = styled("button")(({ theme }) => {
+  const selectedBg = proxyCardSelectedBg(theme.palette.mode);
+  const selectedHoverBg = proxyCardSelectedHoverBg(theme.palette.mode);
   return {
     position: "relative",
     display: "flex",
@@ -262,20 +264,13 @@ const CellButton = styled("button")(() => {
     backgroundColor: PROXY_CARD_BG,
     "&:hover": { backgroundColor: PROXY_CARD_HOVER_BG },
     "&[data-selected='1']": {
-      backgroundColor: PROXY_CARD_SELECTED_BG,
+      backgroundColor: selectedBg,
       color: PROXY_CARD_SELECTED_TEXT,
     },
     "&[data-selected='1']:hover": {
-      backgroundColor: PROXY_CARD_SELECTED_HOVER_BG,
+      backgroundColor: selectedHoverBg,
     },
-    "& [data-tone='error']": { color: proxyDelayToneColor("error", false) },
-    "& [data-tone='success']": { color: proxyDelayToneColor("success", false) },
-    "&[data-selected='1'] [data-tone='error']": {
-      color: proxyDelayToneColor("error", true),
-    },
-    "&[data-selected='1'] [data-tone='success']": {
-      color: proxyDelayToneColor("success", true),
-    },
+    "& [data-tone='error']": { color: PROXY_DELAY_TIMEOUT_COLOR },
     "html[data-liquid-glass='1'] &": {
       backgroundColor: "var(--glass-card-fill)",
       border: "1px solid var(--glass-edge)",
@@ -284,7 +279,7 @@ const CellButton = styled("button")(() => {
       color: "var(--glass-text)",
     },
     "html[data-liquid-glass='1'] &[data-selected='1']": {
-      backgroundColor: PROXY_CARD_SELECTED_BG,
+      backgroundColor: selectedBg,
       color: PROXY_CARD_SELECTED_TEXT,
     },
     "& .the-check": { display: "none" },

@@ -18,11 +18,11 @@ import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
 import {
   PROXY_CARD_BG,
   PROXY_CARD_HOVER_BG,
-  PROXY_CARD_SELECTED_BG,
-  PROXY_CARD_SELECTED_HOVER_BG,
   PROXY_CARD_SELECTED_TEXT,
   PROXY_CARD_TEXT,
-  proxyDelayToneColor,
+  PROXY_DELAY_TIMEOUT_COLOR,
+  proxyCardSelectedBg,
+  proxyCardSelectedHoverBg,
 } from "@/components/proxy/proxy-card-colors";
 import delayManager, {
   getGroupDelayTimeout,
@@ -151,8 +151,10 @@ export const ProxyItem = (props: Props) => {
         onClick={() => onClick?.(proxy.name)}
         sx={[
           { borderRadius: 1, position: "relative" },
-          () => {
+          (theme) => {
             const showDelay = delayValue > 0;
+            const selectedBg = proxyCardSelectedBg(theme.palette.mode);
+            const selectedHoverBg = proxyCardSelectedHoverBg(theme.palette.mode);
 
             return {
               "&:hover .the-check": { display: !showDelay ? "block" : "none" },
@@ -169,11 +171,11 @@ export const ProxyItem = (props: Props) => {
               color: PROXY_CARD_TEXT,
               "&:hover": { backgroundColor: PROXY_CARD_HOVER_BG },
               "&.Mui-selected, &.Mui-selected:hover": {
-                backgroundColor: PROXY_CARD_SELECTED_BG,
+                backgroundColor: selectedBg,
                 color: PROXY_CARD_SELECTED_TEXT,
               },
               "&.Mui-selected:hover": {
-                backgroundColor: PROXY_CARD_SELECTED_HOVER_BG,
+                backgroundColor: selectedHoverBg,
               },
               marginBottom: "8px",
               height: "48px",
@@ -185,7 +187,7 @@ export const ProxyItem = (props: Props) => {
                 color: "var(--glass-text)",
               },
               "html[data-liquid-glass='1'] &.Mui-selected": {
-                backgroundColor: PROXY_CARD_SELECTED_BG,
+                backgroundColor: selectedBg,
                 color: PROXY_CARD_SELECTED_TEXT,
               },
             };
@@ -275,13 +277,12 @@ export const ProxyItem = (props: Props) => {
                 e.stopPropagation();
                 onDelay();
               }}
-              color={proxyDelayToneColor(
+              color={
                 delayManager.formatDelayColor(delayValue, timeout) ===
-                  "error.main"
-                  ? "error"
-                  : "success",
-                selected,
-              )}
+                "error.main"
+                  ? PROXY_DELAY_TIMEOUT_COLOR
+                  : "inherit"
+              }
               sx={({ palette }) =>
                 !proxy.provider
                   ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }

@@ -157,21 +157,18 @@ html[data-liquid-glass="1"] {
   }
 
   .proxy-card[data-selected="1"] {
-    background-color: #000000 !important;
-    color: #ffffff;
+    background-color: #1e4376 !important;
+    color: #ffffff !important;
 
     .MuiTypography-root,
+    .MuiListItemText-primary,
     .MuiListItemText-secondary,
     .MuiListItemIcon-root {
-      color: #ffffff;
+      color: #ffffff !important;
     }
 
     [data-tone="error"] {
-      color: #ff6b6b !important;
-    }
-
-    [data-tone="success"] {
-      color: #69db7c !important;
+      color: #ff0000 !important;
     }
   }
 
@@ -194,16 +191,12 @@ html[data-liquid-glass="1"] {
     color: var(--glass-text-muted);
   }
 
-  .Mui-selected .MuiListItemText-primary {
+  .Mui-selected:not(.proxy-card) .MuiListItemText-primary {
     color: var(--glass-text) !important;
   }
 
   [data-tone="error"] {
-    color: #c62828 !important;
-  }
-
-  [data-tone="success"] {
-    color: #2e7d32 !important;
+    color: #ff0000 !important;
   }
 }
 
