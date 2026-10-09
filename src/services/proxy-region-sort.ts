@@ -174,7 +174,7 @@ export interface RegionOption {
   label: string;
 }
 
-/** 从非 Selector 组的所有节点名中收集可用地区，按英文国名 A–Z 排序 */
+/** Countries in non-selector groups, A-Z by the English name shown in the menu. */
 export function listAvailableRegionsFromProxyGroups(
   groups: Array<{ type?: string; all?: Array<{ name: string }> }>,
 ): RegionOption[] {
