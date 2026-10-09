@@ -15,6 +15,15 @@ import { useCallback, useEffect, useReducer } from "react";
 
 import { BaseLoading } from "@/components/base";
 import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
+import {
+  PROXY_CARD_BG,
+  PROXY_CARD_HOVER_BG,
+  PROXY_CARD_SELECTED_BG,
+  PROXY_CARD_SELECTED_HOVER_BG,
+  PROXY_CARD_SELECTED_TEXT,
+  PROXY_CARD_TEXT,
+  proxyDelayToneColor,
+} from "@/components/proxy/proxy-card-colors";
 import delayManager, {
   getGroupDelayTimeout,
   DelayUpdate,
@@ -39,11 +48,10 @@ const Widget = styled(Box)(() => ({
   borderRadius: "4px",
 }));
 
-const TypeBox = styled("span")(({ theme }) => ({
+const TypeBox = styled("span")(() => ({
   display: "inline-block",
-  border: "1px solid #ccc",
-  borderColor: alpha(theme.palette.text.secondary, 0.36),
-  color: alpha(theme.palette.text.secondary, 0.42),
+  border: "1px solid currentColor",
+  opacity: 0.55,
   borderRadius: 4,
   fontSize: 10,
   marginRight: "4px",
@@ -143,13 +151,8 @@ export const ProxyItem = (props: Props) => {
         onClick={() => onClick?.(proxy.name)}
         sx={[
           { borderRadius: 1, position: "relative" },
-          ({ palette: { mode, primary, success } }) => {
-            const bgcolor = mode === "light" ? "transparent" : "#24252f";
-            const selectColor = mode === "light" ? primary.main : primary.light;
+          () => {
             const showDelay = delayValue > 0;
-            const finalBgcolor = isSuccess
-              ? alpha(success.main, 0.15)
-              : bgcolor;
 
             return {
               "&:hover .the-check": { display: !showDelay ? "block" : "none" },
@@ -161,29 +164,29 @@ export const ProxyItem = (props: Props) => {
                 top: "-5px",
                 right: "-5px",
               },
-              "&.Mui-selected": {
-                width: `calc(100% + 3px)`,
-                marginLeft: `-3px`,
-                borderLeft: `3px solid ${selectColor}`,
-                bgcolor:
-                  mode === "light"
-                    ? alpha(primary.main, 0.15)
-                    : alpha(primary.main, 0.35),
+              "& .MuiListItemText-secondary": { color: "inherit" },
+              backgroundColor: PROXY_CARD_BG,
+              color: PROXY_CARD_TEXT,
+              "&:hover": { backgroundColor: PROXY_CARD_HOVER_BG },
+              "&.Mui-selected, &.Mui-selected:hover": {
+                backgroundColor: PROXY_CARD_SELECTED_BG,
+                color: PROXY_CARD_SELECTED_TEXT,
               },
-              backgroundColor: finalBgcolor,
+              "&.Mui-selected:hover": {
+                backgroundColor: PROXY_CARD_SELECTED_HOVER_BG,
+              },
               marginBottom: "8px",
               height: "48px",
               "html[data-liquid-glass='1'] &": {
-                backgroundColor: isSuccess
-                  ? "rgba(6, 148, 61, 0.18)"
-                  : "var(--glass-card-fill)",
+                backgroundColor: "var(--glass-card-fill)",
                 border: "1px solid var(--glass-edge)",
                 backdropFilter: "blur(var(--glass-card-blur))",
                 WebkitBackdropFilter: "blur(var(--glass-card-blur))",
                 color: "var(--glass-text)",
               },
               "html[data-liquid-glass='1'] &.Mui-selected": {
-                backgroundColor: alpha(primary.main, 0.16),
+                backgroundColor: PROXY_CARD_SELECTED_BG,
+                color: PROXY_CARD_SELECTED_TEXT,
               },
             };
           },
@@ -199,12 +202,12 @@ export const ProxyItem = (props: Props) => {
                   alignItems: "center",
                   marginRight: "8px",
                   fontSize: "14px",
-                  color: "text.primary",
+                  color: "inherit",
                 }}
               >
                 {showManualIcon && group.type?.toLowerCase() !== "fallback" && (
                   <LabelOutlined
-                    sx={{ fontSize: 14, mr: 0.5, color: "primary.main" }}
+                    sx={{ fontSize: 14, mr: 0.5, color: "inherit" }}
                     titleAccess="manual"
                   />
                 )}
@@ -227,7 +230,7 @@ export const ProxyItem = (props: Props) => {
         <ListItemIcon
           sx={{
             justifyContent: "flex-end",
-            color: "primary.main",
+            color: "inherit",
             display: isPreset ? "none" : "",
           }}
         >
@@ -272,7 +275,13 @@ export const ProxyItem = (props: Props) => {
                 e.stopPropagation();
                 onDelay();
               }}
-              color={delayManager.formatDelayColor(delayValue, timeout)}
+              color={proxyDelayToneColor(
+                delayManager.formatDelayColor(delayValue, timeout) ===
+                  "error.main"
+                  ? "error"
+                  : "success",
+                selected,
+              )}
               sx={({ palette }) =>
                 !proxy.provider
                   ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
@@ -290,7 +299,7 @@ export const ProxyItem = (props: Props) => {
               sx={{ fontSize: 16 }}
             />
           )}
-          <EffectiveDelayLabel proxyName={proxy.name} />
+          <EffectiveDelayLabel proxyName={proxy.name} selected={selected} />
           </Box>
         </ListItemIcon>
         {showManualIcon && group.type?.toLowerCase()?.includes("fallback") && (

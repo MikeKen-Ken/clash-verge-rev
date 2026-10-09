@@ -5,6 +5,15 @@ import { memo, useCallback, useEffect, useReducer } from "react";
 
 import { BaseLoading } from "@/components/base";
 import { EffectiveDelayLabel } from "@/components/proxy/effective-delay-label";
+import {
+  PROXY_CARD_BG,
+  PROXY_CARD_HOVER_BG,
+  PROXY_CARD_SELECTED_BG,
+  PROXY_CARD_SELECTED_HOVER_BG,
+  PROXY_CARD_SELECTED_TEXT,
+  PROXY_CARD_TEXT,
+  proxyDelayToneColor,
+} from "@/components/proxy/proxy-card-colors";
 import delayManager, {
   getGroupDelayTimeout,
   type DelayUpdate,
@@ -130,7 +139,7 @@ function ProxyItemMiniInner(props: Props) {
                 fontSize: 14,
                 mr: 0.5,
                 flexShrink: 0,
-                color: "primary.main",
+                color: "inherit",
               }}
               titleAccess="manual"
             />
@@ -198,7 +207,7 @@ function ProxyItemMiniInner(props: Props) {
               sx={{ fontSize: 16, mr: 0.5, display: "block" }}
             />
           )}
-        <EffectiveDelayLabel proxyName={proxyName} />
+        <EffectiveDelayLabel proxyName={proxyName} selected={selected} />
       </CellSide>
       {showManualIcon && groupType.includes("fallback") && (
         <span className="the-pin" title="manual">
@@ -235,10 +244,7 @@ function miniPropsEqual(prev: Props, next: Props) {
 
 export const ProxyItemMini = memo(ProxyItemMiniInner, miniPropsEqual);
 
-const CellButton = styled("button")(({ theme }) => {
-  const { mode, primary, success } = theme.palette;
-  const bgcolor = mode === "light" ? "transparent" : "#24252f";
-  const selectColor = mode === "light" ? primary.main : primary.light;
+const CellButton = styled("button")(() => {
   return {
     position: "relative",
     display: "flex",
@@ -252,17 +258,23 @@ const CellButton = styled("button")(({ theme }) => {
     borderRadius: 12,
     cursor: "pointer",
     textAlign: "left",
-    color: "inherit",
-    backgroundColor: bgcolor,
-    "&[data-success='1']": {
-      backgroundColor: alpha(success.main, 0.15),
-    },
+    color: PROXY_CARD_TEXT,
+    backgroundColor: PROXY_CARD_BG,
+    "&:hover": { backgroundColor: PROXY_CARD_HOVER_BG },
     "&[data-selected='1']": {
-      width: "calc(100% + 3px)",
-      marginLeft: "-3px",
-      borderLeft: `3px solid ${selectColor}`,
-      backgroundColor:
-        mode === "light" ? alpha(primary.main, 0.15) : alpha(primary.main, 0.35),
+      backgroundColor: PROXY_CARD_SELECTED_BG,
+      color: PROXY_CARD_SELECTED_TEXT,
+    },
+    "&[data-selected='1']:hover": {
+      backgroundColor: PROXY_CARD_SELECTED_HOVER_BG,
+    },
+    "& [data-tone='error']": { color: proxyDelayToneColor("error", false) },
+    "& [data-tone='success']": { color: proxyDelayToneColor("success", false) },
+    "&[data-selected='1'] [data-tone='error']": {
+      color: proxyDelayToneColor("error", true),
+    },
+    "&[data-selected='1'] [data-tone='success']": {
+      color: proxyDelayToneColor("success", true),
     },
     "html[data-liquid-glass='1'] &": {
       backgroundColor: "var(--glass-card-fill)",
@@ -271,11 +283,9 @@ const CellButton = styled("button")(({ theme }) => {
       WebkitBackdropFilter: "blur(var(--glass-card-blur))",
       color: "var(--glass-text)",
     },
-    "html[data-liquid-glass='1'] &[data-success='1']": {
-      backgroundColor: "rgba(6, 148, 61, 0.18)",
-    },
     "html[data-liquid-glass='1'] &[data-selected='1']": {
-      backgroundColor: alpha(primary.main, 0.16),
+      backgroundColor: PROXY_CARD_SELECTED_BG,
+      color: PROXY_CARD_SELECTED_TEXT,
     },
     "& .the-check": { display: "none" },
     "&[data-has-delay='0']:hover .the-check": { display: "block" },
@@ -315,38 +325,35 @@ const MetaRow = styled("div")({
 
 const NowText = styled("span")(({ theme }) => ({
   ...theme.typography.body2,
-  color: theme.palette.text.secondary,
+  opacity: 0.7,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
   marginRight: 8,
 }));
 
-const CellSide = styled("div")(({ theme }) => ({
+const CellSide = styled("div")({
   display: "flex",
   flexDirection: "column",
   alignItems: "flex-end",
   justifyContent: "center",
   marginLeft: 4,
-  color: theme.palette.primary.main,
+  color: "inherit",
   flexShrink: 0,
-}));
+});
 
 const Widget = styled("span")(({ theme }) => ({
   padding: "2px 4px",
   fontSize: 14,
   fontFamily: theme.typography.fontFamily,
   borderRadius: 4,
-  "&[data-tone='error']": { color: theme.palette.error.main },
-  "&[data-tone='success']": { color: theme.palette.success.main },
   "&:hover": { backgroundColor: alpha(theme.palette.primary.main, 0.15) },
 }));
 
 const TypeTag = styled("span")(({ theme }) => ({
   display: "inline-block",
-  border: "1px solid",
-  borderColor: alpha(theme.palette.text.secondary, 0.36),
-  color: alpha(theme.palette.text.secondary, 0.72),
+  border: "1px solid currentColor",
+  opacity: 0.6,
   borderRadius: 4,
   fontSize: 10,
   fontFamily: theme.typography.fontFamily,

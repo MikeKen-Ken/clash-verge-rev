@@ -156,16 +156,23 @@ html[data-liquid-glass="1"] {
     color: var(--glass-text);
   }
 
-  .proxy-card[data-success="1"],
-  button[data-success="1"],
-  .MuiListItemButton-root[data-success="1"] {
-    background-color: rgba(6, 148, 61, 0.18) !important;
-  }
+  .proxy-card[data-selected="1"] {
+    background-color: #000000 !important;
+    color: #ffffff;
 
-  .proxy-card[data-selected="1"],
-  button[data-selected="1"],
-  .MuiListItemButton-root[data-selected="1"] {
-    border-left: 3px solid var(--primary-main, #007aff) !important;
+    .MuiTypography-root,
+    .MuiListItemText-secondary,
+    .MuiListItemIcon-root {
+      color: #ffffff;
+    }
+
+    [data-tone="error"] {
+      color: #ff6b6b !important;
+    }
+
+    [data-tone="success"] {
+      color: #69db7c !important;
+    }
   }
 
   .MuiTypography-root,

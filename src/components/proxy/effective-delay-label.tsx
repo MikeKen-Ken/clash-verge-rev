@@ -6,7 +6,12 @@ import {
   subscribeConnectivityStats,
 } from "@/services/proxy-connectivity-stats";
 
-export function EffectiveDelayLabel({ proxyName }: { proxyName: string }) {
+interface Props {
+  proxyName: string;
+  selected: boolean;
+}
+
+export function EffectiveDelayLabel({ proxyName, selected }: Props) {
   const [ms, setMs] = useState<number | null>(() =>
     effectiveDelayMsFor(proxyName),
   );
@@ -28,7 +33,7 @@ export function EffectiveDelayLabel({ proxyName }: { proxyName: string }) {
         lineHeight: 1.1,
         textAlign: "right",
         fontWeight: 600,
-        color: "#000",
+        color: selected ? "rgba(255, 255, 255, 0.72)" : "rgba(0, 0, 0, 0.62)",
       }}
     >
       {ms}
