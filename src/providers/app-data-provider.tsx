@@ -44,6 +44,11 @@ import {
   stopDelayTestEarlyPickers,
   type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
+import {
+  bindProfileUpdateLoadingCache,
+  startProfileGlobalUpdate,
+} from "@/services/profile-global-update";
+import { useLoadingCache, useSetLoadingCache } from "@/services/states";
 
 import { AppDataContext, AppDataContextType } from "./app-data-context";
 
@@ -54,6 +59,21 @@ export const AppDataProvider = ({
   children: React.ReactNode;
 }) => {
   const { verge } = useVerge();
+  const setLoadingCache = useSetLoadingCache();
+  const loadingCache = useLoadingCache();
+  const loadingCacheRef = useRef(loadingCache);
+  loadingCacheRef.current = loadingCache;
+
+  useEffect(() => {
+    bindProfileUpdateLoadingCache({
+      setLoadingCache,
+      getLoadingCache: () => loadingCacheRef.current ?? {},
+    });
+  }, [setLoadingCache]);
+
+  useEffect(() => {
+    return startProfileGlobalUpdate();
+  }, []);
 
   useEffect(() => {
     void hydrateConnectivityStatsFromDisk().finally(() => {

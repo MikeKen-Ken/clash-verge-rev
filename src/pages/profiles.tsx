@@ -39,8 +39,6 @@ import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { useLockFn } from "ahooks";
-import YAML from "js-yaml";
-import { throttle } from "lodash-es";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
@@ -68,17 +66,23 @@ import {
   importProfile,
   openAppDir,
   patchProfile,
-  readProfileFile,
   reorderProfile,
-  saveProfileFile,
-  updateProfile,
 } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import {
-  resolveFlag,
-  sortProxiesByConnectivity,
-} from "@/services/proxy-region-sort";
-import { useSetLoadingCache, useThemeMode } from "@/services/states";
+  applyProfileGlobalUpdateHours,
+  GLOBAL_UPDATE_INTERVAL_OPTIONS,
+  readProfileGlobalUpdateHours,
+  updateAllRemoteAndMerge,
+} from "@/services/profile-global-update";
+import {
+  filterMergeProfileItems,
+  generateMergedProfile,
+  isLocalMergeBackup,
+  loadMergeInclusionMap,
+  MERGE_INCLUSION_STORAGE_KEY,
+} from "@/services/profile-merge";
+import { useThemeMode } from "@/services/states";
 import { debugLog } from "@/utils/debug";
 
 // 记录profile切换状态
@@ -116,77 +120,6 @@ const isOperationAborted = (
   return false;
 };
 
-const TRAFFIC_NODE_REGEX = /剩余流量|套餐到期|traffic|expire/i;
-
-const buildGeneratedName = (
-  flag: string,
-  sourceName: string,
-  index: number,
-) => {
-  const cleanedSourceName = sourceName.trim();
-  const suffix = String(index).padStart(2, "0");
-  return cleanedSourceName
-    ? `${flag} ${cleanedSourceName} ${suffix}`
-    : `${flag} ${suffix}`;
-};
-
-const ensureUniqueName = (baseName: string, usedNames: Set<string>) => {
-  if (!usedNames.has(baseName)) {
-    usedNames.add(baseName);
-    return baseName;
-  }
-
-  let duplicateIndex = 2;
-  let nextName = `${baseName} #${duplicateIndex}`;
-  while (usedNames.has(nextName)) {
-    duplicateIndex += 1;
-    nextName = `${baseName} #${duplicateIndex}`;
-  }
-  usedNames.add(nextName);
-  return nextName;
-};
-
-const isValidProxyNode = (proxy: any) => {
-  if (!proxy || typeof proxy !== "object") return false;
-  if (typeof proxy.name !== "string" || !proxy.name.trim()) return false;
-  if (TRAFFIC_NODE_REGEX.test(proxy.name)) return false;
-  if (proxy.server === "127.0.0.1") return false;
-  return true;
-};
-
-const GLOBAL_UPDATE_INTERVAL_OPTIONS = [8, 16, 24, 48, 72, 168] as const;
-const GLOBAL_UPDATE_INTERVAL_STORAGE_KEY = "profiles.global.updateIntervalHours";
-const GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY = "profiles.global.nextUpdateAt";
-const GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY =
-  "profiles.global.updateIntervalHours.applied";
-const MERGE_INCLUSION_STORAGE_KEY = "profiles.mergeInclusion";
-const LOCAL_BACKUP_DESC = "auto backup before merge";
-const LOCAL_BACKUP_NAME_PATTERN = /^Local-backup-\d+$/i;
-const LOCAL_BACKUP_KEEP = 2;
-
-const isLocalMergeBackup = (item: IProfileItem) =>
-  item.type === "local" &&
-  (LOCAL_BACKUP_NAME_PATTERN.test(item.name || "") ||
-    item.desc === LOCAL_BACKUP_DESC);
-
-const filterMergeProfileItems = (items: IProfileItem[] | undefined) =>
-  (items || []).filter(
-    (item): item is IProfileItem =>
-      !!item && (item.type === "local" || item.type === "remote"),
-  );
-
-const loadMergeInclusionMap = (): Record<string, boolean> => {
-  try {
-    const raw = localStorage.getItem(MERGE_INCLUSION_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null) return {};
-    return parsed as Record<string, boolean>;
-  } catch {
-    return {};
-  }
-};
-
 const ProfilePage = () => {
   const { t } = useTranslation();
   const location = useLocation();
@@ -195,10 +128,9 @@ const ProfilePage = () => {
   const [disabled, setDisabled] = useState(false);
   const [activatings, setActivatings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [globalUpdateHours, setGlobalUpdateHours] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(GLOBAL_UPDATE_INTERVAL_STORAGE_KEY) || 0);
-    return GLOBAL_UPDATE_INTERVAL_OPTIONS.includes(saved as any) ? saved : 24;
-  });
+  const [globalUpdateHours, setGlobalUpdateHours] = useState(() =>
+    readProfileGlobalUpdateHours(),
+  );
   const [mergeInclusion, setMergeInclusion] = useState<Record<string, boolean>>(
     loadMergeInclusionMap,
   );
@@ -325,196 +257,11 @@ const ProfilePage = () => {
     );
   });
 
-  const rotateLocalBackups = async (targetRaw: string) => {
-    // 必须从后端拉取最新列表，避免 SWR/React 闭包中的 profileItems 过期导致重复创建备份
-    const freshProfiles = await getProfiles();
-    const localItems = filterMergeProfileItems(freshProfiles?.items).filter(
-      (item) => item.type === "local",
-    );
-    const backups = localItems.filter(isLocalMergeBackup);
-    backups.sort((a, b) => (b.updated || 0) - (a.updated || 0));
-
-    // 删除多余备份，仅保留最近两个（第三个将由本次新建）
-    const keep = backups.slice(0, LOCAL_BACKUP_KEEP);
-    const remove = backups.slice(LOCAL_BACKUP_KEEP);
-    for (const item of remove) {
-      await deleteProfile(item.uid);
-    }
-
-    const older = keep[1];
-    const newer = keep[0];
-
-    if (older) {
-      await patchProfile(older.uid, { name: "Local-backup-0" });
-    }
-    if (newer) {
-      await patchProfile(newer.uid, { name: "Local-backup-1" });
-    }
-
-    await createProfile(
-      {
-        type: "local",
-        name: "Local-backup-2",
-        desc: LOCAL_BACKUP_DESC,
-        url: "",
-        option: {
-          with_proxy: false,
-          self_proxy: false,
-        },
-      },
-      targetRaw,
-    );
-  };
-
-  const sortProxiesForMerge = useCallback((proxies: any[]) => {
-    return sortProxiesByConnectivity(proxies, (proxy) => String(proxy?.name || ""));
-  }, []);
-
-  const onGenerateMergedProfile = useLockFn(
-    async (inclusionOverride?: Record<string, boolean>) => {
-      showNotice.info("Starting profile merge", 1500);
-      const freshProfiles = await getProfiles();
-      const items = filterMergeProfileItems(freshProfiles?.items);
-      const inclusion = inclusionOverride ?? mergeInclusion;
-      const targetIndex = items.findIndex(
-        (item) => item.type === "local" && !isLocalMergeBackup(item),
-      );
-      if (targetIndex === -1) {
-        showNotice.error("No local target profile found");
-        return;
-      }
-
-      const targetProfile = items[targetIndex];
-      const sourceProfiles = items
-        .slice(targetIndex + 1)
-        .filter(
-          (item) => item.type === "remote" && inclusion[item.uid] !== false,
-        );
-
-      if (!sourceProfiles.length) {
-        showNotice.error("No remote subscriptions selected for merging");
-        return;
-      }
-
-      try {
-        const targetRaw = await readProfileFile(targetProfile.uid);
-        const targetYaml = YAML.load(targetRaw) as Record<string, any>;
-        if (!targetYaml || typeof targetYaml !== "object") {
-          throw new Error("Target profile content is invalid");
-        }
-
-        const generatedGroupNames: string[] = [];
-        const generatedProxies: any[] = [];
-        const usedNames = new Set<string>();
-
-        for (const source of sourceProfiles) {
-          const sourceRaw = await readProfileFile(source.uid);
-          const sourceYaml = YAML.load(sourceRaw) as Record<string, any>;
-          const sourceProxiesRaw = Array.isArray(sourceYaml?.proxies)
-            ? sourceYaml.proxies.filter(isValidProxyNode)
-            : [];
-          const sourceProxies = sortProxiesForMerge(sourceProxiesRaw);
-
-          const sourceDisplayName = source.name || source.desc || source.uid;
-          const localFlagCounters = new Map<string, number>();
-          let droppedCount = 0;
-
-          for (const proxy of sourceProxies) {
-            const proxyName = String(proxy?.name || "");
-            const flag = resolveFlag(proxyName);
-            // 中文关键字未命中：归属无法确定，直接丢弃，不进入合并结果
-            if (!flag) {
-              droppedCount += 1;
-              continue;
-            }
-            const nextIndex = (localFlagCounters.get(flag) || 0) + 1;
-            localFlagCounters.set(flag, nextIndex);
-            const baseName = buildGeneratedName(flag, sourceDisplayName, nextIndex);
-            const generatedName = ensureUniqueName(baseName, usedNames);
-
-            generatedGroupNames.push(generatedName);
-            generatedProxies.push({
-              ...proxy,
-              name: generatedName,
-            });
-          }
-
-          if (droppedCount > 0) {
-            debugLog(
-              `[ProfileMerge] ${sourceDisplayName}: skipped ${droppedCount} nodes without a matching country keyword`,
-            );
-          }
-        }
-
-        if (!generatedProxies.length) {
-          throw new Error("No valid proxies generated from source subscriptions");
-        }
-
-        const profileGroups = Array.isArray(targetYaml["proxy-groups"])
-          ? targetYaml["proxy-groups"]
-          : [];
-        const firstNodeGroup = profileGroups.find(
-          (group: any) => group?.name === "🚀 节点选择",
-        );
-        if (firstNodeGroup && typeof firstNodeGroup === "object") {
-          firstNodeGroup.proxies = generatedGroupNames;
-        }
-
-        targetYaml.proxies = generatedProxies;
-
-        await rotateLocalBackups(targetRaw);
-
-        const nextText = YAML.dump(targetYaml, {
-          lineWidth: -1,
-          noRefs: true,
-        });
-        await saveProfileFile(targetProfile.uid, nextText);
-        await enhanceProfiles();
-        await mutateProfiles();
-        showNotice.success(`Merge complete: processed ${sourceProfiles.length} remote profiles`, 3000);
-      } catch (err: any) {
-        showNotice.error(`Failed to generate merged profile: ${String(err?.message || err)}`);
-      }
-    },
+  const onGenerateMergedProfile = useCallback(
+    (inclusionOverride?: Record<string, boolean>) =>
+      generateMergedProfile(inclusionOverride),
+    [],
   );
-
-  const updateAllRemoteAndMerge = useLockFn(async (source: string) => {
-    showNotice.info(`${source}: starting remote rule update`, 1500);
-    let failedUpdates = 0;
-    const throttleMutate = throttle(mutateProfiles, 2000, {
-      trailing: true,
-    });
-    const updateOne = async (uid: string) => {
-      try {
-        await updateProfile(uid);
-        throttleMutate();
-      } catch (err: any) {
-        failedUpdates++;
-        console.error(`Failed to update subscription ${uid}:`, err);
-      } finally {
-        setLoadingCache((cache) => ({ ...cache, [uid]: false }));
-      }
-    };
-
-    await new Promise<void>((resolve) => {
-      setLoadingCache((cache) => {
-        const items = profileItems.filter(
-          (e) => e.type === "remote" && !cache[e.uid],
-        );
-        const change = Object.fromEntries(items.map((e) => [e.uid, true]));
-        Promise.allSettled(items.map((e) => updateOne(e.uid))).then(() => resolve());
-        return { ...cache, ...change };
-      });
-    });
-
-    if (failedUpdates > 0) {
-      showNotice.error(`${failedUpdates} subscription updates or activations failed. Merge was not started.`);
-      await mutateProfiles();
-      return;
-    }
-    showNotice.success(`${source}: remote rule update complete; starting merge`, 2000);
-    await onGenerateMergedProfile();
-  });
 
   // 添加紧急恢复功能
   const onEmergencyRefresh = useLockFn(async () => {
@@ -965,7 +712,6 @@ const ProfilePage = () => {
     }
   });
 
-  const setLoadingCache = useSetLoadingCache();
   const onUpdateAll = useLockFn(async () => {
     await updateAllRemoteAndMerge("手动刷新");
   });
@@ -976,66 +722,8 @@ const ProfilePage = () => {
   };
 
   useEffect(() => {
-    localStorage.setItem(
-      GLOBAL_UPDATE_INTERVAL_STORAGE_KEY,
-      String(globalUpdateHours),
-    );
-  }, [globalUpdateHours]);
-
-  useEffect(() => {
     disablePerProfileAutoUpdate();
   }, [disablePerProfileAutoUpdate]);
-
-  useEffect(() => {
-    const intervalMs = globalUpdateHours * 60 * 60 * 1000;
-    const now = Date.now();
-    const appliedInterval = Number(
-      localStorage.getItem(GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY) || 0,
-    );
-    const intervalChanged = appliedInterval !== globalUpdateHours;
-    let timeoutId: number | undefined;
-    let disposed = false;
-
-    const schedule = (baseNow: number) => {
-      if (disposed) return;
-
-      let nextUpdateAt = Number(
-        localStorage.getItem(GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY) || 0,
-      );
-      if (!Number.isFinite(nextUpdateAt) || nextUpdateAt <= 0 || intervalChanged) {
-        nextUpdateAt = baseNow + intervalMs;
-      }
-
-      if (nextUpdateAt <= baseNow) {
-        void updateAllRemoteAndMerge("定时任务(启动补偿)");
-        nextUpdateAt = baseNow + intervalMs;
-      }
-
-      localStorage.setItem(
-        GLOBAL_UPDATE_INTERVAL_APPLIED_STORAGE_KEY,
-        String(globalUpdateHours),
-      );
-      localStorage.setItem(
-        GLOBAL_UPDATE_NEXT_AT_STORAGE_KEY,
-        String(nextUpdateAt),
-      );
-
-      const delay = Math.max(1000, nextUpdateAt - baseNow);
-      timeoutId = window.setTimeout(() => {
-        void updateAllRemoteAndMerge("定时任务");
-        schedule(Date.now() + 1000);
-      }, delay);
-    };
-
-    schedule(now);
-
-    return () => {
-      disposed = true;
-      if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [globalUpdateHours, updateAllRemoteAndMerge]);
 
   const mode = useThemeMode();
   const isLight = mode === "light";
@@ -1168,9 +856,11 @@ const ProfilePage = () => {
                 renderValue={(hours) =>
                   Number(hours) === 168 ? "1w" : `${hours}h`
                 }
-                onChange={(event) =>
-                  setGlobalUpdateHours(Number(event.target.value))
-                }
+                onChange={(event) => {
+                  const hours = Number(event.target.value);
+                  setGlobalUpdateHours(hours);
+                  applyProfileGlobalUpdateHours(hours);
+                }}
               >
                 {GLOBAL_UPDATE_INTERVAL_OPTIONS.map((hours) => (
                   <MenuItem key={hours} value={hours}>
