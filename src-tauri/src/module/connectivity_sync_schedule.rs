@@ -154,7 +154,8 @@ impl ConnectivitySyncScheduler {
             }
         };
         if changed {
-            let _ = self.settings_tx.send(settings);
+            // `send` drops the value while no receiver exists; the runner subscribes later.
+            self.settings_tx.send_replace(settings);
         }
     }
 

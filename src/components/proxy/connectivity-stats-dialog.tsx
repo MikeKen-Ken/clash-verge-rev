@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 import { TooltipIcon } from "@/components/base";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
+import { connectivityLastSyncAt } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import {
   clearConnectivityStats,
@@ -65,17 +66,14 @@ function formatCount(n: number): string {
   return n >= 10 ? n.toFixed(0) : n.toFixed(1);
 }
 
-function formatLastSuccess(unixSeconds: number | undefined): string {
-  if (!unixSeconds || unixSeconds <= 0) return "Last success —";
-  const date = new Date(unixSeconds * 1000);
-  if (Number.isNaN(date.getTime())) return "Last success —";
-  return `Last success ${new Intl.DateTimeFormat(undefined, {
+function formatMergeTime(unixMillis: number): string {
+  return new Intl.DateTimeFormat(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date)}`;
+  }).format(new Date(unixMillis));
 }
 
 function formatRowSecondary(row: ConnectivityScoreRow): string {
@@ -83,7 +81,7 @@ function formatRowSecondary(row: ConnectivityScoreRow): string {
   const delay = Number.isFinite(row.effectiveAvgDelayMs)
     ? `${Math.round(row.effectiveAvgDelayMs)}ms`
     : "—";
-  return `Score ${row.score.toFixed(3)} · Success ${formatCount(row.weightedSuccess)} · Failure ${formatCount(row.weightedFailure)} · Effective delay ${delay} · ${formatLastSuccess(row.lastSuccessAt)}`;
+  return `Score ${row.score.toFixed(1)} · Success ${formatCount(row.weightedSuccess)} · Failure ${formatCount(row.weightedFailure)} · Effective delay ${delay}`;
 }
 
 export type ConnectivityStatsDialogProps = {
@@ -101,6 +99,7 @@ export const ConnectivityStatsDialog = ({
   const [rows, setRows] = useState<ConnectivityScoreRow[]>([]);
   const [clearing, setClearing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [lastMergeAt, setLastMergeAt] = useState(0);
   const configuredSyncInterval = verge?.connectivity_sync_interval_hours ?? 24;
   const syncIntervalHours = CONNECTIVITY_SYNC_INTERVAL_OPTIONS.includes(
     configuredSyncInterval,
@@ -123,12 +122,15 @@ export const ConnectivityStatsDialog = ({
   const reloadRows = useCallback(async () => {
     await hydrateConnectivityStatsFromDisk();
     setRows(listConnectivityScoreRows(leafProxyNames));
+    setLastMergeAt(await connectivityLastSyncAt().catch(() => 0));
   }, [leafProxyNames]);
 
   useEffect(() => {
-    if (open) {
-      void reloadRows();
-    }
+    if (!open) return;
+    void reloadRows();
+    // Automatic merges run in the backend; pick them up while the panel stays open.
+    const timer = window.setInterval(() => void reloadRows(), 60_000);
+    return () => window.clearInterval(timer);
   }, [open, reloadRows]);
 
   const handleClearOne = useLockFn(async (name: string) => {
@@ -263,6 +265,13 @@ export const ConnectivityStatsDialog = ({
               aria-label={t("proxies.page.connectivityStats.intervalLabel")}
             />
           </Box>
+          <Typography variant="body2" color="text.secondary">
+            {lastMergeAt > 0
+              ? t("proxies.page.connectivityStats.lastMerge", {
+                  time: formatMergeTime(lastMergeAt),
+                })
+              : t("proxies.page.connectivityStats.lastMergeNever")}
+          </Typography>
         </Box>
         <List sx={{ py: 0, minHeight: 250 }}>
           {rows.length === 0 ? (

@@ -85,7 +85,9 @@
       "mergeFailed": "合并连通统计失败",
       "intervalSaveFailed": "保存自动合并间隔失败",
       "mergeSucceeded": "已从 {{count}} 台设备合并连通统计",
-      "intervalHint": "通过 WebDAV 按所选间隔自动与其他设备合并连通性统计。配置好 WebDAV 后会先合并一次，之后按距上次成功合并的时间间隔执行。"
+      "intervalHint": "通过 WebDAV 按所选间隔自动与其他设备合并连通性统计。配置好 WebDAV 后会先合并一次，之后按距上次成功合并的时间间隔执行。",
+      "lastMerge": "上次合并：{{time}}",
+      "lastMergeNever": "上次合并：从未"
     }
   },
   "feedback": {

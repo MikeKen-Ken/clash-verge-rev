@@ -22,8 +22,12 @@ export const CONNECTIVITY_PRIOR_VIRTUAL_SAMPLES = 20;
 export const CONNECTIVITY_FALLBACK_DELAY_MS = 400;
 /** 排序分参考延迟（ms）：avg = D0 时 score = 0.5 */
 export const CONNECTIVITY_SCORE_REFERENCE_DELAY_MS = 400;
-/** 测速 timeout 无效时的失败惩罚延迟（ms） */
+/** 失败按该次测速的 timeout 计惩罚；timeout 无效时用此默认值（ms） */
 export const CONNECTIVITY_DEFAULT_PENALTY_DELAY_MS = 5000;
+/** 面板展示分：有效延迟 ≤ 该值记 100 分（ms） */
+export const CONNECTIVITY_DISPLAY_SCORE_BEST_DELAY_MS = 50;
+/** 面板展示分：有效延迟 ≥ 该值记 0 分（ms），与最大测速 timeout 一致 */
+export const CONNECTIVITY_DISPLAY_SCORE_WORST_DELAY_MS = 5000;
 
 const RETENTION_DAYS = CONNECTIVITY_RETENTION_DAYS;
 const MS_PER_DAY = 86_400_000;
@@ -426,6 +430,21 @@ export function computeConnectivityScoreFromAvgDelay(
   return 1 / (1 + avgDelayMs / CONNECTIVITY_SCORE_REFERENCE_DELAY_MS);
 }
 
+/**
+ * 面板展示分 0–100，按对数刻度映射有效延迟。
+ * 有截断，不能用作排序键：超过最差延迟的节点都会并列 0 分。
+ */
+export function computeConnectivityDisplayScore(avgDelayMs: number): number {
+  const best = CONNECTIVITY_DISPLAY_SCORE_BEST_DELAY_MS;
+  const worst = CONNECTIVITY_DISPLAY_SCORE_WORST_DELAY_MS;
+  const avg =
+    Number.isFinite(avgDelayMs) && avgDelayMs >= 0
+      ? avgDelayMs
+      : CONNECTIVITY_FALLBACK_DELAY_MS;
+  const d = Math.min(Math.max(avg, best), worst);
+  return (100 * Math.log(worst / d)) / Math.log(worst / best);
+}
+
 export function computePenalizedDelayConnectivityScore(
   stats: ProxyConnectivityStats,
   priorDelayMs: number,
@@ -523,7 +542,6 @@ export interface ConnectivityScoreRow {
   weightedSuccess: number;
   weightedFailure: number;
   effectiveAvgDelayMs: number;
-  lastSuccessAt: number;
   hasStats: boolean;
 }
 
@@ -543,25 +561,26 @@ export function listConnectivityScoreRows(
   const keyed = proxyNames.map((name, index) => {
     const stats = byProxy[name] ?? { success: 0, failure: 0, delaySum: 0 };
     const hasStats = stats.success > 0 || stats.failure > 0;
+    const effectiveAvgDelayMs = computeSmoothedEffectiveAvgDelay(
+      stats,
+      priorDelayMs,
+    );
     return {
       index,
+      rankScore: computeConnectivityScoreFromAvgDelay(effectiveAvgDelayMs),
       row: {
         name,
-        score: computePenalizedDelayConnectivityScore(stats, priorDelayMs),
+        score: computeConnectivityDisplayScore(effectiveAvgDelayMs),
         weightedSuccess: stats.success,
         weightedFailure: stats.failure,
-        effectiveAvgDelayMs: computeSmoothedEffectiveAvgDelay(
-          stats,
-          priorDelayMs,
-        ),
-        lastSuccessAt: store[name]?.ls ?? 0,
+        effectiveAvgDelayMs,
         hasStats,
       } satisfies ConnectivityScoreRow,
     };
   });
 
   keyed.sort((a, b) => {
-    if (a.row.score !== b.row.score) return b.row.score - a.row.score;
+    if (a.rankScore !== b.rankScore) return b.rankScore - a.rankScore;
     return a.index - b.index;
   });
 
