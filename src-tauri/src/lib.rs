@@ -192,6 +192,7 @@ mod app_init {
             cmd::read_connectivity_stats_file,
             cmd::merge_connectivity_stats_webdav,
             cmd::connectivity_last_sync_at,
+            cmd::connectivity_merge_status,
             cmd::reset_connectivity_stats_sync_baseline,
             cmd::force_select_group_proxy,
             cmd::apply_group_proxy_order,

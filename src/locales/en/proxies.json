@@ -87,7 +87,14 @@
       "mergeSucceeded": "Connectivity statistics merged from {{count}} devices",
       "intervalHint": "Automatically merge this device with other devices over WebDAV. The first merge runs after WebDAV is configured; later merges follow this interval from the last successful merge.",
       "lastMerge": "Last merge: {{time}}",
-      "lastMergeNever": "Last merge: never"
+      "lastMergeNever": "Last merge: never",
+      "mergeRunning": "Merging… {{progress}}%",
+      "mergeSuccess": "Last merge: {{time}} · Success",
+      "mergePartial": "Last merge: {{time}} · Partial, {{count}} device(s) skipped",
+      "mergeFailedAt": "Merge attempt at {{time}} failed: {{error}}",
+      "mergePulled": "Pulled {{device}} · uploaded {{time}} · {{count}} nodes",
+      "mergeNoDevices": "No other devices found on WebDAV",
+      "mergeSkipped": "Skipped {{device}}"
     }
   },
   "feedback": {

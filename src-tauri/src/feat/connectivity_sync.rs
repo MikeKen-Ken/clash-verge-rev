@@ -15,7 +15,9 @@ use std::{
 };
 
 mod protocol;
+mod status;
 use protocol::*;
+pub use status::{current as connectivity_merge_status, ConnectivityMergeStatus, PulledDevice};
 
 const PROTOCOL_VERSION: u8 = 2;
 const STORE_VERSION: u8 = 2;
@@ -110,6 +112,33 @@ pub struct ConnectivitySyncResult {
     pub device_count: usize,
     pub proxy_count: usize,
     pub last_sync_at: i64,
+    pub pulled: Vec<PulledDevice>,
+    pub skipped: Vec<String>,
+}
+
+fn device_label(name: &str, device_id: &str) -> String {
+    if name.trim().is_empty() {
+        format!("Device {}", device_id.chars().take(6).collect::<String>())
+    } else {
+        name.trim().to_string()
+    }
+}
+
+fn local_device_name() -> String {
+    let host = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_default();
+    let os = match std::env::consts::OS {
+        "windows" => "Windows",
+        "macos" => "macOS",
+        "linux" => "Linux",
+        other => other,
+    };
+    if host.trim().is_empty() {
+        format!("{os} desktop")
+    } else {
+        format!("{os} {}", host.trim())
+    }
 }
 
 fn state_path() -> Result<PathBuf, Error> {
@@ -313,11 +342,22 @@ pub async fn last_connectivity_sync_at() -> Result<i64, Error> {
 
 pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, Error> {
     let _guard = sync_lock().lock().await;
+    status::begin();
+    let result = merge_locked().await;
+    status::finish(match &result {
+        Ok(result) => Ok((result.pulled.clone(), result.skipped.clone())),
+        Err(error) => Err(error.to_string()),
+    });
+    result
+}
+
+async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
     require_https_webdav().await?;
     let client = WebDavClient::global();
     client.ensure_collection(REMOTE_ROOT).await?;
     client.ensure_collection(REMOTE_VERSION_DIR).await?;
     client.ensure_collection(REMOTE_DEVICES_DIR).await?;
+    status::progress(10);
 
     let mut state = load_state()?;
     let mut files = client.list_files_at(REMOTE_DEVICES_DIR).await?;
@@ -326,6 +366,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     if device_limit_exceeded(&listed, &state.device_id) {
         return Err(Error::msg("Too many connectivity sync devices"));
     }
+    status::progress(20);
 
     let mut references_by_device: HashMap<String, Vec<RemoteSnapshotRef>> = HashMap::new();
     for reference in listed {
@@ -336,8 +377,11 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     }
 
     let mut newest_by_device: HashMap<String, DeviceSnapshot> = HashMap::new();
-    for (device_id, references) in references_by_device {
+    let mut skipped = Vec::new();
+    let device_total = references_by_device.len().max(1);
+    for (index, (device_id, references)) in references_by_device.into_iter().enumerate() {
         let mut candidates = Vec::with_capacity(references.len());
+        let mut skip_reason = None;
         for reference in references {
             let path = format!(
                 "{REMOTE_DEVICES_DIR}/{}",
@@ -346,11 +390,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
             let bytes = match client.get_bytes(&path, MAX_SNAPSHOT_BYTES).await {
                 Ok(bytes) => bytes,
                 Err(error) => {
-                    logging!(
-                        info,
-                        Type::Network,
-                        "Skipping connectivity device {device_id}: unreadable slot: {error}"
-                    );
+                    skip_reason = Some(format!("unreadable snapshot: {error}"));
                     candidates.push(None);
                     break;
                 }
@@ -360,20 +400,12 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
                     snapshot
                 }
                 Ok(_) => {
-                    logging!(
-                        info,
-                        Type::Network,
-                        "Skipping connectivity device {device_id}: invalid slot identity"
-                    );
+                    skip_reason = Some("snapshot identity mismatch".to_string());
                     candidates.push(None);
                     break;
                 }
                 Err(error) => {
-                    logging!(
-                        info,
-                        Type::Network,
-                        "Skipping connectivity device {device_id}: invalid slot: {error}"
-                    );
+                    skip_reason = Some(format!("invalid snapshot: {error}"));
                     candidates.push(None);
                     break;
                 }
@@ -383,7 +415,21 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         }
         if let Some(newest) = newest_complete_snapshot(candidates) {
             newest_by_device.insert(device_id, newest);
+        } else {
+            let reason = skip_reason.unwrap_or_else(|| "no complete snapshot".to_string());
+            logging!(
+                info,
+                Type::Network,
+                "Skipping connectivity device {device_id}: {reason}"
+            );
+            let label = if device_id == state.device_id {
+                "This device".to_string()
+            } else {
+                device_label("", &device_id)
+            };
+            skipped.push(format!("{label}: {reason}"));
         }
+        status::progress((20 + 50 * (index + 1) / device_total) as u8);
     }
 
     let local_raw = connectivity_order::read_connectivity_stats_file().map_err(Error::msg)?;
@@ -401,13 +447,20 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
             .chain(newest_by_device.values().map(|item| &item.clear_all)),
     )?;
     let mut remote_others = StatsData::new();
+    let mut pulled = Vec::new();
     for (device_id, snapshot) in &mut newest_by_device {
         retain_snapshot_for_clear_all(snapshot, &active_clear_all);
         filter_snapshot_data(snapshot, &active_resets);
         if device_id != &state.device_id {
             add_into(&mut remote_others, &snapshot.data);
+            pulled.push(PulledDevice {
+                device: device_label(&snapshot.device_name, device_id),
+                updated_at: snapshot.updated_at,
+                proxy_count: snapshot.data.len(),
+            });
         }
     }
+    pulled.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     prune(&mut remote_others);
     let fallback_others = state.last_others.clone();
     let transaction_others = remote_others.clone();
@@ -426,6 +479,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     })
     .map_err(Error::msg)?;
     let now = Utc::now().timestamp_millis();
+    status::progress(80);
 
     // Keep reset filtering monotonic across an upload failure without marking
     // the merge successful or committing its revision/imported baseline.
@@ -453,6 +507,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         generations: generations_for(&local_merge.own, &local_merge.resets),
         data: local_merge.own,
         clear_all: local_merge.clear_all.clone(),
+        device_name: local_device_name(),
     };
     let own_path = format!(
         "{REMOTE_DEVICES_DIR}/{}",
@@ -473,6 +528,8 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
         device_count: newest_by_device.len().max(1),
         proxy_count: local_merge.merged.len(),
         last_sync_at: now,
+        pulled,
+        skipped,
     })
 }
 
@@ -599,6 +656,7 @@ mod tests {
             generations: ResetWatermarks::new(),
             data: StatsData::new(),
             clear_all: ResetGeneration::default(),
+            device_name: String::new(),
         };
         assert!(snapshot_matches(
             &snapshot,
@@ -666,6 +724,7 @@ mod tests {
             generations: ResetWatermarks::new(),
             data: StatsData::new(),
             clear_all: ResetGeneration::default(),
+            device_name: String::new(),
         };
 
         assert!(newest_complete_snapshot(vec![Some(valid), None]).is_none());
@@ -846,6 +905,7 @@ mod tests {
             )]),
             data: data(300, 0),
             clear_all: ResetGeneration::default(),
+            device_name: String::new(),
         };
         filter_snapshot_data(&mut stale, &active);
         assert!(!stale.data.contains_key("node"));
@@ -867,6 +927,7 @@ mod tests {
             generations: ResetWatermarks::new(),
             data: data(300, 0),
             clear_all: ResetGeneration::default(),
+            device_name: String::new(),
         };
         retain_snapshot_for_clear_all(&mut stale, &active);
         assert!(stale.data.is_empty());
@@ -881,6 +942,7 @@ mod tests {
             generations: ResetWatermarks::new(),
             data: data(4, 0),
             clear_all: active.clone(),
+            device_name: String::new(),
         };
         retain_snapshot_for_clear_all(&mut fresh, &active);
         assert!(fresh.data.contains_key("node"));

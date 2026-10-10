@@ -21,6 +21,12 @@ pub async fn merge_connectivity_stats_webdav() -> CmdResult<feat::ConnectivitySy
         .map_err(|error| error.to_string().into())
 }
 
+/// Progress and outcome of the current or last merge attempt.
+#[tauri::command]
+pub async fn connectivity_merge_status() -> CmdResult<feat::ConnectivityMergeStatus> {
+    Ok(feat::connectivity_merge_status())
+}
+
 /// Persisted last successful merge time in unix milliseconds.
 #[tauri::command]
 pub async fn connectivity_last_sync_at() -> CmdResult<i64> {

@@ -77,7 +77,14 @@
       "mergeSucceeded": "已從 {{count}} 台裝置合併連通統計",
       "intervalHint": "透過 WebDAV 依所選間隔自動與其他裝置合併連通性統計。設定好 WebDAV 後會先合併一次，之後依距上次成功合併的時間間隔執行。",
       "lastMerge": "上次合併：{{time}}",
-      "lastMergeNever": "上次合併：從未"
+      "lastMergeNever": "上次合併：從未",
+      "mergeRunning": "正在合併… {{progress}}%",
+      "mergeSuccess": "上次合併：{{time}} · 成功",
+      "mergePartial": "上次合併：{{time}} · 部分成功，略過 {{count}} 台裝置",
+      "mergeFailedAt": "{{time}} 合併失敗：{{error}}",
+      "mergePulled": "已拉取 {{device}} · 上傳於 {{time}} · {{count}} 個節點",
+      "mergeNoDevices": "WebDAV 上沒有其他裝置",
+      "mergeSkipped": "已略過 {{device}}"
     }
   },
   "feedback": {

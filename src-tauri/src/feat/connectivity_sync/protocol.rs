@@ -34,6 +34,9 @@ pub(super) struct DeviceSnapshot {
     pub(super) data: StatsData,
     #[serde(default, skip_serializing_if = "clear_all_absent")]
     pub(super) clear_all: ResetGeneration,
+    /// Display-only label; older snapshots omit it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(super) device_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

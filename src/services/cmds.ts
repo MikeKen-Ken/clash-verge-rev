@@ -722,6 +722,8 @@ export interface ConnectivityWebdavSyncResult {
   deviceCount: number;
   proxyCount: number;
   lastSyncAt: number;
+  pulled: ConnectivityPulledDevice[];
+  skipped: string[];
 }
 
 export async function mergeConnectivityStatsWebdav() {
@@ -732,6 +734,28 @@ export async function mergeConnectivityStatsWebdav() {
 
 export async function connectivityLastSyncAt() {
   return invoke<number>("connectivity_last_sync_at");
+}
+
+export interface ConnectivityPulledDevice {
+  device: string;
+  updatedAt: number;
+  proxyCount: number;
+}
+
+export interface ConnectivityMergeStatus {
+  phase: "idle" | "running" | "success" | "partial" | "failed";
+  progress: number;
+  finishedAt: number;
+  error?: string | null;
+  pulled: ConnectivityPulledDevice[];
+  skipped: string[];
+}
+
+export const CONNECTIVITY_MERGE_STATUS_EVENT =
+  "verge://connectivity-merge-status";
+
+export async function connectivityMergeStatus() {
+  return invoke<ConnectivityMergeStatus>("connectivity_merge_status");
 }
 
 export async function listLocalBackup() {
