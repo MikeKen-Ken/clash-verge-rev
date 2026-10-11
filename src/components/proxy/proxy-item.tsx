@@ -249,8 +249,7 @@ export const ProxyItem = (props: Props) => {
             </Widget>
           )}
 
-          {!proxy.provider && delayValue !== -2 && (
-            // provider 的节点不支持检测
+          {delayValue !== -2 && (
             <Widget
               className="the-check"
               onClick={(e) => {
@@ -272,7 +271,6 @@ export const ProxyItem = (props: Props) => {
             <Widget
               className="the-delay"
               onClick={(e) => {
-                if (proxy.provider) return;
                 e.preventDefault();
                 e.stopPropagation();
                 onDelay();
@@ -283,11 +281,9 @@ export const ProxyItem = (props: Props) => {
                   ? PROXY_DELAY_TIMEOUT_COLOR
                   : "inherit"
               }
-              sx={({ palette }) =>
-                !proxy.provider
-                  ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
-                  : {}
-              }
+              sx={({ palette }) => ({
+                ":hover": { bgcolor: alpha(palette.primary.main, 0.15) },
+              })}
             >
               {delayManager.formatDelay(delayValue, timeout)}
             </Widget>

@@ -167,7 +167,7 @@ function ProxyItemMiniInner(props: Props) {
             <BaseLoading />
           </Widget>
         )}
-        {!proxy.provider && delayValue !== -2 && (
+        {delayValue !== -2 && (
           <Widget
             className="the-check"
             onClick={(e) => {
@@ -189,7 +189,6 @@ function ProxyItemMiniInner(props: Props) {
                 : "success"
             }
             onClick={(e) => {
-              if (proxy.provider) return;
               e.preventDefault();
               e.stopPropagation();
               void onDelay();

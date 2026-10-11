@@ -491,10 +491,18 @@ class DelayManager {
   }
 
   getProxyDelayUpdate(proxy: IProxyItem, group: string) {
+    // Provider nodes use the same name-keyed cache as inline nodes. Hide
+    // unavailable reads this. Ignoring the cache left only the subscription
+    // health check's first batch (default 30) visible until a manual retest.
     return resolveDelayUpdate(
-      proxy.provider ? undefined : this.getDelayUpdate(proxy.name, group),
+      this.getDelayUpdate(proxy.name, group),
       proxy.history,
     );
+  }
+
+  /** True while a startup or group delay pass is still writing results. */
+  isDelayBatchRunning(): boolean {
+    return this.bulkSessionDepth > 0;
   }
 
   getDelayFix(proxy: IProxyItem, group: string) {
