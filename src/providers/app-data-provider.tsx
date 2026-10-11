@@ -8,7 +8,6 @@ import {
 } from "tauri-plugin-mihomo-api";
 
 import { AutoDelayDetection } from "@/components/proxy/auto-delay-detection";
-import { ConnectivityMaintenance } from "@/components/proxy/connectivity-maintenance";
 import {
   markManualDelayCheckStarted,
   markManualProxySelectionStarted,
@@ -670,7 +669,6 @@ export const AppDataProvider = ({
   return (
     <AppDataContext value={value}>
       <AutoDelayDetection />
-      <ConnectivityMaintenance />
       {children}
     </AppDataContext>
   );

@@ -500,11 +500,6 @@ class DelayManager {
     );
   }
 
-  /** True while a startup or group delay pass is still writing results. */
-  isDelayBatchRunning(): boolean {
-    return this.bulkSessionDepth > 0;
-  }
-
   getDelayFix(proxy: IProxyItem, group: string) {
     return this.getProxyDelayUpdate(proxy, group)?.delay ?? -1;
   }
