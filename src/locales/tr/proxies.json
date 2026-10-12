@@ -77,6 +77,7 @@
       "mergeSuccess": "Last merge: {{time}} · Success",
       "mergePartial": "Last merge: {{time}} · Partial, {{count}} device(s) skipped",
       "mergeFailedAt": "Merge attempt at {{time}} failed: {{error}}",
+      "mergeUploaded": "Uploaded {{device}} · {{time}} · {{count}} nodes",
       "mergePulled": "Pulled {{device}} · uploaded {{time}} · {{count}} nodes",
       "mergeNoDevices": "No other devices found on WebDAV",
       "mergeSkipped": "Skipped {{device}}"

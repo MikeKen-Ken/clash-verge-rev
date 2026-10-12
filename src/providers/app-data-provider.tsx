@@ -16,9 +16,11 @@ import { useVerge } from "@/hooks/use-verge";
 import {
   calcuProxies,
   calcuProxyProviders,
+  CONNECTIVITY_MERGE_STATUS_EVENT,
   getAppUptime,
   getRunningMode,
   getSystemProxy,
+  type ConnectivityMergeStatus,
 } from "@/services/cmds";
 import { SWR_DEFAULTS, SWR_MIHOMO } from "@/services/config";
 import {
@@ -147,6 +149,30 @@ export const AppDataProvider = ({
     };
     delayManager.setGlobalListener(handler);
     return () => delayManager.removeGlobalListener();
+  }, [refreshProxy]);
+
+  // Automatic merge emits history on its own. Node order and effective delay
+  // stay stale until the in-memory scores are reloaded and the proxy list
+  // is rebuilt, which the merge button does by calling refreshProxy.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<ConnectivityMergeStatus>(
+      CONNECTIVITY_MERGE_STATUS_EVENT,
+      ({ payload }) => {
+        if (payload.phase !== "success" && payload.phase !== "partial") return;
+        void hydrateConnectivityStatsFromDisk().finally(() => {
+          refreshProxy().catch(() => {});
+        });
+      },
+    ).then((fn) => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [refreshProxy]);
 
   const POLL_INTERVAL_MS = 1500;

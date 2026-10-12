@@ -112,6 +112,7 @@ pub struct ConnectivitySyncResult {
     pub device_count: usize,
     pub proxy_count: usize,
     pub last_sync_at: i64,
+    pub uploaded: PulledDevice,
     pub pulled: Vec<PulledDevice>,
     pub skipped: Vec<String>,
 }
@@ -345,7 +346,11 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     status::begin();
     let result = merge_locked().await;
     status::finish(match &result {
-        Ok(result) => Ok((result.pulled.clone(), result.skipped.clone())),
+        Ok(result) => Ok((
+            result.pulled.clone(),
+            result.uploaded.clone(),
+            result.skipped.clone(),
+        )),
         Err(error) => Err(error.to_string()),
     });
     result
@@ -497,6 +502,8 @@ async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
     }
     let slot = (revision % SNAPSHOT_SLOT_COUNT as u64) as u8;
 
+    let device_name = local_device_name();
+    let uploaded_nodes = local_merge.own.len();
     let own_snapshot = DeviceSnapshot {
         v: PROTOCOL_VERSION,
         device_id: state.device_id.clone(),
@@ -507,7 +514,7 @@ async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
         generations: generations_for(&local_merge.own, &local_merge.resets),
         data: local_merge.own,
         clear_all: local_merge.clear_all.clone(),
-        device_name: local_device_name(),
+        device_name: device_name.clone(),
     };
     let own_path = format!(
         "{REMOTE_DEVICES_DIR}/{}",
@@ -528,6 +535,11 @@ async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
         device_count: newest_by_device.len().max(1),
         proxy_count: local_merge.merged.len(),
         last_sync_at: now,
+        uploaded: PulledDevice {
+            device: device_name,
+            updated_at: now,
+            proxy_count: uploaded_nodes,
+        },
         pulled,
         skipped,
     })

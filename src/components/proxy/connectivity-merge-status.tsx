@@ -112,6 +112,17 @@ export const ConnectivityMergeStatusText = ({ active, onFinished }: Props) => {
   }
 
   if (phase === "success" || phase === "partial") {
+    const uploaded = status?.uploaded;
+    if (uploaded) {
+      lines.push({
+        text: t(`${KEY}.mergeUploaded`, {
+          device: uploaded.device,
+          time: formatMergeTime(uploaded.updatedAt),
+          count: uploaded.proxyCount,
+        }),
+        color: secondary,
+      });
+    }
     const pulled = status?.pulled ?? [];
     if (pulled.length === 0) {
       lines.push({ text: t(`${KEY}.mergeNoDevices`), color: "warning.main" });

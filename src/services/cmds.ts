@@ -722,6 +722,7 @@ export interface ConnectivityWebdavSyncResult {
   deviceCount: number;
   proxyCount: number;
   lastSyncAt: number;
+  uploaded: ConnectivityPulledDevice;
   pulled: ConnectivityPulledDevice[];
   skipped: string[];
 }
@@ -747,6 +748,7 @@ export interface ConnectivityMergeStatus {
   progress: number;
   finishedAt: number;
   error?: string | null;
+  uploaded?: ConnectivityPulledDevice | null;
   pulled: ConnectivityPulledDevice[];
   skipped: string[];
 }

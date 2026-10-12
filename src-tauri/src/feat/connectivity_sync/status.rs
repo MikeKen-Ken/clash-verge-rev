@@ -41,6 +41,8 @@ pub struct ConnectivityMergeStatus {
     #[serde(default)]
     pub error: Option<String>,
     #[serde(default)]
+    pub uploaded: Option<PulledDevice>,
+    #[serde(default)]
     pub pulled: Vec<PulledDevice>,
     #[serde(default)]
     pub skipped: Vec<String>,
@@ -102,25 +104,29 @@ pub(super) fn progress(percent: u8) {
     publish(snapshot);
 }
 
-pub(super) fn finish(outcome: Result<(Vec<PulledDevice>, Vec<String>), String>) {
+pub(super) fn finish(
+    outcome: Result<(Vec<PulledDevice>, PulledDevice, Vec<String>), String>,
+) {
     let snapshot = {
         let mut status = cell().write();
         status.progress = 100;
         status.finished_at = Utc::now().timestamp_millis();
         match outcome {
-            Ok((pulled, skipped)) => {
+            Ok((pulled, uploaded, skipped)) => {
                 status.phase = if skipped.is_empty() {
                     MergePhase::Success
                 } else {
                     MergePhase::Partial
                 };
                 status.error = None;
+                status.uploaded = Some(uploaded);
                 status.pulled = pulled;
                 status.skipped = skipped;
             }
             Err(error) => {
                 status.phase = MergePhase::Failed;
                 status.error = Some(error);
+                status.uploaded = None;
             }
         }
         status.clone()

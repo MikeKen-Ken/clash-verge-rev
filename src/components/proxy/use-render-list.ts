@@ -4,6 +4,7 @@ import { useRuntimeConfig } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import delayManager, { DEFAULT_GROUP_TIMEOUT_MS } from "@/services/delay";
+import { subscribeConnectivityStats } from "@/services/proxy-connectivity-stats";
 import { debugLog } from "@/utils/debug";
 
 import { filterSort } from "./use-filter-sort";
@@ -123,6 +124,12 @@ export const useRenderList = (
     (revision: number) => revision + 1,
     0,
   );
+  const [statsRevision, bumpStatsRevision] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
+
+  useEffect(() => subscribeConnectivityStats(bumpStatsRevision), []);
 
   useEffect(() => {
     if (!hideUnavailableNodes) return;
@@ -201,8 +208,9 @@ export const useRenderList = (
 
   // 处理渲染列表
   const renderList: IRenderItem[] = useMemo(() => {
-    // Rebuild the filtered list when a delay test changes availability.
+    // Rebuild when a delay test or a connectivity merge changes order.
     void delayRevision;
+    void statsRevision;
     if (!proxiesData) return [];
 
     // 链式代理模式下，显示代理组和其节点
@@ -495,6 +503,7 @@ export const useRenderList = (
     regionFilter,
     hideUnavailableNodes,
     delayRevision,
+    statsRevision,
   ]);
 
   return {
