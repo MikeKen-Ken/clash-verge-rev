@@ -43,6 +43,32 @@ pub struct Tray {
 }
 
 impl TrayState {
+    /// Decode tray bytes; fall back to the app icon if a tray .ico is corrupt.
+    fn decode_icon(icon_bytes: &[u8]) -> Result<tauri::image::Image<'_>> {
+        match tauri::image::Image::from_bytes(icon_bytes) {
+            Ok(image) => Ok(image),
+            Err(primary) => {
+                logging!(
+                    warn,
+                    Type::Tray,
+                    "Primary tray icon decode failed ({primary}); trying icon.ico fallback"
+                );
+                match tauri::image::Image::from_bytes(include_bytes!("../../../icons/icon.ico")) {
+                    Ok(image) => Ok(image),
+                    Err(ico_err) => {
+                        logging!(
+                            warn,
+                            Type::Tray,
+                            "icon.ico fallback failed ({ico_err}); trying icon.png"
+                        );
+                        tauri::image::Image::from_bytes(include_bytes!("../../../icons/icon.png"))
+                            .map_err(|e| e.into())
+                    }
+                }
+            }
+        }
+    }
+
     async fn get_tray_icon(verge: &IVerge) -> (bool, Vec<u8>) {
         let system_mode = verge.enable_system_proxy.as_ref().unwrap_or(&false);
         let tun_mode = crate::config::effective_tun_enabled(
@@ -279,7 +305,7 @@ impl Tray {
         let colorful = verge.tray_icon.clone().unwrap_or_else(|| "monochrome".into());
         let is_colorful = colorful == "colorful";
 
-        let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?));
+        let _ = tray.set_icon(Some(TrayState::decode_icon(&icon_bytes)?));
         let _ = tray.set_icon_as_template(!is_colorful);
         Ok(())
     }
@@ -303,7 +329,7 @@ impl Tray {
 
         let (_is_custom_icon, icon_bytes) = TrayState::get_tray_icon(verge).await;
 
-        let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?));
+        let _ = tray.set_icon(Some(TrayState::decode_icon(&icon_bytes)?));
         Ok(())
     }
 
@@ -398,7 +424,7 @@ impl Tray {
         let verge = Config::verge().await.data_arc();
 
         let icon_bytes = TrayState::get_tray_icon(&verge).await.1;
-        let icon = tauri::image::Image::from_bytes(&icon_bytes)?;
+        let icon = TrayState::decode_icon(&icon_bytes)?;
 
         #[cfg(target_os = "linux")]
         let builder = TrayIconBuilder::with_id("main").icon(icon).icon_as_template(false);

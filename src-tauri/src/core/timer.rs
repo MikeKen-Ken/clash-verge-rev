@@ -26,6 +26,30 @@ use tokio::{
 
 type TaskID = u64;
 
+/// Profile auto-update intervals above this are treated as corrupt and skipped.
+/// 30 days covers normal subscription cadences without letting overflow-sized
+/// values (e.g. 1e17) register DelayTimer one-shots.
+const MAX_UPDATE_INTERVAL_MINUTES: u64 = 30 * 24 * 60;
+
+/// Returns `None` when the interval should not schedule a timer.
+fn sanitize_update_interval(uid: &str, interval: u64) -> Option<u64> {
+    if interval == 0 {
+        return None;
+    }
+    if interval > MAX_UPDATE_INTERVAL_MINUTES {
+        logging!(
+            warn,
+            Type::Timer,
+            "Ignoring absurd update_interval for uid={}: {}min (max {}min)",
+            uid,
+            interval,
+            MAX_UPDATE_INTERVAL_MINUTES
+        );
+        return None;
+    }
+    Some(interval)
+}
+
 #[derive(Debug, Clone)]
 pub struct TimerTask {
     pub task_id: TaskID,
@@ -235,7 +259,7 @@ impl Timer {
                     && let Some(allow_auto_update) = option.allow_auto_update
                     && let (Some(interval), Some(uid)) = (option.update_interval, &item.uid)
                     && allow_auto_update
-                    && interval > 0
+                    && let Some(interval) = sanitize_update_interval(uid, interval)
                 {
                     logging!(
                         debug,
@@ -357,7 +381,8 @@ impl Timer {
     async fn next_run_at(&self, uid: &str, interval_minutes: u64, just_completed: bool) -> u64 {
         let updated = self.profile_updated_at(uid).await;
         let now = chrono::Local::now().timestamp();
-        wall_clock::next_unix_timestamp(updated, interval_minutes as i64 * 60, now, just_completed)
+        let interval_secs = (interval_minutes as i64).saturating_mul(60);
+        wall_clock::next_unix_timestamp(updated, interval_secs, now, just_completed)
     }
 
     async fn profile_updated_at(&self, uid: &str) -> i64 {
@@ -567,4 +592,24 @@ enum DiffFlag {
     Del(TaskID),
     Add(TaskID, u64),
     Mod(TaskID, u64),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_UPDATE_INTERVAL_MINUTES, sanitize_update_interval};
+
+    #[test]
+    fn sanitize_skips_zero_and_absurd_intervals() {
+        assert_eq!(sanitize_update_interval("a", 0), None);
+        assert_eq!(sanitize_update_interval("a", 1440), Some(1440));
+        assert_eq!(
+            sanitize_update_interval("a", MAX_UPDATE_INTERVAL_MINUTES),
+            Some(MAX_UPDATE_INTERVAL_MINUTES)
+        );
+        assert_eq!(
+            sanitize_update_interval("a", MAX_UPDATE_INTERVAL_MINUTES + 1),
+            None
+        );
+        assert_eq!(sanitize_update_interval("a", 100_000_000_000_000_000), None);
+    }
 }
