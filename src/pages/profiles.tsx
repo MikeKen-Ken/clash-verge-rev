@@ -357,10 +357,12 @@ const ProfilePage = () => {
     }
     setLoading(true);
 
+    const prevCurrent = profiles.current;
+
     const handleImportSuccess = async (noticeKey: string) => {
       showNotice.success(noticeKey);
       setUrl("");
-      await performRobustRefresh();
+      await performRobustRefresh(prevCurrent);
     };
 
     try {
@@ -394,7 +396,7 @@ const ProfilePage = () => {
   };
 
   // 强化的刷新策略
-  const performRobustRefresh = async () => {
+  const performRobustRefresh = async (prevCurrent?: string) => {
     let retryCount = 0;
     const maxRetries = 5;
     const baseDelay = 200;
@@ -404,7 +406,7 @@ const ProfilePage = () => {
         debugLog(`[ImportRefresh] Refreshing profile data, attempt ${retryCount + 1}`);
 
         // 强制刷新，绕过所有缓存
-        await mutateProfiles(undefined, {
+        const fresh = await mutateProfiles(undefined, {
           revalidate: true,
           rollbackOnError: false,
         });
@@ -414,7 +416,9 @@ const ProfilePage = () => {
           setTimeout(resolve, baseDelay * (retryCount + 1)),
         );
 
-        await onEnhance(false);
+        if (fresh?.current !== prevCurrent) {
+          await onEnhance(false);
+        }
         return;
       } catch (error) {
         console.error(`[ImportRefresh] Refresh attempt ${retryCount + 1} failed:`, error);
@@ -429,8 +433,12 @@ const ProfilePage = () => {
     console.warn(`[ImportRefresh] Regular refresh failed; clearing cache and retrying`);
     try {
       // 清除SWR缓存并重新获取
-      await mutate("getProfiles", getProfiles(), { revalidate: true });
-      await onEnhance(false);
+      const fresh = await mutate("getProfiles", getProfiles(), {
+        revalidate: true,
+      });
+      if (fresh?.current !== prevCurrent) {
+        await onEnhance(false);
+      }
       showNotice.error(
         "profiles.page.feedback.notifications.importNeedsRefresh",
         3000,

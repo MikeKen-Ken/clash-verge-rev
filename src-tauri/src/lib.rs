@@ -449,11 +449,20 @@ pub fn run() {
                 event_handlers::handle_reopen(has_visible_windows).await;
             });
         }
-        tauri::RunEvent::Exit => AsyncHandler::block_on(async {
+        tauri::RunEvent::Exit => {
+            // Windows session ending reaches the loop as an unpreventable Exit.
+            // Run cleanup off the app runtime so a stuck worker cannot keep shutdown waiting.
             if !handle::Handle::global().is_exiting() {
-                feat::quit().await;
+                handle::Handle::global().set_is_exiting();
+                if let Some(cleanup_ok) = feat::clean_session_ending_with_hard_deadline() {
+                    logging!(
+                        info,
+                        Type::System,
+                        "Unpreventable session-ending cleanup returned: {cleanup_ok}"
+                    );
+                }
             }
-        }),
+        }
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             if core::handle::Handle::global().is_exiting() {
                 return;

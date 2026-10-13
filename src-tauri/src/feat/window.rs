@@ -1,10 +1,18 @@
+use anyhow::{Context as _, anyhow};
+use clash_verge_logging::{Type, logging};
 use crate::config::Config;
 use crate::core::{CoreManager, handle, sysopt};
 use crate::module::lightweight;
 use crate::utils;
 use crate::utils::window_manager::WindowManager;
-use clash_verge_logging::{Type, logging};
+use std::sync::mpsc::RecvTimeoutError;
 use tokio::time::{Duration, timeout};
+
+#[cfg(target_os = "windows")]
+const SESSION_ENDING_HARD_DEADLINE: Duration = Duration::from_secs(6);
+#[cfg(not(target_os = "windows"))]
+const SESSION_ENDING_HARD_DEADLINE: Duration = Duration::from_secs(7);
+const SESSION_ENDING_SAVE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Public API: open or close the dashboard
 pub async fn open_or_close_dashboard() {
@@ -167,6 +175,76 @@ pub async fn clean_async() -> bool {
     all_success
 }
 
+pub fn clean_session_ending_with_hard_deadline() -> Option<bool> {
+    match run_with_hard_deadline(clean_session_ending_best_effort, SESSION_ENDING_HARD_DEADLINE) {
+        Ok(result) => Some(result),
+        Err(error) => {
+            logging!(
+                warn,
+                Type::System,
+                "Session-ending cleanup abandoned; exiting without it: {error:#}"
+            );
+            None
+        }
+    }
+}
+
+/// Avoids the app runtime, whose workers may wait on the blocked main thread.
+fn run_with_hard_deadline<F, Fut, T>(cleanup: F, deadline: Duration) -> anyhow::Result<T>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = T>,
+    T: Send + 'static,
+{
+    let (sender, receiver) = std::sync::mpsc::sync_channel::<std::io::Result<T>>(1);
+    std::thread::Builder::new()
+        .name("clash-verge-session-ending".into())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = sender.send(Err(error));
+                    return;
+                }
+            };
+            // Send first: dropping the runtime waits for blocking tasks.
+            let _ = sender.send(Ok(runtime.block_on(cleanup())));
+        })
+        .context("failed to spawn the cleanup thread")?;
+    match receiver.recv_timeout(deadline) {
+        Ok(result) => result.context("failed to build the cleanup runtime"),
+        Err(RecvTimeoutError::Timeout) => Err(anyhow!("still running after {} ms", deadline.as_millis())),
+        Err(RecvTimeoutError::Disconnected) => Err(anyhow!("cleanup thread ended without a result")),
+    }
+}
+
+async fn clean_session_ending_best_effort() -> bool {
+    logging!(
+        info,
+        Type::System,
+        "Starting bounded session-ending best-effort cleanup"
+    );
+    utils::server::shutdown_embedded_server();
+    if timeout(SESSION_ENDING_SAVE_TIMEOUT, Config::apply_all_and_save_file())
+        .await
+        .is_err()
+    {
+        logging!(
+            warn,
+            Type::System,
+            "Session-ending config save timed out after {} seconds",
+            SESSION_ENDING_SAVE_TIMEOUT.as_secs()
+        );
+    }
+    let cleanup_ok = clean_async().await;
+    logging!(
+        info,
+        Type::System,
+        "Session-ending best-effort cleanup finished: {cleanup_ok}"
+    );
+    cleanup_ok
+}
+
 #[cfg(target_os = "macos")]
 pub async fn hide() {
     use crate::module::lightweight::add_light_weight_timer;
@@ -187,4 +265,38 @@ pub async fn hide() {
         let _ = window.hide();
     }
     handle::Handle::global().set_activation_policy_accessory();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_with_hard_deadline;
+    use std::{sync::mpsc, time::Duration};
+
+    #[test]
+    fn hard_deadline_returns_while_cleanup_blocks_its_thread() {
+        let (release, blocked) = mpsc::channel::<()>();
+
+        let result = run_with_hard_deadline(
+            move || async move {
+                let _ = blocked.recv();
+            },
+            Duration::from_millis(500),
+        );
+
+        assert!(matches!(result, Err(error) if error.to_string().starts_with("still running")));
+        drop(release);
+    }
+
+    #[test]
+    fn hard_deadline_cleanup_runs_its_own_timers() {
+        let result = run_with_hard_deadline(
+            || async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                true
+            },
+            Duration::from_secs(5),
+        );
+
+        assert!(result.is_ok_and(|done| done));
+    }
 }
