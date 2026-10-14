@@ -46,7 +46,7 @@ const SLOT_UID: &str = "LRuntimeYaml";
 const SLOT_NAME: &str = "Imported runtime YAML";
 const SLOT_DESC: &str = "Managed WebDAV runtime YAML slot";
 
-fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
+pub(crate) fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
     if content.is_empty() {
         bail!("Runtime YAML is empty");
     }
@@ -166,7 +166,7 @@ async fn require_https_webdav() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn current_runtime_yaml() -> anyhow::Result<std::string::String> {
+pub(crate) async fn current_runtime_yaml() -> anyhow::Result<std::string::String> {
     let runtime = Config::runtime().await.latest_arc();
     let config = runtime
         .config
@@ -418,7 +418,7 @@ async fn get_remote_runtime_yaml_bytes() -> anyhow::Result<Vec<u8>> {
     }
 }
 
-async fn put_remote_runtime_yaml(content: Vec<u8>) -> anyhow::Result<()> {
+pub(crate) async fn put_remote_runtime_yaml(content: Vec<u8>) -> anyhow::Result<()> {
     let client = WebDavClient::global();
     match client.put_bytes(REMOTE_OBJECT, content.clone()).await {
         Ok(()) => Ok(()),

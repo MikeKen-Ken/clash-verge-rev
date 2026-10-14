@@ -5,7 +5,7 @@ import {
   WebviewWindow,
 } from "@tauri-apps/api/webviewWindow";
 import { Theme as TauriOsTheme } from "@tauri-apps/api/window";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useVerge } from "@/hooks/use-verge";
 import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
@@ -97,6 +97,8 @@ export const useCustomTheme = () => {
   const [activeWallpaper, setActiveWallpaper] = useState(
     () => wallpaperList[0] || "",
   );
+  const activeWallpaperRef = useRef(activeWallpaper);
+  activeWallpaperRef.current = activeWallpaper;
 
   useEffect(() => {
     if (activeWallpaper && wallpaperList.includes(activeWallpaper)) return;
@@ -112,19 +114,68 @@ export const useCustomTheme = () => {
     }
     const intervalMs =
       Math.max(30, theme_setting.background_interval_seconds || 300) * 1000;
+
+    const pickNext = (prev: string) => {
+      if (wallpaperList.length < 2) return prev;
+      let next = prev;
+      let guard = 0;
+      while (next === prev && guard < 8) {
+        next = wallpaperList[Math.floor(Math.random() * wallpaperList.length)];
+        guard += 1;
+      }
+      return next;
+    };
+
+    // Decode the next image before swapping so WebView2 is less likely to
+    // blank the liquid-glass layer mid-rotation under backdrop-filter load.
+    let cancelled = false;
+    let pending: HTMLImageElement | null = null;
+
+    const resolveSrc = (path: string) => {
+      const trimmed = path.trim();
+      if (!trimmed) return "";
+      if (REMOTE_BACKGROUND.test(trimmed)) {
+        return trimmed.startsWith("url(") ? "" : trimmed;
+      }
+      try {
+        return convertFileSrc(trimmed);
+      } catch {
+        return trimmed;
+      }
+    };
+
     const timer = window.setInterval(() => {
-      setActiveWallpaper((prev) => {
-        if (wallpaperList.length < 2) return prev;
-        let next = prev;
-        let guard = 0;
-        while (next === prev && guard < 8) {
-          next = wallpaperList[Math.floor(Math.random() * wallpaperList.length)];
-          guard += 1;
+      if (document.hidden || cancelled) return;
+      const prev = activeWallpaperRef.current;
+      const next = pickNext(prev);
+      if (next === prev) return;
+      const src = resolveSrc(next);
+      if (!src) {
+        setActiveWallpaper(next);
+        return;
+      }
+      pending?.removeAttribute("src");
+      const img = new Image();
+      pending = img;
+      img.decoding = "async";
+      img.onload = () => {
+        if (!cancelled && pending === img) {
+          setActiveWallpaper(next);
         }
-        return next;
-      });
+      };
+      img.onerror = () => {
+        if (!cancelled && pending === img) {
+          setActiveWallpaper(next);
+        }
+      };
+      img.src = src;
     }, intervalMs);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelled = true;
+      pending?.removeAttribute("src");
+      pending = null;
+      window.clearInterval(timer);
+    };
   }, [
     theme_setting?.background_interval_seconds,
     theme_setting?.background_playback,
@@ -133,6 +184,16 @@ export const useCustomTheme = () => {
 
   const userBackgroundImage = activeWallpaper || wallpaperList[0] || "";
   const hasUserBackground = wallpaperList.length > 0;
+
+  // Wallpaper URL changes must not rebuild the MUI theme / rewrite #verge-theme.
+  // Doing that every rotation (e.g. 60s) + liquid-glass blur has hung WebView2
+  // and blanked the background in production dumps.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--user-background-image",
+      hasUserBackground ? toBackgroundImageCss(userBackgroundImage) : "none",
+    );
+  }, [userBackgroundImage, hasUserBackground]);
 
   useEffect(() => {
     if (theme_mode === "light" || theme_mode === "dark") {
@@ -301,10 +362,6 @@ export const useCustomTheme = () => {
         mode === "light" ? "#c1c1c1" : "#555555",
       );
       rootEle.style.setProperty(
-        "--user-background-image",
-        hasUserBackground ? toBackgroundImageCss(userBackgroundImage) : "none",
-      );
-      rootEle.style.setProperty(
         "--background-blend-mode",
         setting.background_blend_mode || "normal",
       );
@@ -385,7 +442,7 @@ export const useCustomTheme = () => {
     }
 
     return muiTheme;
-  }, [mode, theme_setting, userBackgroundImage, hasUserBackground]);
+  }, [mode, theme_setting, hasUserBackground]);
 
   // 渐变色 DOM 注入：原本写在 useMemo 内的 setTimeout 没有清理，
   // 主题频繁切换/重算时会堆积回调，且可能在卸载后仍写 DOM。

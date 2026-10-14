@@ -18,6 +18,7 @@ pub mod profile_activation;
 pub mod proxy;
 pub mod runtime;
 pub mod runtime_yaml_transfer;
+pub mod runtime_yaml_publish;
 pub mod runtime_share;
 pub mod save_profile;
 pub mod session_rules;

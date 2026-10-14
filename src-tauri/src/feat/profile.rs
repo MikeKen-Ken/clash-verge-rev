@@ -222,14 +222,16 @@ pub async fn update_profile(
     let outcome = match url_opt {
         Some((url, opt)) => match perform_profile_update(uid, &url, opt.as_ref(), option).await? {
             PerformUpdateResult::Succeeded(is_current) => {
-                if auto_refresh && is_current {
+                let outcome = if auto_refresh && is_current {
                     super::profile_activation::activate_downloaded_profile(uid).await?
                 } else {
                     if is_current {
                         super::profile_activation::record_activation(uid, ProfileUpdateResult::DownloadSucceeded);
                     }
                     ProfileUpdateResult::DownloadSucceeded
-                }
+                };
+                queue_runtime_publish(outcome, is_current, auto_refresh).await;
+                outcome
             }
             PerformUpdateResult::Failed => ProfileUpdateResult::DownloadFailed,
         },
@@ -237,6 +239,23 @@ pub async fn update_profile(
     };
 
     Ok(outcome)
+}
+
+fn runtime_publish_source(outcome: ProfileUpdateResult, is_current: bool, auto_refresh: bool) -> Option<bool> {
+    if outcome == ProfileUpdateResult::Applied {
+        Some(true)
+    } else if outcome == ProfileUpdateResult::DownloadSucceeded && is_current && !auto_refresh {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+async fn queue_runtime_publish(outcome: ProfileUpdateResult, is_current: bool, auto_refresh: bool) {
+    let Some(applied) = runtime_publish_source(outcome, is_current, auto_refresh) else {
+        return;
+    };
+    crate::cmd::runtime_yaml_publish::schedule_runtime_yaml_publish(applied).await;
 }
 
 /// 根据更新结果维护失败重试链（与 `update_interval` 定时器无关）
@@ -264,4 +283,46 @@ pub fn handle_update_retry_side_effects(uid: &str, result: ProfileUpdateResult) 
 /// 增强配置
 pub async fn enhance_profiles() -> Result<(bool, String)> {
     crate::core::CoreManager::global().force_update_config().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProfileUpdateResult, runtime_publish_source};
+
+    #[test]
+    fn applied_current_profile_publishes_the_running_runtime() {
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::Applied, true, true),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn saved_current_profile_publishes_a_rendered_runtime() {
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, true, false),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn inactive_or_failed_updates_do_not_publish() {
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, false, false),
+            None
+        );
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, true, true),
+            None
+        );
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::ActivationFailed, true, true),
+            None
+        );
+        assert_eq!(
+            runtime_publish_source(ProfileUpdateResult::DownloadFailed, true, false),
+            None
+        );
+        assert_eq!(runtime_publish_source(ProfileUpdateResult::Skipped, true, false), None);
+    }
 }
