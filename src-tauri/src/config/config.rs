@@ -174,14 +174,6 @@ impl Config {
         Ok(path)
     }
 
-    /// Runtime mapping the current profile files would produce.
-    /// Leaves the running runtime draft unchanged.
-    pub async fn render_runtime_mapping() -> Result<Mapping> {
-        let (mut config, _, _) = enhance::enhance().await;
-        sanitize_tunnels_proxy(&mut config);
-        Ok(config)
-    }
-
     pub async fn generate() -> Result<()> {
         let (mut config, exists_keys, logs) = enhance::enhance().await;
 

@@ -5,7 +5,9 @@ import {
   createProfile,
   deleteProfile,
   enhanceProfiles,
+  exportRuntimeYamlWebdav,
   getProfiles,
+  getVergeConfig,
   patchProfile,
   readProfileFile,
   saveProfileFile,
@@ -15,6 +17,10 @@ import {
   resolveFlag,
   sortProxiesByConnectivity,
 } from "@/services/proxy-region-sort";
+import {
+  isHttpsWebdavUrl,
+  isWebdavConfigured,
+} from "@/services/webdav-status";
 import { debugLog } from "@/utils/debug";
 
 const TRAFFIC_NODE_REGEX = /剩余流量|套餐到期|traffic|expire/i;
@@ -123,6 +129,20 @@ const rotateLocalBackups = async (targetRaw: string) => {
     targetRaw,
   );
 };
+
+async function uploadMergedRuntimeYaml() {
+  try {
+    const verge = await getVergeConfig();
+    if (!isWebdavConfigured(verge) || !isHttpsWebdavUrl(verge?.webdav_url)) {
+      return;
+    }
+    await exportRuntimeYamlWebdav();
+  } catch (error) {
+    console.error("[ProfileMerge] runtime YAML upload failed", error);
+    const message = error instanceof Error ? error.message : String(error);
+    showNotice.error(`Failed to upload runtime YAML: ${message}`);
+  }
+}
 
 let mergeInFlight: Promise<void> | null = null;
 
@@ -242,6 +262,7 @@ async function runGenerateMergedProfile(
       `Merge complete: processed ${sourceProfiles.length} remote profiles`,
       3000,
     );
+    await uploadMergedRuntimeYaml();
   } catch (err: any) {
     showNotice.error(
       `Failed to generate merged profile: ${String(err?.message || err)}`,

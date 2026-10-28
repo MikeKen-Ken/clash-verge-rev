@@ -203,16 +203,16 @@ async function runUpdateAllRemoteAndMerge(source: string) {
     }),
   );
 
+  await mutate("getProfiles");
   if (failedUpdates > 0) {
     showNotice.error(
-      `${failedUpdates} subscription updates or activations failed. Merge was not started.`,
+      `${failedUpdates} subscription updates or activations failed. Continuing with merge.`,
     );
-    await mutate("getProfiles");
-    return;
+  } else {
+    showNotice.success(
+      `${source}: remote rule update complete; starting merge`,
+      2000,
+    );
   }
-  showNotice.success(
-    `${source}: remote rule update complete; starting merge`,
-    2000,
-  );
   await generateMergedProfile();
 }

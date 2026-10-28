@@ -437,9 +437,9 @@ pub(crate) async fn put_remote_runtime_yaml(content: Vec<u8>) -> anyhow::Result<
 #[tauri::command]
 pub async fn export_runtime_yaml_webdav() -> CmdResult<()> {
     require_https_webdav().await.stringify_err()?;
-    let content = current_runtime_yaml().await.stringify_err()?;
-    validate_runtime_yaml(content.as_str()).stringify_err()?;
-    put_remote_runtime_yaml(content.into_bytes()).await.stringify_err()
+    crate::cmd::runtime_yaml_publish::publish_running_runtime_yaml()
+        .await
+        .stringify_err()
 }
 
 /// Download the shared WebDAV runtime YAML and reuse a dedicated local profile.

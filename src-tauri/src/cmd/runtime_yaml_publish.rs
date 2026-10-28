@@ -1,8 +1,8 @@
-//! After a remote profile file is saved, upload the runtime config it produces.
+//! After a profile file is saved, upload the runtime YAML the core is running.
+//! This is the same snapshot as the runtime YAML upload button.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use anyhow::Context as _;
 use clash_verge_logging::{Type, logging};
 use tokio::sync::Mutex;
 
@@ -31,56 +31,31 @@ async fn runtime_webdav_configured() -> bool {
     )
 }
 
-async fn runtime_yaml_to_publish(applied: bool) -> anyhow::Result<String> {
-    if applied {
-        return current_runtime_yaml().await;
+/// Upload the runtime already loaded by the core. Profile files are left as they are.
+/// A newer call replaces an older snapshot that has not started its WebDAV write.
+pub async fn publish_running_runtime_yaml() -> anyhow::Result<()> {
+    let seq = PUBLISH_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    let content = current_runtime_yaml().await?;
+    validate_runtime_yaml(&content)?;
+    let bytes = content.into_bytes();
+    let _guard = PUBLISH_LOCK.lock().await;
+    if PUBLISH_SEQ.load(Ordering::SeqCst) != seq {
+        logging!(info, Type::Config, "[订阅更新] 已有更新的运行配置等待上传，跳过旧快照");
+        return Ok(());
     }
-    let mapping = Config::render_runtime_mapping().await?;
-    serde_yaml_ng::to_string(&mapping).context("failed to convert config to yaml")
+    put_remote_runtime_yaml(bytes).await?;
+    logging!(info, Type::Config, "[订阅更新] 已将新的运行配置上传到 WebDAV");
+    Ok(())
 }
 
-/// `applied` selects the runtime already loaded by the core.
-/// Otherwise the current profile files are rendered without replacing that runtime.
-pub async fn schedule_runtime_yaml_publish(applied: bool) {
+pub async fn schedule_runtime_yaml_publish() {
     if Handle::global().is_exiting() || !runtime_webdav_configured().await {
         return;
     }
 
-    let content = match runtime_yaml_to_publish(applied).await {
-        Ok(content) => content,
-        Err(err) => {
-            logging!(
-                warn,
-                Type::Config,
-                "[订阅更新] 读取新的运行配置失败，未上传 WebDAV: {err}"
-            );
-            return;
-        }
-    };
-    if let Err(err) = validate_runtime_yaml(&content) {
-        logging!(
-            warn,
-            Type::Config,
-            "[订阅更新] 新的运行配置未通过检查，未上传 WebDAV: {err}"
-        );
-        return;
-    }
-
-    let seq = PUBLISH_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
-    let bytes = content.into_bytes();
     AsyncHandler::spawn(move || async move {
-        let _guard = PUBLISH_LOCK.lock().await;
-        if PUBLISH_SEQ.load(Ordering::SeqCst) != seq {
-            logging!(info, Type::Config, "[订阅更新] 已有更新的运行配置等待上传，跳过旧快照");
-            return;
-        }
-        match put_remote_runtime_yaml(bytes).await {
-            Ok(()) => {
-                logging!(info, Type::Config, "[订阅更新] 已将新的运行配置上传到 WebDAV");
-            }
-            Err(err) => {
-                logging!(warn, Type::Config, "[订阅更新] 未能把新的运行配置上传到 WebDAV: {err}");
-            }
+        if let Err(err) = publish_running_runtime_yaml().await {
+            logging!(warn, Type::Config, "[订阅更新] 未能把新的运行配置上传到 WebDAV: {err}");
         }
     });
 }

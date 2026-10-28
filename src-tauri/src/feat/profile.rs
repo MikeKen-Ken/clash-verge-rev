@@ -230,7 +230,7 @@ pub async fn update_profile(
                     }
                     ProfileUpdateResult::DownloadSucceeded
                 };
-                queue_runtime_publish(outcome, is_current, auto_refresh).await;
+                queue_runtime_publish(outcome).await;
                 outcome
             }
             PerformUpdateResult::Failed => ProfileUpdateResult::DownloadFailed,
@@ -241,21 +241,20 @@ pub async fn update_profile(
     Ok(outcome)
 }
 
-fn runtime_publish_source(outcome: ProfileUpdateResult, is_current: bool, auto_refresh: bool) -> Option<bool> {
-    if outcome == ProfileUpdateResult::Applied {
-        Some(true)
-    } else if outcome == ProfileUpdateResult::DownloadSucceeded && is_current && !auto_refresh {
-        Some(false)
-    } else {
-        None
-    }
+/// A saved or applied subscription uploads the runtime the core is running.
+/// The same snapshot as the runtime YAML upload button, whichever profile changed.
+fn publishes_running_runtime(outcome: ProfileUpdateResult) -> bool {
+    matches!(
+        outcome,
+        ProfileUpdateResult::Applied | ProfileUpdateResult::DownloadSucceeded
+    )
 }
 
-async fn queue_runtime_publish(outcome: ProfileUpdateResult, is_current: bool, auto_refresh: bool) {
-    let Some(applied) = runtime_publish_source(outcome, is_current, auto_refresh) else {
+async fn queue_runtime_publish(outcome: ProfileUpdateResult) {
+    if !publishes_running_runtime(outcome) {
         return;
-    };
-    crate::cmd::runtime_yaml_publish::schedule_runtime_yaml_publish(applied).await;
+    }
+    crate::cmd::runtime_yaml_publish::schedule_runtime_yaml_publish().await;
 }
 
 /// 根据更新结果维护失败重试链（与 `update_interval` 定时器无关）
@@ -287,42 +286,18 @@ pub async fn enhance_profiles() -> Result<(bool, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProfileUpdateResult, runtime_publish_source};
+    use super::{ProfileUpdateResult, publishes_running_runtime};
 
     #[test]
-    fn applied_current_profile_publishes_the_running_runtime() {
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::Applied, true, true),
-            Some(true)
-        );
+    fn saved_or_applied_update_publishes_the_running_runtime() {
+        assert!(publishes_running_runtime(ProfileUpdateResult::Applied));
+        assert!(publishes_running_runtime(ProfileUpdateResult::DownloadSucceeded));
     }
 
     #[test]
-    fn saved_current_profile_publishes_a_rendered_runtime() {
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, true, false),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn inactive_or_failed_updates_do_not_publish() {
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, false, false),
-            None
-        );
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::DownloadSucceeded, true, true),
-            None
-        );
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::ActivationFailed, true, true),
-            None
-        );
-        assert_eq!(
-            runtime_publish_source(ProfileUpdateResult::DownloadFailed, true, false),
-            None
-        );
-        assert_eq!(runtime_publish_source(ProfileUpdateResult::Skipped, true, false), None);
+    fn failed_or_skipped_updates_do_not_publish() {
+        assert!(!publishes_running_runtime(ProfileUpdateResult::ActivationFailed));
+        assert!(!publishes_running_runtime(ProfileUpdateResult::DownloadFailed));
+        assert!(!publishes_running_runtime(ProfileUpdateResult::Skipped));
     }
 }
