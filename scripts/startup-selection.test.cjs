@@ -8,7 +8,9 @@ function setup() {
   const module = createLoader({
     "@/services/cmds": {
       applyGroupProxyOrder: noop,
-      clearProxyGroupManualSelection: noop,
+      clearProxyGroupManualSelection: async () => {
+        calls.push('CLEAR');
+      },
       forceSelectGroupProxy: async (group, name) => {
         calls.push(name);
       },
@@ -32,7 +34,7 @@ function setup() {
   return { module, groups, calls };
 }
 
-test("delay testing never creates a manual pin", async () => {
+test("delay testing never creates or clears a manual pin", async () => {
   const { module, groups, calls } = setup();
   const picker = module.createDelayTestEarlyPicker({
     groupName: "Auto",
@@ -45,30 +47,16 @@ test("delay testing never creates a manual pin", async () => {
   await module.stopDelayTestEarlyPickers([picker]);
   await module.applyStartupLiveConnectivityOrder(
     groups,
-    undefined,
-    new Map([
-      ["offline", { delay: 0 }],
-      ["healthy", { delay: 75 }],
-    ]),
   );
   assert.deepEqual(calls, []);
 });
 
-test("unmeasured, failed, over-timeout or manually overridden groups are not pinned", async () => {
+test("startup ordering never pins or unpins any group", async () => {
   const { module, groups, calls } = setup();
   await module.applyStartupLiveConnectivityOrder(groups);
   await module.applyStartupLiveConnectivityOrder(
     groups,
-    undefined,
-    new Map([
-      ["offline", { delay: 0 }],
-      ["healthy", { delay: 1000 }],
-    ]),
-  );
-  await module.applyStartupLiveConnectivityOrder(
-    groups,
     { has: () => true },
-    new Map([["healthy", { delay: 75 }]]),
   );
   assert.deepEqual(calls, []);
 });

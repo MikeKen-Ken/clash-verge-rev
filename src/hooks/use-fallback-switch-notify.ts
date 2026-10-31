@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppData } from "@/providers/app-data-context";
-import { useProfiles } from "@/hooks/use-profiles";
+
 import { debugLog } from "@/utils/debug";
 
 // 关闭连接操作的时间戳（此后一段时间内不发送 fallback 切换通知）
@@ -111,7 +111,6 @@ export const isInNotifyCooldown = () => {
  */
 export const useFallbackSwitchNotify = () => {
   const { proxies: proxiesData } = useAppData();
-  const { current, patchCurrent, mutateProfiles } = useProfiles();
 
   // 保存上一次的代理组状态
   const previousGroupsRef = useRef<Map<string, string>>(new Map());
@@ -150,24 +149,7 @@ export const useFallbackSwitchNotify = () => {
           `[FallbackNotify] Detected switch in group ${groupName}: ${previousNow} -> ${currentNow}`,
         );
 
-        // 仅当「核心当前节点」与 profile 里该组的手动选择不一致时，才清空该组手动选择（避免用户刚选上就被刷新清掉图钉）
-        const selectedNow = current?.selected?.find(
-          (s: { name?: string }) => s.name === groupName,
-        )?.now;
-        if (selectedNow === currentNow) {
-          // 本次切换就是用户手动选择生效，不要清空
-          debugLog(
-            `[FallbackNotify] 切换与 profile 一致，保留手动选择: ${groupName} -> ${currentNow}`,
-          );
-        } else if (current) {
-          const selected = current.selected ?? [];
-          const next = selected.filter((s: { name?: string }) => s.name !== groupName);
-          if (next.length !== selected.length) {
-            patchCurrent({ selected: next })
-              .then(() => mutateProfiles())
-              .catch(() => {});
-          }
-        }
+        // 核心侧切换绝不清除用户的固定（profile.selected）；只有用户手动取消才会。
 
         // 检查是否在冷却期内（仅用于是否弹通知，不影响上面同步）
         const cooldownStatus = isInNotifyCooldown();
@@ -194,5 +176,5 @@ export const useFallbackSwitchNotify = () => {
 
     // 更新保存的状态
     previousGroupsRef.current = currentGroups;
-  }, [proxiesData?.groups, current, patchCurrent, mutateProfiles]);
+  }, [proxiesData?.groups]);
 };

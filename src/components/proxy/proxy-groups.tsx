@@ -21,7 +21,6 @@ import { useVerge } from "@/hooks/use-verge";
 import { useAppData } from "@/providers/app-data-context";
 import {
   applyManualConnectivityProxyOrder,
-  clearProxyGroupManualSelection,
   updateProxyChainConfigInRuntime,
 } from "@/services/cmds";
 import delayManager, {
@@ -49,7 +48,7 @@ import {
   isAutoSelectGroupType,
   orderedMemberNamesByConnectivity,
   stopDelayTestEarlyPickers,
-  switchGroupsAfterDelayTest,
+  reorderGroupsAfterDelayTest,
   type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
 import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
@@ -168,7 +167,7 @@ export const ProxyGroups = (props: Props) => {
 
   const { verge } = useVerge();
   const { proxies: proxiesData } = useAppData();
-  const { current, patchCurrent, mutateProfiles } = useProfiles();
+  const { current } = useProfiles();
   const groups = proxiesData?.groups;
 
   // 使用核心返回的 group.now 标记每个组当前使用的节点
@@ -192,38 +191,6 @@ export const ProxyGroups = (props: Props) => {
   // 用 ref 存最新 map，保证传给 Virtuoso 的回调引用稳定，减少子组件重渲染
   const selectedByGroupRef = useRef<Map<string, string>>(new Map());
   selectedByGroupRef.current = selectedByGroup;
-
-  // 自动清理：删除 profile.selected 里核心不存在的组（旧配置遗留的记录）
-  const lastCleanupRef = useRef<string>("");
-  useEffect(() => {
-    if (!current?.selected?.length || !groups?.length) return;
-
-    const validGroupNames = new Set(
-      (groups as any[]).map((g: any) => g.name).filter(Boolean),
-    );
-    const invalidGroups = (current.selected ?? [])
-      .map((s: any) => s.name)
-      .filter((name: string) => !validGroupNames.has(name));
-
-    if (invalidGroups.length > 0) {
-      const cleanupKey = invalidGroups.sort().join(",");
-      // 避免重复清理同一批记录
-      if (lastCleanupRef.current === cleanupKey) return;
-      lastCleanupRef.current = cleanupKey;
-
-      const validSelected = (current.selected ?? []).filter((s: any) =>
-        validGroupNames.has(s.name),
-      );
-      // 异步清理，不阻塞渲染
-      patchCurrent({ selected: validSelected })
-        .then(() => {
-          mutateProfiles();
-        })
-        .catch((err) => {
-          console.warn("[Cleanup] Failed to remove expired records", err);
-        });
-    }
-  }, [groups, current?.selected, patchCurrent, mutateProfiles]);
 
   const getSelectedForGroup = useCallback(
     (groupName: string): string | undefined =>
@@ -595,27 +562,6 @@ export const ProxyGroups = (props: Props) => {
       markManualDelayCheckStarted();
       delayManager.beginBulkDelaySession();
 
-      // 测速前清空所有组的手动选择
-      if (current) {
-        const autoGroupNames = new Set(
-          availableGroups
-            .filter(
-              (g: IProxyGroupItem) =>
-                isAutoSelectGroupType(g.type) &&
-                !SKIP_DELAY_CHECK_GROUPS.has(g.name),
-            )
-            .map((g: IProxyGroupItem) => g.name),
-        );
-        const next = (current.selected ?? []).filter((s) => {
-          const name = s.name;
-          if (!name) return true;
-          return !autoGroupNames.has(name);
-        });
-        if (next.length !== (current.selected ?? []).length) {
-          patchCurrent({ selected: next }).catch(() => {});
-        }
-      }
-
       const allProviders = new Set<string>();
       const bulkReuseMap = new Map<string, DelayUpdate>();
       const earlyPickers: DelayTestEarlyPicker[] = [];
@@ -660,12 +606,6 @@ export const ProxyGroups = (props: Props) => {
           scoreContext,
           { has: hasDelayCheckManualOverride },
         );
-        await Promise.allSettled(
-          liveOrderGroups.map(async (g) => {
-            if (hasDelayCheckManualOverride(g.name)) return;
-            await clearProxyGroupManualSelection(g.name);
-          }),
-        );
 
         let groupPhase = 0;
         const orderTargets: Array<{
@@ -673,7 +613,6 @@ export const ProxyGroups = (props: Props) => {
           type?: string;
           members: string[];
         }> = [];
-        const firstSuccessByGroup = new Map<string, string>();
         for (const group of availableGroups as IProxyGroupItem[]) {
           const groupName = group.name;
           if (SKIP_DELAY_CHECK_GROUPS.has(groupName)) {
@@ -819,11 +758,20 @@ export const ProxyGroups = (props: Props) => {
             });
           }
 
-          // fallback/url-test：测速过程中可提前固定以立刻走已通过节点；测速结束后必须清钉。
+          // 测速不会改动用户的固定：已固定节点的组一律不自动切换。
           const firstSuccessProxy = successCandidates[0]?.proxyName;
-          if (firstSuccessProxy && !hasDelayCheckManualOverride(groupName)) {
+          const isPinned = (current?.selected ?? []).some(
+            (s) => s.name === groupName && !!s.now,
+          );
+          if (isPinned) {
+            pingDelayCheckNotice(
+              `${phaseLabel}: "${groupName}" has a pinned node; keeping it`,
+            );
+          } else if (
+            firstSuccessProxy &&
+            !hasDelayCheckManualOverride(groupName)
+          ) {
             if (isAutoSelectGroupType(group.type)) {
-              firstSuccessByGroup.set(groupName, firstSuccessProxy);
               pingDelayCheckNotice(
                 `${phaseLabel}: testing complete; applying score order for "${groupName}" → ${firstSuccessProxy}`,
               );
@@ -856,26 +804,13 @@ export const ProxyGroups = (props: Props) => {
             );
           }
         }
-        const extraUnpinNames = availableGroups
-          .filter((g: IProxyGroupItem) => {
-            const type = g.type?.toLowerCase();
-            return (
-              !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-              !hasDelayCheckManualOverride(g.name) &&
-              type === "fallback"
-            );
-          })
-          .map((g: IProxyGroupItem) => g.name);
         pingDelayCheckNotice(
           "Applying connectivity score order to live groups...",
         );
         await stopDelayTestEarlyPickers(earlyPickers);
-        await switchGroupsAfterDelayTest({
+        await reorderGroupsAfterDelayTest({
           groups: orderTargets,
-          firstSuccessByGroup,
           manualOverrides: { has: hasDelayCheckManualOverride },
-          extraUnpinNames,
-          selectReason: "proxy-ui-delay-bulk-auto",
         });
         // 只把联通顺序写入 runtime YAML，不要整包 reload_config：
         // 测速后重载会重建出站（延迟全变成超时）并重置 DNS/TUN，流量会一直失败直到重启。
@@ -912,43 +847,7 @@ export const ProxyGroups = (props: Props) => {
             });
           }
 
-          // 自动组结束测速后均清钉；测速期间用户手动选择的组保留。
-          const unpinGroups = availableGroups.filter((g: IProxyGroupItem) => {
-            const type = g.type?.toLowerCase();
-            return (
-              !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-              !hasDelayCheckManualOverride(g.name) &&
-              isAutoSelectGroupType(type)
-            );
-          });
-          await Promise.allSettled(
-            unpinGroups.map((g: IProxyGroupItem) =>
-              clearProxyGroupManualSelection(g.name),
-            ),
-          );
-          if (current) {
-            const automaticNames = new Set(
-              availableGroups
-                .filter(
-                  (g: IProxyGroupItem) =>
-                    !SKIP_DELAY_CHECK_GROUPS.has(g.name) &&
-                    isAutoSelectGroupType(g.type),
-                )
-                .map((g: IProxyGroupItem) => g.name),
-            );
-            const next = (current.selected ?? []).filter((s) => {
-              const name = s.name;
-              if (!name) return true;
-              return (
-                !automaticNames.has(name) || hasDelayCheckManualOverride(name)
-              );
-            });
-            if (next.length !== (current.selected ?? []).length) {
-              patchCurrent({ selected: next })
-                .then(() => mutateProfiles())
-                .catch(() => {});
-            }
-          }
+          // 测速结束后不解除任何固定：只有用户手动取消才会。
 
           // 关闭连接可能较慢，不应阻塞测速完成后的 UI 刷新与通知收尾
           void closeConnectionsExcludingDirect()
@@ -978,7 +877,7 @@ export const ProxyGroups = (props: Props) => {
         }
       }
     },
-    [availableGroups, current, mutateProfiles, onProxies, patchCurrent, t],
+    [availableGroups, current, onProxies, t],
   );
 
   useEffect(() => {

@@ -29,11 +29,10 @@ import {
   isAutoSelectGroupType,
   memberNamesFromGroupAll,
   orderedMemberNamesByConnectivity,
+  reorderGroupsAfterDelayTest,
   stopDelayTestEarlyPickers,
-  switchGroupsAfterDelayTest,
   type DelayTestEarlyPicker,
 } from "@/services/proxy-live-connectivity-order";
-import { compareProxyNamesByConnectivity } from "@/services/proxy-region-sort";
 import { closeConnectionsExcludingDirect } from "@/utils/close-connections";
 import { debugLog } from "@/utils/debug";
 
@@ -311,67 +310,16 @@ export const useCloseAllWithDelayCheck = () => {
         );
       }
 
-      const scoreContextAfterTest = buildConnectivityScoreContext();
-      const orderTargets: Array<{
-        name: string;
-        type?: string;
-        members: string[];
-      }> = [];
-      const firstSuccessByGroup = new Map<string, string>();
-      for (const group of switchable) {
-        const timeout = group?.timeout ?? DEFAULT_GROUP_TIMEOUT_MS;
-        const members = memberNamesFromGroupAll(group.all);
-        orderTargets.push({
-          name: group.name,
-          type: group.type,
-          members,
-        });
+      const orderTargets = switchable.map((group: IProxyGroupItem) => ({
+        name: group.name,
+        type: group.type,
+        members: memberNamesFromGroupAll(group.all),
+      }));
 
-        const successCandidates = members
-          .map((proxyName, index) => {
-            const delayUpdate = delayManager.getDelayUpdate(
-              proxyName,
-              group.name,
-            );
-            return { proxyName, index, delay: delayUpdate?.delay };
-          })
-          .filter(({ delay }) => {
-            if (typeof delay !== "number") return false;
-            const delayText = delayManager.formatDelay(delay, timeout);
-            return (
-              delayText !== "T" &&
-              delayText !== "E" &&
-              delayText !== "-" &&
-              delayText !== "testing" &&
-              delay > 0 &&
-              delay < timeout &&
-              delay <= 1e5
-            );
-          });
-        successCandidates.sort((a, b) =>
-          compareProxyNamesByConnectivity(
-            a.proxyName,
-            b.proxyName,
-            a.index,
-            b.index,
-            scoreContextAfterTest,
-          ),
-        );
-        const firstSuccessProxy = successCandidates[0]?.proxyName;
-        if (firstSuccessProxy) {
-          firstSuccessByGroup.set(group.name, firstSuccessProxy);
-          debugLog(
-            `[CloseAll] Score-first success proxy for ${group.name}: ${firstSuccessProxy}`,
-          );
-        }
-      }
-
-      await switchGroupsAfterDelayTest({
+      // Reordering never releases a pin; only the user's explicit unpin does.
+      await reorderGroupsAfterDelayTest({
         groups: orderTargets,
-        firstSuccessByGroup,
         manualOverrides: { has: hasDelayCheckManualOverride },
-        extraUnpinNames: switchable.map((g: IProxyGroupItem) => g.name),
-        selectReason: "connections-close-all-auto",
       });
 
       pingDelayCheckNotice("Closing active non-DIRECT connections...");

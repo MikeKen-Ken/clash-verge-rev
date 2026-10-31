@@ -65,25 +65,16 @@ export const useProfiles = () => {
     }
   };
 
-  // 重新打开代理时清空手动选择，界面不显示「当前节点」；仅当用户手动选择后才显示
+  // 重新打开代理时只刷新数据，不清除用户的固定（只有用户手动取消才会清除）
   const activateSelected = async () => {
     try {
-      debugLog("[ActivateSelected] Clearing manual selections for the profile (reopening proxies)");
-
-      const profileData = await getProfiles();
-      if (!profileData?.current) {
-        debugLog("[ActivateSelected] No current profile; skipping");
-        return;
-      }
-
-      await patchProfile(profileData.current, { selected: [] });
-      debugLog("[ActivateSelected] Cleared selected proxies");
+      debugLog("[ActivateSelected] Refreshing proxies; pinned selections are kept");
       mutateProfiles();
       setTimeout(() => {
         mutate("getProxies", calcuProxies());
       }, 100);
     } catch (error: any) {
-      console.error("[ActivateSelected] Failed to clear selections:", error.message);
+      console.error("[ActivateSelected] Failed to refresh:", error.message);
     }
   };
 

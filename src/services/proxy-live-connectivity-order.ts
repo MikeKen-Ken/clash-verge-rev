@@ -1,7 +1,4 @@
-import {
-  applyGroupProxyOrder,
-  clearProxyGroupManualSelection,
-} from "@/services/cmds";
+import { applyGroupProxyOrder } from "@/services/cmds";
 import {
   buildConnectivityScoreContext,
   hydrateConnectivityStatsFromDisk,
@@ -141,8 +138,8 @@ export async function applyLiveConnectivityOrderToGroup(
 }
 
 /**
- * Startup reorders groups. Completed successful tests return groups to automatic
- * selection; before results exist, preserve the current selection.
+ * Startup reorders groups. It never releases a pin: only the user's explicit
+ * unpin does that.
  */
 export async function applyStartupLiveConnectivityOrder(
   groups: Array<{
@@ -152,7 +149,6 @@ export async function applyStartupLiveConnectivityOrder(
     timeout?: number;
   }>,
   manualOverrides?: { has(name: string): boolean },
-  testResults?: ReadonlyMap<string, { delay: number }>,
 ): Promise<void> {
   const targets = groups.filter(
     (group) =>
@@ -174,25 +170,6 @@ export async function applyStartupLiveConnectivityOrder(
     orderedTargets,
     scoreContext,
     manualOverrides,
-  );
-  await Promise.allSettled(
-    orderedTargets.map(async (group) => {
-      if (manualOverrides?.has(group.name)) return;
-      const first = group.members.find((name) => {
-        const delay = testResults?.get(name)?.delay;
-        return (
-          name &&
-          name !== "DIRECT" &&
-          name !== "REJECT" &&
-          delay != null &&
-          delay > 0 &&
-          delay < (group.timeout ?? 5000)
-        );
-      });
-      if (first) {
-        await clearProxyGroupManualSelection(group.name);
-      }
-    }),
   );
 }
 
@@ -226,34 +203,15 @@ export async function applyLiveConnectivityOrderForGroups(
 }
 
 /**
- * 测速后按积分重排，自动组解除测速固定并恢复自动选择。
- * 测速期间用户手动选过的组不改钉。
+ * 测速后按积分重排。测速永远不会解除固定：只有用户手动取消才会。
  */
-export async function switchGroupsAfterDelayTest(input: {
+export async function reorderGroupsAfterDelayTest(input: {
   groups: Array<{ name: string; type?: string; members: string[] }>;
-  firstSuccessByGroup?: Map<string, string>;
   manualOverrides: { has(name: string): boolean };
-  extraUnpinNames?: string[];
-  selectReason?: string;
 }): Promise<void> {
-  const { groups, firstSuccessByGroup, manualOverrides, extraUnpinNames } =
-    input;
-  await applyLiveConnectivityOrderForGroups(groups, undefined, manualOverrides);
-
-  const ops: Array<Promise<unknown>> = [];
-  for (const group of groups) {
-    if (manualOverrides.has(group.name)) continue;
-    if (
-      isAutoSelectGroupType(group.type) &&
-      firstSuccessByGroup?.has(group.name)
-    ) {
-      ops.push(clearProxyGroupManualSelection(group.name));
-    }
-  }
-  for (const name of extraUnpinNames ?? []) {
-    if (manualOverrides.has(name)) continue;
-    if (groups.some((group) => group.name === name)) continue;
-    ops.push(clearProxyGroupManualSelection(name));
-  }
-  await Promise.allSettled(ops);
+  await applyLiveConnectivityOrderForGroups(
+    input.groups,
+    undefined,
+    input.manualOverrides,
+  );
 }

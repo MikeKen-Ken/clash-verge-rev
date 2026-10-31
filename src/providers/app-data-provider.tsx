@@ -303,11 +303,7 @@ export const AppDataProvider = ({
           delayManager.endBulkDelaySession();
           await stopDelayTestEarlyPickers(pickers);
         }
-        await applyStartupLiveConnectivityOrder(
-          orderTargets,
-          manualOverrides,
-          bulkReuseMap,
-        );
+        await applyStartupLiveConnectivityOrder(orderTargets, manualOverrides);
         await refreshProxy();
         pollingCountRef.current += 1;
         scheduleNextPoll();
