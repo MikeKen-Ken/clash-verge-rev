@@ -174,6 +174,11 @@ export async function clearProxyGroupManualSelection(group: string) {
   return invoke<void>("clear_proxy_group_manual_selection", { group });
 }
 
+/** Save (name set) or remove (name null) one group's pin on the current profile, atomically. */
+export async function setProfileGroupPin(group: string, name: string | null) {
+  return invoke<void>("set_profile_group_pin", { group, name });
+}
+
 type RuntimeGroupDisplayConfig = {
   timeout?: number;
   selectedTimeout?: number;

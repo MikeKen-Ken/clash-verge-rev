@@ -130,7 +130,10 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
 
         const name = form.name || `${form.type} file`;
         const home = form.home?.trim() ?? "";
-        const item = { ...form, name, home, option };
+        // `selected` holds the user's pins. The form only carries the snapshot from
+        // when the dialog opened, so it must never be written back from here.
+        const { selected: _pins, ...formWithoutPins } = form;
+        const item = { ...formWithoutPins, name, home, option };
         const isRemote = form.type === "remote";
         const isUpdate = openType === "edit";
 

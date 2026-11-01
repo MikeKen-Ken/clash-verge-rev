@@ -10,7 +10,6 @@ use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::{collections::HashSet, path::PathBuf, time::Instant};
-use tokio::time::timeout;
 
 impl CoreManager {
     pub async fn use_default_config(&self, error_key: &str, error_msg: &str) -> Result<()> {
@@ -253,6 +252,9 @@ impl CoreManager {
         let path = dirs::path_to_str(&path)?;
         match super::reload::reload_config_resilient(path).await {
             Err(err) => {
+                // A reload that timed out may still have been applied by the core.
+                // Putting the saved pins back is harmless if it was not.
+                Self::schedule_apply_profile_selected_to_core();
                 Config::runtime().await.discard();
                 Err(anyhow!("Failed to apply config: {}", err))
             }
@@ -261,66 +263,6 @@ impl CoreManager {
                 Config::runtime().await.apply();
                 logging!(info, Type::Core, "Configuration applied");
                 Ok(())
-            }
-        }
-    }
-
-    /// Apply current profile's selected proxy groups to core after config load (align with Android proxy-selections).
-    async fn apply_profile_selected_to_core() {
-        let draft = Config::profiles().await;
-        let arc = draft.latest_arc();
-        let selected = arc
-            .get_current()
-            .and_then(|uid| arc.get_item(uid).ok())
-            .and_then(|item| item.selected.clone());
-        drop(arc);
-        drop(draft);
-        let Some(selected) = selected else {
-            return;
-        };
-        let handle = handle::Handle::mihomo().await;
-        for s in &selected {
-            let (name, now) = match (&s.name, &s.now) {
-                (Some(n), Some(w)) if !n.is_empty() && !w.is_empty() => (n.as_str(), w.as_str()),
-                _ => continue,
-            };
-            let t_sel = Instant::now();
-            match timeout(
-                timing::CORE_SELECT_NODE_TIMEOUT,
-                handle.select_node_for_group(name, now),
-            )
-            .await
-            {
-                Ok(Ok(())) => {
-                    logging!(
-                        info,
-                        Type::Core,
-                        "[核心切换] 配置加载后应用选中 {} -> {} 耗时 {:?}",
-                        name,
-                        now,
-                        t_sel.elapsed()
-                    );
-                }
-                Ok(Err(e)) => {
-                    logging!(
-                        warn,
-                        Type::Core,
-                        "Apply profile selected {} -> {} failed: {}",
-                        name,
-                        now,
-                        e
-                    );
-                }
-                Err(_) => {
-                    logging!(
-                        warn,
-                        Type::Core,
-                        "Apply profile selected {} -> {} timed out after {:?}",
-                        name,
-                        now,
-                        timing::CORE_SELECT_NODE_TIMEOUT
-                    );
-                }
             }
         }
     }

@@ -27,6 +27,10 @@ impl CoreManager {
             RunningMode::NotRunning | RunningMode::Sidecar => self.start_core_by_sidecar().await,
         }?;
 
+        // A freshly started core has no pins of its own beyond the core cache file
+        // (and only when `store-selected` is on). Put the profile's saved pins back.
+        Self::schedule_apply_profile_selected_to_core();
+
         if crate::config::effective_tun_enabled(
             Config::verge().await.latest_arc().enable_tun_mode,
             crate::config::tun_privilege_available().await,

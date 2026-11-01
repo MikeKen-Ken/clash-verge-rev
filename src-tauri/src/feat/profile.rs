@@ -17,6 +17,21 @@ pub async fn toggle_proxy_profile(profile_index: String) {
     );
 }
 
+/// A node picked from the tray is a pin like any other: save it to the profile so a
+/// later reload re-applies it instead of restoring an older pin for that group.
+async fn persist_tray_pin(group_name: &str, proxy_name: &str) {
+    if let Err(err) = crate::config::profiles_set_current_group_pin_safe(group_name, Some(proxy_name)).await {
+        logging!(
+            warn,
+            Type::Tray,
+            "Failed to save tray pin {} -> {}: {}",
+            group_name,
+            proxy_name,
+            err
+        );
+    }
+}
+
 pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
     let t0 = Instant::now();
     logging!(
@@ -41,6 +56,7 @@ pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
                 t0.elapsed()
             );
             logging!(info, Type::Tray, "切换代理成功: {} -> {}", group_name, proxy_name);
+            persist_tray_pin(group_name, proxy_name).await;
             let _ = handle::Handle::app_handle().emit("verge://refresh-proxy-config", ());
             let _ = tray::Tray::global().update_menu().await;
             return;
@@ -72,6 +88,7 @@ pub async fn switch_proxy_node(group_name: &str, proxy_name: &str) {
                 t0.elapsed()
             );
             logging!(info, Type::Tray, "代理切换回退成功: {} -> {}", group_name, proxy_name);
+            persist_tray_pin(group_name, proxy_name).await;
             let _ = tray::Tray::global().update_menu().await;
         }
         Err(err) => {

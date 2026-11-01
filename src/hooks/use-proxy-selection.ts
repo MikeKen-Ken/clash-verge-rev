@@ -5,6 +5,7 @@ import { markManualProxySelectionStarted } from "@/hooks/use-fallback-switch-not
 import { useProfiles } from "@/hooks/use-profiles";
 import {
   clearProxyGroupManualSelection,
+  setProfileGroupPin,
   syncTrayProxySelection,
 } from "@/services/cmds";
 import { closeConnectionsForProxyGroup } from "@/utils/close-connections";
@@ -29,7 +30,7 @@ const supportsClearManualSelection = (groupType?: string) => {
 
 // 代理选择 Hook
 export const useProxySelection = (options: ProxySelectionOptions = {}) => {
-  const { current, patchCurrent } = useProfiles();
+  const { current, mutateProfiles } = useProfiles();
 
   const { onSuccess, onRefreshSelectedNodeOnly } = options;
 
@@ -39,10 +40,9 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       await clearProxyGroupManualSelection(groupName);
 
       if (!skipConfigSave && current) {
-        const selected = (current.selected ?? []).filter(
-          (item) => item.name !== groupName,
-        );
-        await patchCurrent({ selected });
+        // Atomic on the backend: never rewrites other groups' pins from a stale copy.
+        await setProfileGroupPin(groupName, null);
+        await mutateProfiles();
       }
 
       await syncTrayProxySelection().catch((err) => {
@@ -52,7 +52,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       setTimeout(() => onSuccess?.(), 450);
       setTimeout(() => onSuccess?.(), 1000);
     },
-    [current, onSuccess, patchCurrent],
+    [current, onSuccess, mutateProfiles],
   );
 
   // 切换节点：先等核心与 profile 同步完成，再刷新代理列表，避免过早刷新拿到旧 now 导致界面「选不上」
@@ -71,14 +71,8 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         if (!current || skipConfigSave) {
           return;
         }
-        const selected = current.selected ? [...current.selected] : [];
-        const index = selected.findIndex((item) => item.name === groupName);
-        if (index < 0) {
-          selected.push({ name: groupName, now: proxyName });
-        } else {
-          selected[index] = { name: groupName, now: proxyName };
-        }
-        await patchCurrent({ selected });
+        await setProfileGroupPin(groupName, proxyName);
+        await mutateProfiles();
       };
 
       // 先完成核心切换与 profile 写入，再延迟刷新代理列表，等核心写好 group.now 后再拉取，避免 UI 不更新选中/图钉
@@ -192,7 +186,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
           setTimeout(() => onSuccess?.(), delayMs);
         });
     },
-    [current, patchCurrent, onSuccess, onRefreshSelectedNodeOnly],
+    [current, mutateProfiles, onSuccess, onRefreshSelectedNodeOnly],
   );
 
   const handleSelectChange = useCallback(

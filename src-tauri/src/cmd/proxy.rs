@@ -27,6 +27,15 @@ pub async fn force_select_group_proxy(group: String, name: String) -> CmdResult<
         .map_err(|e| e.to_string().into())
 }
 
+/// 保存（`name` 非空）或移除（`name` 为空）当前订阅里某个组的固定节点。
+/// 在 profiles 锁内读改写，避免并发修改把别的组的固定覆盖掉。
+#[tauri::command]
+pub async fn set_profile_group_pin(group: String, name: Option<String>) -> CmdResult<()> {
+    crate::config::profiles_set_current_group_pin_safe(&group, name.as_deref())
+        .await
+        .map_err(|e| e.to_string().into())
+}
+
 /// 按积分顺序重排运行中的 url-test/fallback 组节点列表（不 reload 核心）。
 #[tauri::command]
 pub async fn apply_group_proxy_order(group: String, proxies: Vec<String>) -> CmdResult<()> {

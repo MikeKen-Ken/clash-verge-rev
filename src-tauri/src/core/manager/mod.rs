@@ -1,5 +1,6 @@
 mod config;
 mod lifecycle;
+mod pins;
 mod reload;
 mod state;
 

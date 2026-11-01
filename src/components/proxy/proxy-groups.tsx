@@ -760,9 +760,12 @@ export const ProxyGroups = (props: Props) => {
 
           // 测速不会改动用户的固定：已固定节点的组一律不自动切换。
           const firstSuccessProxy = successCandidates[0]?.proxyName;
-          const isPinned = (current?.selected ?? []).some(
-            (s) => s.name === groupName && !!s.now,
-          );
+          // Pinned if either the saved profile or the running core says so.
+          const isPinned =
+            !!group.fixed ||
+            (current?.selected ?? []).some(
+              (s) => s.name === groupName && !!s.now,
+            );
           if (isPinned) {
             pingDelayCheckNotice(
               `${phaseLabel}: "${groupName}" has a pinned node; keeping it`,

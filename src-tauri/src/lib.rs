@@ -197,6 +197,7 @@ mod app_init {
             cmd::force_select_group_proxy,
             cmd::apply_group_proxy_order,
             cmd::clear_proxy_group_manual_selection,
+            cmd::set_profile_group_pin,
             cmd::save_dns_config,
             cmd::apply_dns_config,
             cmd::check_dns_config_exists,
