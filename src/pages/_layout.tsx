@@ -40,6 +40,7 @@ import {
   useLayoutEvents,
   useLoadingOverlay,
   useNavMenuOrder,
+  useWindowHeartbeat,
 } from "./_layout/hooks";
 import { handleNoticeMessage } from "./_layout/utils";
 import { navItems } from "./_routers";
@@ -201,6 +202,7 @@ const Layout = () => {
 
   useLoadingOverlay(themeReady);
   useAppInitialization();
+  useWindowHeartbeat();
   useCloseAllWithDelayCheck();
   useFallbackSwitchNotify();
 

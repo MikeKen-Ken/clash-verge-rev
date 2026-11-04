@@ -2,7 +2,10 @@ use super::resolve;
 use crate::{
     cmd::is_port_in_use,
     config::{Config, DEFAULT_PAC, IVerge},
-    module::lightweight,
+    module::{
+        lightweight,
+        window_liveness::{self, ExistingInstance, HealthReply, classify_health, handoff},
+    },
     process::AsyncHandler,
     utils::window_manager::WindowManager,
 };
@@ -27,32 +30,87 @@ static SHUTDOWN_SENDER: OnceCell<Mutex<Option<oneshot::Sender<()>>>> = OnceCell:
 /// check whether there is already exists
 pub async fn check_singleton() -> Result<()> {
     let port = IVerge::get_singleton_port();
-    if is_port_in_use(port) {
-        let client = ClientBuilder::new().timeout(Duration::from_millis(500)).build()?;
-        // 需要确保 Send
-        #[allow(clippy::needless_collect)]
-        let argvs: Vec<std::string::String> = std::env::args().collect();
-        if argvs.len() > 1 {
-            #[cfg(not(target_os = "macos"))]
-            {
-                let param = argvs[1].as_str();
-                if param.starts_with("clash:") {
-                    client
-                        .get(format!("http://127.0.0.1:{port}/commands/scheme?param={param}"))
-                        .send()
-                        .await?;
-                }
-            }
-        } else {
-            client
-                .get(format!("http://127.0.0.1:{port}/commands/visible"))
-                .send()
-                .await?;
-        }
+    if !is_port_in_use(port) {
+        return Ok(());
+    }
+    let health = probe_health(port).await;
+    let visible_ok = match health {
+        HealthReply::Ok | HealthReply::Other => notify_existing(port).await.is_ok(),
+        HealthReply::Stuck | HealthReply::Unreachable => false,
+    };
+    if handoff(health, visible_ok) == ExistingInstance::Keep {
         logging!(error, Type::Window, "failed to setup singleton listen server");
         bail!("app exists");
     }
+    logging!(
+        warn,
+        Type::Window,
+        "Replacing a stuck instance that held the singleton port {port}"
+    );
+    if !crate::utils::listener_pid::terminate_app_listeners(port) {
+        bail!("stuck instance still holds the singleton port");
+    }
+    for _ in 0..30 {
+        if !is_port_in_use(port) {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    bail!("stuck instance still holds the singleton port")
+}
+
+async fn probe_health(port: u16) -> HealthReply {
+    let Ok(client) = ClientBuilder::new().timeout(Duration::from_millis(500)).build() else {
+        return HealthReply::Unreachable;
+    };
+    let Ok(response) = client
+        .get(format!("http://127.0.0.1:{port}/commands/health"))
+        .send()
+        .await
+    else {
+        return HealthReply::Unreachable;
+    };
+    let body = response.text().await.unwrap_or_default();
+    classify_health(true, &body)
+}
+
+async fn notify_existing(port: u16) -> Result<()> {
+    let client = ClientBuilder::new().timeout(Duration::from_millis(500)).build()?;
+    #[allow(clippy::needless_collect)]
+    let argvs: Vec<std::string::String> = std::env::args().collect();
+    if argvs.len() > 1 {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let param = argvs[1].as_str();
+            if param.starts_with("clash:") {
+                client
+                    .get(format!("http://127.0.0.1:{port}/commands/scheme?param={param}"))
+                    .send()
+                    .await?;
+                return Ok(());
+            }
+        }
+        return Ok(());
+    }
+    client
+        .get(format!("http://127.0.0.1:{port}/commands/visible"))
+        .send()
+        .await?;
     Ok(())
+}
+
+/// Close and a second launch cannot escape a stuck window while this process keeps the port.
+pub fn exit_if_window_is_stuck() {
+    if !window_liveness::should_yield_to_next_instance() {
+        return;
+    }
+    logging!(
+        error,
+        Type::Window,
+        "Window is stuck; releasing the singleton so a new instance can start"
+    );
+    shutdown_embedded_server();
+    std::process::exit(0);
 }
 
 /// The embed server only be used to implement singleton process
@@ -64,6 +122,14 @@ pub fn embed_server() {
         .set(Mutex::new(Some(shutdown_tx)))
         .expect("failed to set shutdown signal for embedded server");
     let port = IVerge::get_singleton_port();
+
+    let health = warp::path!("commands" / "health").map(|| {
+        if window_liveness::should_yield_to_next_instance() {
+            warp::reply::with_status("stuck".to_string(), warp::http::StatusCode::SERVICE_UNAVAILABLE)
+        } else {
+            warp::reply::with_status("ok".to_string(), warp::http::StatusCode::OK)
+        }
+    });
 
     let visible = warp::path!("commands" / "visible").and_then(|| async {
         logging!(info, Type::Window, "检测到从单例模式恢复应用窗口");
@@ -114,7 +180,7 @@ pub fn embed_server() {
             ))
         });
 
-    let commands = visible.or(scheme).or(pac);
+    let commands = health.or(visible).or(scheme).or(pac);
 
     AsyncHandler::spawn(move || async move {
         warp::serve(commands)

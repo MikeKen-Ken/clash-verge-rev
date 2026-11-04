@@ -156,6 +156,7 @@ mod app_init {
             cmd::stop_core,
             cmd::restart_core,
             cmd::notify_ui_ready,
+            cmd::window_heartbeat,
             cmd::notify_close_all_completed,
             cmd::notify_fallback_proxy_switched,
             cmd::update_ui_stage,
@@ -296,6 +297,7 @@ pub fn run() {
             resolve::init_signal();
             resolve::resolve_done();
             module::network_recovery::start();
+            module::window_liveness::start();
 
             logging!(info, Type::Setup, "Initialization started");
             Ok(())
@@ -356,6 +358,7 @@ pub fn run() {
             }
 
             if let tauri::WindowEvent::CloseRequested { api, .. } = api {
+                crate::utils::server::exit_if_window_is_stuck();
                 api.prevent_close();
                 if let Some(window) = core::handle::Handle::get_window() {
                     let _ = window.hide();
@@ -468,6 +471,7 @@ pub fn run() {
             if core::handle::Handle::global().is_exiting() {
                 return;
             }
+            server::exit_if_window_is_stuck();
 
             AsyncHandler::block_on(async {
                 let _ = handle::Handle::mihomo().await.clear_all_ws_connections().await;

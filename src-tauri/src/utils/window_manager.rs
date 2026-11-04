@@ -210,6 +210,7 @@ impl WindowManager {
     /// 激活窗口（取消最小化、显示、设置焦点）
     fn activate_window(window: &WebviewWindow<Wry>) -> WindowOperationResult {
         logging!(info, Type::Window, "开始激活窗口");
+        crate::module::window_liveness::note_window_shown();
 
         let mut operations_successful = true;
 

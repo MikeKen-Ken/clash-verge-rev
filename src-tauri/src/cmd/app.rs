@@ -44,9 +44,7 @@ pub async fn export_text_file(destination: String, content: String) -> CmdResult
             fs::create_dir_all(parent).await.stringify_err()?;
         }
     }
-    fs::write(&dest_path, content.as_bytes())
-        .await
-        .stringify_err()
+    fs::write(&dest_path, content.as_bytes()).await.stringify_err()
 }
 
 /// 打开网页链接
@@ -357,6 +355,12 @@ pub fn notify_ui_ready() {
     ui::mark_ui_ready();
 }
 
+/// Page heartbeat. A stopped WebView stops calling this.
+#[tauri::command]
+pub fn window_heartbeat() {
+    crate::module::window_liveness::note_heartbeat();
+}
+
 /// 发送关闭所有连接完成的通知
 #[tauri::command]
 pub async fn notify_close_all_completed() {
@@ -372,7 +376,8 @@ pub async fn notify_fallback_proxy_switched(group: String, from: String, to: Str
         group: group.as_str(),
         from: from.as_str(),
         to: to.as_str(),
-    }).await;
+    })
+    .await;
 }
 
 /// UI加载阶段

@@ -1,9 +1,10 @@
 pub mod dirs;
 pub mod help;
 pub mod init;
-pub mod mihomo_ipc;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod listener_pid;
+pub mod mihomo_ipc;
 pub mod network;
 pub mod notification;
 pub mod resolve;
