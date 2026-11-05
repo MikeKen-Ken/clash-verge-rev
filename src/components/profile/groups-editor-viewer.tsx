@@ -244,8 +244,8 @@ export const GroupsEditorViewer = (props: Props) => {
     const data = await readProfileFile(property);
     const obj = yaml.load(data) as ISeqProfileConfig | null;
 
-    setPrependSeq(obj?.prepend || []);
-    setAppendSeq(obj?.append || []);
+    setPrependSeq((obj?.prepend || []).filter((item) => item !== null));
+    setAppendSeq((obj?.append || []).filter((item) => item !== null));
     setDeleteSeq((prev) => {
       const normalized = normalizeDeleteSeq(obj?.delete);
       if (
@@ -268,8 +268,8 @@ export const GroupsEditorViewer = (props: Props) => {
 
     const obj = yaml.load(currData) as ISeqProfileConfig | null;
     startTransition(() => {
-      setPrependSeq(obj?.prepend ?? []);
-      setAppendSeq(obj?.append ?? []);
+      setPrependSeq((obj?.prepend ?? []).filter((item) => item !== null));
+      setAppendSeq((obj?.append ?? []).filter((item) => item !== null));
       setDeleteSeq((prev) => {
         const normalized = normalizeDeleteSeq(obj?.delete);
         if (

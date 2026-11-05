@@ -329,9 +329,9 @@ export const RulesEditorViewer = (props: Props) => {
     const data = await readProfileFile(property);
     const obj = yaml.load(data) as ISeqProfileConfig | null;
 
-    setPrependSeq(obj?.prepend || []);
-    setAppendSeq(obj?.append || []);
-    setDeleteSeq(obj?.delete || []);
+    setPrependSeq((obj?.prepend || []).filter((rule) => rule !== null));
+    setAppendSeq((obj?.append || []).filter((rule) => rule !== null));
+    setDeleteSeq((obj?.delete || []).filter((rule) => rule !== null));
 
     setPrevData(data);
     setCurrData(data);
@@ -344,9 +344,9 @@ export const RulesEditorViewer = (props: Props) => {
 
     const obj = yaml.load(currData) as ISeqProfileConfig | null;
     startTransition(() => {
-      setPrependSeq(obj?.prepend ?? []);
-      setAppendSeq(obj?.append ?? []);
-      setDeleteSeq(obj?.delete ?? []);
+      setPrependSeq((obj?.prepend ?? []).filter((rule) => rule !== null));
+      setAppendSeq((obj?.append ?? []).filter((rule) => rule !== null));
+      setDeleteSeq((obj?.delete ?? []).filter((rule) => rule !== null));
     });
   }, [currData, visualization]);
 
