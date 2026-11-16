@@ -78,16 +78,10 @@ fn note_system_resume(now_ms: u64) {
         Type::Window,
         "Desktop resumed; checking whether the main window still answers (on_screen={on_screen})"
     );
-    if on_screen {
-        // A resumed WebView can keep its event loop while its compositor is
-        // already dead. Reloading the page is much cheaper than rebuilding the
-        // window and leaves the proxy core untouched.
-        if !matches!(recover_webview(now_ms, "the desktop resuming"), Some(true)) {
-            STATE.lock().note_resume(now_ms, true);
-        }
-    } else {
-        STATE.lock().note_resume(now_ms, false);
-    }
+    // Only a long absence reloads the page (see `resume_from_absence`, which
+    // runs right after this in the same tick). A short sleep just arms the
+    // heartbeat probe, so a healthy WebView is left alone.
+    STATE.lock().note_resume(now_ms, on_screen);
 }
 
 pub fn note_window_shown() {
