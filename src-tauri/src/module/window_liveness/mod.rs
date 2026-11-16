@@ -165,6 +165,8 @@ impl WindowLiveness {
     pub fn clear_hard_restart(&mut self) {
         self.hard_restart_sent = false;
         self.ui_failures = 0;
+        self.awaiting_generation = false;
+        self.generation_deadline_ms = None;
     }
 
     /// The window is trapped: closing it only hides the process, and a new launch must replace it.
