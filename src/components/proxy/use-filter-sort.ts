@@ -177,6 +177,8 @@ function filterProxies(
     const delayMap = delayManager.getDelaysForGroupFix(groupName, list);
     list = list.filter((proxy) => {
       if (keep.has(proxy.name)) return true;
+      // 嵌套组与内置出站没有可探测的延迟，永远不算超时
+      if (isAlwaysAvailableProxy(proxy)) return true;
       const delay = delayMap.get(proxy.name) ?? -1;
       return delay > 0 && delay < latencyTimeout;
     });
@@ -239,6 +241,24 @@ function shouldApplyConnectivitySort(groupType?: string): boolean {
 function isSelectorGroupType(groupType?: string): boolean {
   const t = (groupType ?? "").toLowerCase();
   return t === "select" || t === "selector";
+}
+
+/** 嵌套组 / 内置出站：没有可探测的延迟，不会被判定成超时。 */
+const ALWAYS_AVAILABLE_TYPES = new Set([
+  "selector",
+  "urltest",
+  "fallback",
+  "loadbalance",
+  "relay",
+  "direct",
+  "reject",
+  "rejectdrop",
+  "pass",
+  "compatible",
+]);
+
+function isAlwaysAvailableProxy(proxy: IProxyItem): boolean {
+  return ALWAYS_AVAILABLE_TYPES.has(String(proxy.type ?? "").toLowerCase());
 }
 
 function sortProxies(
