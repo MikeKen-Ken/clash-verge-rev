@@ -90,7 +90,7 @@ async function scenario(automatic) {
   delay.setDelayCheckConcurrency(150);
   const manager = delay.default;
   const names = Array.from({ length: 300 }, (_, i) => `node-${i}`);
-  const groups = ["Auto", "NoHK", "Download"].map((name) => ({
+  const groups = ["Auto", "JP", "Download"].map((name) => ({
     name,
     type: "Fallback",
     timeout: 1000,
