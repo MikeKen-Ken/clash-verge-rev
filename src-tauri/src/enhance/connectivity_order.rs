@@ -283,12 +283,19 @@ fn group_type_is_auto_select(group_map: &Mapping) -> bool {
         .unwrap_or(false)
 }
 
-fn apply_connectivity_proxy_order_inner(mut config: Mapping, all_groups: bool) -> Mapping {
+fn apply_connectivity_proxy_order_inner(config: Mapping) -> Mapping {
     let stats = load_weighted_connectivity_stats();
     let prior_delay_ms = compute_prior_effective_delay_ms(&stats);
+    apply_connectivity_proxy_order_with_stats(config, &stats, prior_delay_ms)
+}
 
+fn apply_connectivity_proxy_order_with_stats(
+    mut config: Mapping,
+    stats: &HashMap<String, WeightedStats>,
+    prior_delay_ms: f64,
+) -> Mapping {
     if let Some(Value::Sequence(proxies)) = config.get_mut("proxies") {
-        sort_proxy_mappings(proxies, &stats, prior_delay_ms);
+        sort_proxy_mappings(proxies, stats, prior_delay_ms);
     }
 
     if let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") {
@@ -296,11 +303,13 @@ fn apply_connectivity_proxy_order_inner(mut config: Mapping, all_groups: bool) -
             let Some(group_map) = group.as_mapping_mut() else {
                 continue;
             };
-            if !all_groups && !group_type_is_auto_select(group_map) {
+            // 手动选择组（select / selector 等）保持配置顺序：它们的默认节点是列表
+            // 第一项，重排会把实际生效节点从 DIRECT 悄悄换成别的成员。
+            if !group_type_is_auto_select(group_map) {
                 continue;
             }
             if let Some(Value::Sequence(list)) = group_map.get_mut("proxies") {
-                sort_group_proxies_list(list, &stats, prior_delay_ms);
+                sort_group_proxies_list(list, stats, prior_delay_ms);
             }
         }
     }
@@ -310,14 +319,15 @@ fn apply_connectivity_proxy_order_inner(mut config: Mapping, all_groups: bool) -
 
 /// 启动/生成运行配置时按积分重排 url-test/fallback 组成员（select 保持配置顺序）。
 pub fn apply_connectivity_proxy_order(config: Mapping) -> Mapping {
-    apply_connectivity_proxy_order_inner(config, false)
+    apply_connectivity_proxy_order_inner(config)
 }
 
-/// Reorder every proxy group after the user explicitly completes a delay test.
+/// Reorder url-test / fallback groups after the user explicitly completes a delay test.
 /// This affects only the generated runtime YAML snapshot, never the source
 /// profile and never a live core reload.
+/// Selector 组保持配置顺序，否则 Direct 之类的组会因重排把默认节点变成 Auto。
 pub fn apply_manual_connectivity_proxy_order(config: Mapping) -> Mapping {
-    apply_connectivity_proxy_order_inner(config, true)
+    apply_connectivity_proxy_order_inner(config)
 }
 
 /// 前端同步联通统计 JSON 到数据目录（不触发 reload）。
@@ -526,4 +536,91 @@ mod tests {
         assert!(weighted.success < 20.0);
     }
 
+    #[test]
+    fn manual_order_keeps_selector_member_order() {
+        let yaml = r#"
+proxies:
+  - name: "fast"
+    type: ss
+  - name: "slow"
+    type: ss
+proxy-groups:
+  - name: "Direct"
+    type: select
+    proxies: ["DIRECT", "Auto", "slow", "fast"]
+  - name: "Auto"
+    type: fallback
+    proxies: ["slow", "fast"]
+"#;
+        let config: Mapping = serde_yaml_ng::from_str(yaml).expect("yaml");
+        let mut stats = HashMap::new();
+        // Auto 有可用评分，DIRECT 没有；按评分重排会把 Auto 顶到 Direct 组第一。
+        stats.insert(
+            "Auto".into(),
+            WeightedStats {
+                success: 20.0,
+                failure: 0.0,
+                delay_sum: 20.0 * 90.0,
+            },
+        );
+        stats.insert(
+            "fast".into(),
+            WeightedStats {
+                success: 20.0,
+                failure: 0.0,
+                delay_sum: 20.0 * 90.0,
+            },
+        );
+        stats.insert(
+            "slow".into(),
+            WeightedStats {
+                success: 20.0,
+                failure: 0.0,
+                delay_sum: 20.0 * 900.0,
+            },
+        );
+        let prior = compute_prior_effective_delay_ms(&stats);
+
+        let sorted = apply_connectivity_proxy_order_with_stats(config, &stats, prior);
+        let groups = sorted
+            .get("proxy-groups")
+            .and_then(Value::as_sequence)
+            .expect("proxy-groups");
+
+        let direct = groups
+            .iter()
+            .find(|g| g.get("name").and_then(Value::as_str) == Some("Direct"))
+            .and_then(Value::as_mapping)
+            .expect("Direct");
+        let direct_list: Vec<&str> = direct
+            .get("proxies")
+            .and_then(Value::as_sequence)
+            .expect("Direct proxies")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(
+            direct_list,
+            vec!["DIRECT", "Auto", "slow", "fast"],
+            "selector order must follow the config, not the score"
+        );
+
+        let auto = groups
+            .iter()
+            .find(|g| g.get("name").and_then(Value::as_str) == Some("Auto"))
+            .and_then(Value::as_mapping)
+            .expect("Auto");
+        let auto_list: Vec<&str> = auto
+            .get("proxies")
+            .and_then(Value::as_sequence)
+            .expect("Auto proxies")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(
+            auto_list,
+            vec!["fast", "slow"],
+            "url-test / fallback members should still be score ordered"
+        );
+    }
 }

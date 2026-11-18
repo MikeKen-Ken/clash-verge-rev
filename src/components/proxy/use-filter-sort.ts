@@ -269,6 +269,11 @@ function sortProxies(
   groupType?: string,
 ) {
   if (!proxies) return [];
+  // select 组的成员顺序是配置/用户顺序，也是默认节点的依据。
+  // 默认、延迟、名称排序都不能作用于它，否则界面看起来就像换了选中节点。
+  if (isSelectorGroupType(groupType)) {
+    return proxies;
+  }
   if (sortType === 0) {
     if (!shouldApplyConnectivitySort(groupType)) {
       return proxies;
