@@ -30,6 +30,13 @@ fn is_selector_group(group_map: &Mapping) -> bool {
         .unwrap_or(false)
 }
 
+fn is_direct_policy_group(group_map: &Mapping) -> bool {
+    matches!(
+        group_map.get("name").and_then(Value::as_str),
+        Some("Direct") | Some("🎯 全球直连")
+    )
+}
+
 pub fn use_seq(seq: SeqMap, mut config: Mapping, field: &str) -> Mapping {
     let SeqMap {
         prepend,
@@ -103,19 +110,37 @@ pub fn use_seq(seq: SeqMap, mut config: Mapping, field: &str) -> Mapping {
                     let base_seq = proxies_seq.unwrap_or_else(Sequence::new);
                     let mut seq = Sequence::new();
                     let mut existing = HashSet::new();
-                    for name in &added_proxy_names {
-                        if existing.insert(name.clone()) {
-                            seq.push(Value::String(name.clone()));
+                    // Direct 的默认出站是列表里的 DIRECT。新节点插到它前面会让
+                    // 这个组在没手动固定时选中新节点，所以新节点追加在后面。
+                    if is_direct_policy_group(group_map) {
+                        for value in base_seq {
+                            if let Value::String(name) = &value
+                                && !existing.insert(name.to_owned())
+                            {
+                                continue;
+                            }
+                            seq.push(value);
                         }
-                    }
-                    for value in base_seq {
-                        if let Value::String(name) = &value
-                            && !existing.insert(name.to_owned())
-                        {
-                            continue;
+                        for name in &added_proxy_names {
+                            if existing.insert(name.clone()) {
+                                seq.push(Value::String(name.clone()));
+                            }
                         }
+                    } else {
+                        for name in &added_proxy_names {
+                            if existing.insert(name.clone()) {
+                                seq.push(Value::String(name.clone()));
+                            }
+                        }
+                        for value in base_seq {
+                            if let Value::String(name) = &value
+                                && !existing.insert(name.to_owned())
+                            {
+                                continue;
+                            }
 
-                        seq.push(value);
+                            seq.push(value);
+                        }
                     }
                     proxies_seq = Some(seq);
                     appended_to_selector = true;
@@ -287,5 +312,71 @@ proxy-groups:
             .expect("group proxies should be a sequence");
         let names: Vec<&str> = group2_proxies.iter().filter_map(Value::as_str).collect();
         assert_eq!(names, vec!["proxy1"]);
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    #[allow(clippy::expect_used)]
+    fn added_proxies_stay_behind_direct_on_the_direct_group() {
+        let config_str = r#"
+proxies:
+- name: "proxy1"
+  type: "ss"
+proxy-groups:
+- name: "Direct"
+  type: "select"
+  proxies:
+    - "DIRECT"
+    - "Auto"
+- name: "Final"
+  type: "select"
+  proxies:
+    - "Auto"
+    - "DIRECT"
+"#;
+        let mut config: Mapping = serde_yaml_ng::from_str(config_str).expect("yaml");
+        let append: Sequence = serde_yaml_ng::from_str(
+            r#"
+- name: "proxy4"
+  type: "vmess"
+"#,
+        )
+        .expect("append");
+        config = use_seq(
+            SeqMap {
+                prepend: Sequence::new(),
+                append,
+                delete: vec![],
+            },
+            config,
+            "proxies",
+        );
+        let groups = config
+            .get("proxy-groups")
+            .expect("proxy-groups")
+            .as_sequence()
+            .expect("sequence");
+        let direct: Vec<&str> = groups[0]
+            .as_mapping()
+            .expect("group")
+            .get("proxies")
+            .expect("proxies")
+            .as_sequence()
+            .expect("sequence")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(direct, vec!["DIRECT", "Auto", "proxy4"]);
+        let final_group: Vec<&str> = groups[1]
+            .as_mapping()
+            .expect("group")
+            .get("proxies")
+            .expect("proxies")
+            .as_sequence()
+            .expect("sequence")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(final_group, vec!["Auto", "DIRECT"]);
     }
 }
