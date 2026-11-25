@@ -1,10 +1,7 @@
 use crate::{
     config::{Config, IVerge},
     core::{CoreManager, handle, hotkey, logger::Logger, sysopt, tray},
-    module::{
-        auto_backup::AutoBackupManager, connectivity_sync_schedule::ConnectivitySyncScheduler,
-        lightweight,
-    },
+    module::{auto_backup::AutoBackupManager, connectivity_sync_schedule::ConnectivitySyncScheduler, lightweight},
 };
 use anyhow::Result;
 use bitflags::bitflags;

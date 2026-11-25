@@ -146,7 +146,11 @@ impl Config {
                 }
             }
         } else {
-            logging!(warn, Type::Config, "Failed to generate configuration file; using default configuration");
+            logging!(
+                warn,
+                Type::Config,
+                "Failed to generate configuration file; using default configuration"
+            );
             CoreManager::global()
                 .use_default_config("config_validate::error", "")
                 .await?;
@@ -353,5 +357,4 @@ mod tests {
         assert!(!effective_tun_enabled(Some(false), true));
         assert!(!effective_tun_enabled(None, true));
     }
-
 }

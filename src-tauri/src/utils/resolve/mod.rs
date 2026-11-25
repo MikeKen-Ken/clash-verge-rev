@@ -14,8 +14,7 @@ use crate::{
     },
     feat,
     module::{
-        auto_backup::AutoBackupManager,
-        connectivity_sync_schedule::ConnectivitySyncScheduler,
+        auto_backup::AutoBackupManager, connectivity_sync_schedule::ConnectivitySyncScheduler,
         lightweight::auto_lightweight_boot,
     },
     process::AsyncHandler,
@@ -143,10 +142,7 @@ pub(super) async fn init_auto_backup() {
 }
 
 pub(super) async fn init_connectivity_sync() {
-    logging_error!(
-        Type::Setup,
-        ConnectivitySyncScheduler::global().init().await
-    );
+    logging_error!(Type::Setup, ConnectivitySyncScheduler::global().init().await);
 }
 
 pub fn init_signal() {

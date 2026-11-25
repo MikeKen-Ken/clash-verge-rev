@@ -8,7 +8,9 @@
 
 mod runtime;
 
-pub use runtime::{note_heartbeat, note_window_shown, should_yield_to_next_instance, start};
+pub use runtime::{
+    note_heartbeat, note_window_created, note_window_destroyed, note_window_shown, should_yield_to_next_instance, start,
+};
 
 /// What a second launch should do with the process that already holds the singleton port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

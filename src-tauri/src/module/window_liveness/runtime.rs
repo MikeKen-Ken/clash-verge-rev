@@ -2,7 +2,7 @@
 //! Sleep and wake come from the Windows suspend notification, because Tauri's
 //! `RunEvent::Resumed` on Windows is the event-loop poll cause, not power resume.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clash_verge_logging::{Type, logging};
@@ -19,12 +19,8 @@ use crate::{
 const HARD_RESTART_COOLDOWN: Duration = Duration::from_secs(10 * 60);
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
-/// A lock, suspend or hide shorter than this is not worth a WebView reload.
-const LONG_ABSENCE_MS: u64 = 5 * 60 * 1000;
 /// A tick gap this large means the watcher itself did not run for a while.
 const TICK_GAP_MS: u64 = 60 * 1000;
-/// Never issue two recovery reloads this close together.
-const RECOVERY_COOLDOWN_MS: u64 = 10 * 1000;
 const SUPPRESS_LOG_INTERVAL_MS: u64 = 60 * 1000;
 
 fn monotonic_ms() -> u64 {
@@ -35,12 +31,12 @@ fn monotonic_ms() -> u64 {
 static STATE: Mutex<WindowLiveness> = Mutex::new(WindowLiveness::new());
 static STARTED: AtomicBool = AtomicBool::new(false);
 static RESUME_PENDING: AtomicBool = AtomicBool::new(false);
-/// Monotonic time the session or the window stopped being usable, 0 = present.
-static AWAY_SINCE_MS: AtomicU64 = AtomicU64::new(0);
-static HIDDEN_SINCE_MS: AtomicU64 = AtomicU64::new(0);
+/// The session was locked, or the watcher missed a stretch of time.
+static AWAY_PENDING: AtomicBool = AtomicBool::new(false);
 static LAST_TICK_MS: AtomicU64 = AtomicU64::new(0);
-static LAST_RECOVERY_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_SUPPRESS_LOG_MS: AtomicU64 = AtomicU64::new(0);
+#[cfg(windows)]
+static MAIN_WINDOW_HWND: AtomicIsize = AtomicIsize::new(0);
 
 pub fn start() {
     if STARTED.swap(true, Ordering::AcqRel) {
@@ -67,9 +63,9 @@ fn note_system_resume(now_ms: u64) {
         return;
     }
     if !session_interactive() {
-        // The machine woke up behind the lock screen; keep the flag for the
-        // unlock path instead of reloading a WebView nobody can see.
-        note_absence(now_ms);
+        // The machine woke up behind the lock screen. Wait until unlock
+        // before probing a window nobody can see.
+        AWAY_PENDING.store(true, Ordering::Release);
         return;
     }
     let on_screen = window_on_screen();
@@ -78,15 +74,31 @@ fn note_system_resume(now_ms: u64) {
         Type::Window,
         "Desktop resumed; checking whether the main window still answers (on_screen={on_screen})"
     );
-    // Only a long absence reloads the page (see `resume_from_absence`, which
-    // runs right after this in the same tick). A short sleep just arms the
-    // heartbeat probe, so a healthy WebView is left alone.
+    // Arm the heartbeat probe only. A healthy page keeps running.
     STATE.lock().note_resume(now_ms, on_screen);
 }
 
 pub fn note_window_shown() {
     STATE.lock().note_show(monotonic_ms());
 }
+
+#[cfg(windows)]
+pub fn note_window_created(window: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        MAIN_WINDOW_HWND.store(hwnd.0 as isize, Ordering::Release);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn note_window_created(_window: &tauri::WebviewWindow) {}
+
+#[cfg(windows)]
+pub fn note_window_destroyed() {
+    MAIN_WINDOW_HWND.store(0, Ordering::Release);
+}
+
+#[cfg(not(windows))]
+pub fn note_window_destroyed() {}
 
 pub fn should_yield_to_next_instance() -> bool {
     let on_screen = window_on_screen();
@@ -103,33 +115,36 @@ fn tick() {
     // suspended, even if no power notification reached us.
     let last_tick_ms = LAST_TICK_MS.swap(now_ms, Ordering::AcqRel);
     if last_tick_ms != 0 && now_ms.saturating_sub(last_tick_ms) >= TICK_GAP_MS {
-        note_absence(last_tick_ms);
+        AWAY_PENDING.store(true, Ordering::Release);
     }
 
-    if RESUME_PENDING.swap(false, Ordering::AcqRel) {
-        note_system_resume(now_ms);
-    }
+    let resume_pending = RESUME_PENDING.swap(false, Ordering::AcqRel);
 
     // Never probe or rebuild the window while the secure desktop is up: the
     // fresh WebView would be created behind the lock screen and only surface as
     // a blank window after the user unlocks.
     if !session_interactive() {
-        note_absence(now_ms);
+        AWAY_PENDING.store(true, Ordering::Release);
         return;
     }
 
     let on_screen = window_on_screen();
-    resume_from_absence(now_ms, on_screen);
-    track_visibility(now_ms, on_screen);
+    if resume_pending {
+        AWAY_PENDING.store(false, Ordering::Release);
+        note_system_resume(now_ms);
+    } else if AWAY_PENDING.swap(false, Ordering::AcqRel) {
+        STATE.lock().note_resume(now_ms, on_screen);
+    }
 
     let gate = LivenessGate {
-        window_exists: WindowManager::get_main_window().is_some(),
+        window_exists: window_exists(),
         window_on_screen: on_screen,
         lightweight: lightweight::is_in_lightweight_mode(),
         exiting: false,
     };
     let skip_ui_probe = STATE.lock().ui_probe_paused();
-    if gate.window_on_screen
+    if gate.window_exists
+        && !gate.lightweight
         && !skip_ui_probe
         && let Some(responsive) = ui_thread_responsive()
     {
@@ -143,76 +158,47 @@ fn tick() {
     execute(action);
 }
 
+#[cfg(windows)]
+fn cached_valid_hwnd() -> Option<windows::Win32::Foundation::HWND> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+    let raw = MAIN_WINDOW_HWND.load(Ordering::Acquire);
+    if raw == 0 {
+        return None;
+    }
+    let hwnd = HWND(raw as *mut std::ffi::c_void);
+    if unsafe { IsWindow(Some(hwnd)).as_bool() } {
+        return Some(hwnd);
+    }
+    let _ = MAIN_WINDOW_HWND.compare_exchange(raw, 0, Ordering::AcqRel, Ordering::Acquire);
+    None
+}
+
+#[cfg(windows)]
+fn window_exists() -> bool {
+    cached_valid_hwnd().is_some()
+}
+
+#[cfg(not(windows))]
+fn window_exists() -> bool {
+    WindowManager::get_main_window().is_some()
+}
+
+#[cfg(windows)]
+fn window_on_screen() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+
+    cached_valid_hwnd().is_some_and(|hwnd| unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() })
+}
+
+#[cfg(not(windows))]
 fn window_on_screen() -> bool {
     use crate::utils::window_manager::WindowState;
     matches!(
         WindowManager::get_main_window_state(),
         WindowState::VisibleFocused | WindowState::VisibleUnfocused
     )
-}
-
-/// Remember when the session or the window became unusable.
-fn note_absence(now_ms: u64) {
-    let _ = AWAY_SINCE_MS.compare_exchange(0, now_ms, Ordering::AcqRel, Ordering::Relaxed);
-}
-
-/// After a long lock, suspend or hide, reload the page once the window is back
-/// on screen instead of waiting for the heartbeat to time out and rebuilding it.
-fn resume_from_absence(now_ms: u64, on_screen: bool) {
-    if !on_screen {
-        return;
-    }
-    let since = AWAY_SINCE_MS.swap(0, Ordering::AcqRel);
-    if since == 0 || now_ms.saturating_sub(since) < LONG_ABSENCE_MS {
-        return;
-    }
-    if !matches!(recover_webview(now_ms, "a long lock or suspend"), Some(true)) {
-        STATE.lock().note_resume(now_ms, true);
-    }
-}
-
-fn track_visibility(now_ms: u64, on_screen: bool) {
-    if !on_screen {
-        let _ = HIDDEN_SINCE_MS.compare_exchange(0, now_ms, Ordering::AcqRel, Ordering::Relaxed);
-        return;
-    }
-    let hidden_since = HIDDEN_SINCE_MS.swap(0, Ordering::AcqRel);
-    if hidden_since != 0
-        && now_ms.saturating_sub(hidden_since) >= LONG_ABSENCE_MS
-        && !matches!(recover_webview(now_ms, "a long time hidden"), Some(true))
-    {
-        STATE.lock().note_resume(now_ms, true);
-    }
-}
-
-/// Reload the main page without touching the proxy core.
-/// `None` means the recovery cooldown skipped this call.
-fn recover_webview(now_ms: u64, reason: &'static str) -> Option<bool> {
-    if now_ms.saturating_sub(LAST_RECOVERY_MS.load(Ordering::Acquire)) < RECOVERY_COOLDOWN_MS {
-        return None;
-    }
-    if WindowManager::get_main_window().is_none() {
-        return Some(false);
-    }
-    LAST_RECOVERY_MS.store(now_ms, Ordering::Release);
-    // The reload restarts the page, so give it a fresh heartbeat window before
-    // the watchdog treats it as dead. The script is posted from the async
-    // handler so a busy UI thread cannot block this watcher.
-    STATE.lock().note_heartbeat(now_ms);
-    AsyncHandler::spawn(move || async move {
-        let Some(window) = WindowManager::get_main_window() else {
-            return;
-        };
-        match window.eval("window.location.reload()") {
-            Ok(()) => logging!(warn, Type::Window, "Reloaded the main WebView after {reason}"),
-            Err(err) => logging!(
-                warn,
-                Type::Window,
-                "Reloading the main WebView after {reason} failed: {err}"
-            ),
-        }
-    });
-    Some(true)
 }
 
 fn execute(action: LivenessAction) {
@@ -422,8 +408,7 @@ fn ui_thread_responsive() -> Option<bool> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_NULL};
 
-    let window = WindowManager::get_main_window()?;
-    let hwnd = window.hwnd().ok()?;
+    let hwnd = cached_valid_hwnd()?;
     let mut result = 0usize;
     // Nonzero means the UI thread handled the message. WM_NULL's own result is written to `result`.
     let answered = unsafe {
@@ -444,4 +429,24 @@ fn ui_thread_responsive() -> Option<bool> {
 #[cfg(not(windows))]
 fn ui_thread_responsive() -> Option<bool> {
     None
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unset_and_invalid_cached_hwnd_are_ignored_without_touching_webview_lock() {
+        MAIN_WINDOW_HWND.store(0, Ordering::Release);
+        assert!(cached_valid_hwnd().is_none());
+        assert!(!window_exists());
+        assert!(!window_on_screen());
+        assert_eq!(ui_thread_responsive(), None);
+
+        MAIN_WINDOW_HWND.store(0x7fff_dead, Ordering::Release);
+        assert!(cached_valid_hwnd().is_none());
+        assert_eq!(MAIN_WINDOW_HWND.load(Ordering::Acquire), 0);
+        assert!(!window_on_screen());
+        assert_eq!(ui_thread_responsive(), None);
+    }
 }

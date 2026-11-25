@@ -332,7 +332,11 @@ fn force_reinstall_service() -> Result<()> {
 
 /// 尝试使用服务启动core
 pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result<()> {
-    logging!(info, Type::Service, "Trying to start the core with the existing service");
+    logging!(
+        info,
+        Type::Service,
+        "Trying to start the core with the existing service"
+    );
 
     let verge_config = Config::verge().await;
     let clash_core = verge_config.latest_arc().get_valid_clash_core();
@@ -375,7 +379,11 @@ pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
     manager.handle_service_status(&status).await?;
     drop(manager);
 
-    logging!(info, Type::Service, "Service is running with a matching version; using it directly");
+    logging!(
+        info,
+        Type::Service,
+        "Service is running with a matching version; using it directly"
+    );
     start_with_existing_service(config_file).await
 }
 
@@ -384,7 +392,11 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
 
     let logs = poll_clash_logs_by_service().await?;
 
-    logging!(info, Type::Service, "Fetched Clash logs through service mode successfully");
+    logging!(
+        info,
+        Type::Service,
+        "Fetched Clash logs through service mode successfully"
+    );
     Ok(logs)
 }
 
@@ -395,7 +407,12 @@ pub(super) async fn poll_clash_logs_by_service() -> Result<Vec<CompactString>> {
 
     if response.code > 0 {
         let err_msg = response.message;
-        logging!(error, Type::Service, "Failed to fetch Clash logs through service mode: {}", err_msg);
+        logging!(
+            error,
+            Type::Service,
+            "Failed to fetch Clash logs through service mode: {}",
+            err_msg
+        );
         bail!(err_msg);
     }
 
@@ -464,9 +481,7 @@ pub fn is_service_ipc_path_exists() -> bool {
 async fn probe_service_version() -> std::result::Result<ServiceStatus, String> {
     match clash_verge_service_ipc::get_version().await {
         Ok(resp) => match resp.data {
-            Some(ver) if ver == clash_verge_service_ipc::VERSION => {
-                Ok(ServiceStatus::Ready)
-            }
+            Some(ver) if ver == clash_verge_service_ipc::VERSION => Ok(ServiceStatus::Ready),
             Some(ver) => {
                 logging!(
                     info,
@@ -578,9 +593,7 @@ impl ServiceManager {
                     "Service version mismatch; using Sidecar mode until the user repairs it"
                 );
                 self.0 = ServiceStatus::NeedsReinstall;
-                return Err(anyhow::anyhow!(
-                    "Service version mismatch; explicit repair required"
-                ));
+                return Err(anyhow::anyhow!("Service version mismatch; explicit repair required"));
             }
             ServiceStatus::ReinstallRequired => {
                 logging!(info, Type::Service, "User requested service reinstall");
@@ -588,22 +601,39 @@ impl ServiceManager {
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::ForceReinstallRequired => {
-                logging!(info, Type::Service, "Service requires a forced reinstall; starting forced reinstall flow");
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service requires a forced reinstall; starting forced reinstall flow"
+                );
                 force_reinstall_service()?;
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::InstallRequired => {
-                logging!(info, Type::Service, "Service installation required; starting installation flow");
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service installation required; starting installation flow"
+                );
                 install_service()?;
                 wait_and_check_service_available(self).await?;
             }
             ServiceStatus::UninstallRequired => {
-                logging!(info, Type::Service, "Service uninstallation required; starting uninstallation flow");
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service uninstallation required; starting uninstallation flow"
+                );
                 uninstall_service()?;
                 self.0 = ServiceStatus::Unavailable("Service Uninstalled".into());
             }
             ServiceStatus::Unavailable(reason) => {
-                logging!(info, Type::Service, "Service unavailable: {}; using Sidecar mode", reason);
+                logging!(
+                    info,
+                    Type::Service,
+                    "Service unavailable: {}; using Sidecar mode",
+                    reason
+                );
                 self.0 = ServiceStatus::Unavailable(reason.clone());
                 return Err(anyhow::anyhow!("Service unavailable: {}", reason));
             }

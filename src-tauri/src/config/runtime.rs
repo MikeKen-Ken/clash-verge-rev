@@ -240,8 +240,7 @@ impl IRuntime {
     /// 是否仅为代理页「屏蔽广告」开关（写入 runtime 后 `reload_config`，使 `RULE-SET,ads,REJECT` 立刻生效）。
     #[inline]
     pub fn is_proxy_ads_block_only_patch(patch: &Mapping) -> bool {
-        !patch.is_empty()
-            && patch.keys().all(|k| k.as_str() == Some("proxy-ads-block"))
+        !patch.is_empty() && patch.keys().all(|k| k.as_str() == Some("proxy-ads-block"))
     }
 
     /// 更新链式代理配置

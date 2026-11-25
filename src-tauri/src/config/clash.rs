@@ -41,10 +41,7 @@ impl IClashTemp {
                         }
                         #[cfg(target_os = "macos")]
                         {
-                            let stack = tun
-                                .get("stack")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
+                            let stack = tun.get("stack").and_then(|v| v.as_str()).unwrap_or("");
                             if stack.is_empty() || stack.eq_ignore_ascii_case("gvisor") {
                                 tun.insert("stack".into(), "mixed".into());
                             }

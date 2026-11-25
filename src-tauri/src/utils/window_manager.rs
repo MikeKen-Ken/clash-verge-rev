@@ -324,6 +324,7 @@ impl WindowManager {
                 *MAIN_WINDOW_RESUME_PATH.lock() = Some(url.path().to_owned());
             }
             let _ = window.destroy();
+            crate::module::window_liveness::note_window_destroyed();
             logging!(info, Type::Window, "窗口已摧毁");
             #[cfg(target_os = "macos")]
             {

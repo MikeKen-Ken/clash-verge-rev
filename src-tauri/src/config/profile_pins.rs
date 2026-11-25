@@ -36,7 +36,10 @@ impl IProfiles {
             });
         }
         Ok(selected.len() != before.len()
-            || selected.iter().zip(before.iter()).any(|(a, b)| a.name != b.name || a.now != b.now))
+            || selected
+                .iter()
+                .zip(before.iter())
+                .any(|(a, b)| a.name != b.name || a.now != b.now))
     }
 }
 

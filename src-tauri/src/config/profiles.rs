@@ -209,11 +209,7 @@ impl IProfiles {
                 patch!(each, item, option);
                 // 仅当请求显式携带 home 时才更新，避免部分 patch（如只改 option）清空已保存的面板链接
                 if item.home.is_some() {
-                    each.home = item
-                        .home
-                        .as_ref()
-                        .filter(|s| !s.is_empty())
-                        .cloned();
+                    each.home = item.home.as_ref().filter(|s| !s.is_empty()).cloned();
                 }
 
                 self.items = Some(items);
@@ -373,7 +369,6 @@ impl IProfiles {
         }
         None
     }
-
 }
 
 // 特殊的Send-safe helper函数，完全避免跨await持有guard

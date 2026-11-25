@@ -72,10 +72,7 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
         // macOS：纠正易导致 DNS 回环的组合（gvisor / strict-route:false）
         #[cfg(target_os = "macos")]
         {
-            let stack = tun_val
-                .get(Value::from("stack"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let stack = tun_val.get(Value::from("stack")).and_then(|v| v.as_str()).unwrap_or("");
             if stack.is_empty() || stack.eq_ignore_ascii_case("gvisor") {
                 revise!(tun_val, "stack", "mixed");
             }

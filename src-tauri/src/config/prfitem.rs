@@ -280,7 +280,14 @@ impl PrfItem {
 
         // 使用网络管理器发送请求
         let resp = match NetworkManager::new()
-            .get_with_interrupt(url, proxy_type, Some(timeout), user_agent.clone(), accept_invalid_certs, None)
+            .get_with_interrupt(
+                url,
+                proxy_type,
+                Some(timeout),
+                user_agent.clone(),
+                accept_invalid_certs,
+                None,
+            )
             .await
         {
             Ok(r) => r,

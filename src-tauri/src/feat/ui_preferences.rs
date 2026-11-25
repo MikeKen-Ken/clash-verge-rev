@@ -1,7 +1,10 @@
 use crate::{constants::files::UI_PREFERENCES, utils::dirs};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use tokio::fs;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -24,10 +27,7 @@ fn ui_preferences_path() -> Result<PathBuf> {
 }
 
 fn prefs_has_data(prefs: &UiPreferences) -> bool {
-    prefs
-        .connection_table_order
-        .as_ref()
-        .is_some_and(|o| !o.is_empty())
+    prefs.connection_table_order.as_ref().is_some_and(|o| !o.is_empty())
         || prefs
             .connection_table_visibility
             .as_ref()
@@ -57,22 +57,11 @@ async fn write_ui_preferences(path: &Path, prefs: &UiPreferences) -> Result<()> 
     Ok(())
 }
 
-pub async fn save_connection_table_ui(
-    order: Vec<String>,
-    visibility: HashMap<String, bool>,
-) -> Result<()> {
+pub async fn save_connection_table_ui(order: Vec<String>, visibility: HashMap<String, bool>) -> Result<()> {
     let path = ui_preferences_path()?;
     let mut prefs = read_ui_preferences(&path).await?;
-    prefs.connection_table_order = if order.is_empty() {
-        None
-    } else {
-        Some(order)
-    };
-    prefs.connection_table_visibility = if visibility.is_empty() {
-        None
-    } else {
-        Some(visibility)
-    };
+    prefs.connection_table_order = if order.is_empty() { None } else { Some(order) };
+    prefs.connection_table_visibility = if visibility.is_empty() { None } else { Some(visibility) };
     write_ui_preferences(&path, &prefs).await
 }
 
@@ -80,20 +69,14 @@ pub async fn get_connection_table_ui() -> Result<ConnectionTableUiState> {
     let path = ui_preferences_path()?;
     let prefs = read_ui_preferences(&path).await?;
     Ok(ConnectionTableUiState {
-        order: prefs
-            .connection_table_order
-            .filter(|order| !order.is_empty()),
+        order: prefs.connection_table_order.filter(|order| !order.is_empty()),
         visibility: prefs.connection_table_visibility,
     })
 }
 
 pub async fn ui_preferences_backup_path() -> Result<Option<PathBuf>> {
     let path = ui_preferences_path()?;
-    if path.exists() {
-        Ok(Some(path))
-    } else {
-        Ok(None)
-    }
+    if path.exists() { Ok(Some(path)) } else { Ok(None) }
 }
 
 pub async fn ensure_ui_preferences_in_backup(

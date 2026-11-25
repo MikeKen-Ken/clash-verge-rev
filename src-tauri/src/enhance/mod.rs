@@ -16,8 +16,7 @@ use self::{
 };
 use crate::{
     config::{ClashMode, Config, IVerge, runtime::IRuntime},
-    constants,
-    session_rules,
+    constants, session_rules,
     utils::{dirs, tmpl},
 };
 use clash_verge_logging::{Type, logging};
@@ -116,10 +115,7 @@ async fn get_config_values() -> ConfigValues {
 
     let (clash_core, enable_tun, enable_tun_override, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
-        crate::config::effective_tun_enabled(
-            *enable_tun_mode,
-            crate::config::tun_privilege_available().await,
-        ),
+        crate::config::effective_tun_enabled(*enable_tun_mode, crate::config::tun_privilege_available().await),
         false, // TUN 覆写已取消，不再根据设置覆写 TUN 配置
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
@@ -690,9 +686,9 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
         socks_enabled: _,
         http_enabled: _,
         #[cfg(not(target_os = "windows"))]
-        redir_enabled: _,
+            redir_enabled: _,
         #[cfg(target_os = "linux")]
-        tproxy_enabled: _,
+            tproxy_enabled: _,
     } = cfg_vals;
 
     // collect profile items
@@ -749,16 +745,10 @@ pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>)
     let prev_runtime_config = Config::runtime().await.latest_arc().config.clone();
 
     // 保留用户经 patch_runtime_config 热改的顶层项（含「屏蔽广告」）；否则 generate 会按订阅默认值覆盖，磁盘运行配置与核心 PATCH 不一致
-    IRuntime::merge_persistent_runtime_patch_from_prev(
-        prev_runtime_config.as_ref(),
-        &mut config,
-    );
+    IRuntime::merge_persistent_runtime_patch_from_prev(prev_runtime_config.as_ref(), &mut config);
 
     // 全局/订阅 Merge 须在 persistent patch 之后再次合并，否则 allow-lan、tun、dns 等会被旧运行时覆盖，保存 Merge 后 clash-verge.yaml 看似无变化
-    config = reapply_merge_layers(
-        config,
-        &[global_merge_snapshot, profile_merge_snapshot],
-    );
+    config = reapply_merge_layers(config, &[global_merge_snapshot, profile_merge_snapshot]);
     IRuntime::restore_runtime_patch_after_merge(prev_runtime_config.as_ref(), &mut config);
     let lan_mixed_port = Config::verge().await.latest_arc().lan_mixed_port;
     config = apply_lan_mixed_port(config, lan_mixed_port);
@@ -816,10 +806,7 @@ fn apply_lan_mixed_port(mut config: Mapping, port: Option<u16>) -> Mapping {
 /// 离线模式：强制 rule + MATCH,REJECT，拒绝全部流量。
 fn apply_offline_overrides(mut config: Mapping) -> Mapping {
     config.insert("mode".into(), Value::from("rule"));
-    config.insert(
-        "rules".into(),
-        Value::Sequence(vec![Value::from("MATCH,REJECT")]),
-    );
+    config.insert("rules".into(), Value::Sequence(vec![Value::from("MATCH,REJECT")]));
     config.remove("nameserver-policy");
     logging!(info, Type::Core, "applied offline mode overrides (all traffic REJECT)");
     config
@@ -838,10 +825,7 @@ fn apply_direct_global_overrides(mut config: Mapping, mode: ClashMode) -> Mappin
         ClashMode::Global => "MATCH,Auto",
         _ => unreachable!("only direct/global modes use direct/global overrides"),
     };
-    config.insert(
-        "rules".into(),
-        Value::Sequence(vec![Value::from(match_rule)]),
-    );
+    config.insert("rules".into(), Value::Sequence(vec![Value::from(match_rule)]));
 
     // 删除顶层 nameserver-policy；不改动 nameserver / dns 块
     config.remove("nameserver-policy");
@@ -856,9 +840,7 @@ const PROXY_ADS_NS_POLICY_KEY: &str = "rule-set:ads";
 
 #[inline]
 fn rule_is_proxy_ads(rule: &Value) -> bool {
-    rule.as_str()
-        .map(|s| s.trim() == PROXY_ADS_RULE)
-        .unwrap_or(false)
+    rule.as_str().map(|s| s.trim() == PROXY_ADS_RULE).unwrap_or(false)
 }
 
 #[inline]
@@ -887,11 +869,7 @@ fn default_ads_rule_insert_index(rules: &[Value]) -> usize {
     }
     rules
         .iter()
-        .position(|r| {
-            r.as_str()
-                .map(|s| s.trim().starts_with("MATCH,"))
-                .unwrap_or(false)
-        })
+        .position(|r| r.as_str().map(|s| s.trim().starts_with("MATCH,")).unwrap_or(false))
         .unwrap_or(rules.len())
 }
 
@@ -912,18 +890,13 @@ fn strip_ads_nameserver_policy_from_dns(dns: &mut Mapping) {
 }
 
 pub(crate) fn apply_proxy_ads_block(mut config: Mapping) -> Mapping {
-    let enable_proxy_ads_block = config
-        .get(PROXY_ADS_BLOCK_KEY)
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
+    let enable_proxy_ads_block = config.get(PROXY_ADS_BLOCK_KEY).and_then(Value::as_bool).unwrap_or(true);
 
     if let Some(Value::Mapping(dns)) = config.get_mut("dns") {
         strip_ads_nameserver_policy_from_dns(dns);
     }
     config.remove(&Value::from(constants::proxy_ads::NS_POLICY_INDEX_KEY));
-    config.remove(&Value::from(
-        constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY,
-    ));
+    config.remove(&Value::from(constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY));
 
     let has_ads_rule = config
         .get("rules")
@@ -984,8 +957,8 @@ mod tests {
 
     #[test]
     fn finalizers_reassert_runtime_state_after_merge_reapply() {
-        use crate::config::runtime::IRuntime;
         use super::{finalize_runtime_config, reapply_merge_layers};
+        use crate::config::runtime::IRuntime;
 
         let base: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(
             r#"
@@ -1029,10 +1002,7 @@ tun:
         .expect("runtime yaml");
 
         let mut merged = reapply_merge_layers(base, &[Some(merge)]);
-        let tun = merged
-            .get("tun")
-            .and_then(|v| v.as_mapping())
-            .expect("tun mapping");
+        let tun = merged.get("tun").and_then(|v| v.as_mapping()).expect("tun mapping");
         assert_eq!(
             tun.get("enable").and_then(|v| v.as_bool()),
             Some(true),
@@ -1044,19 +1014,13 @@ tun:
         assert_eq!(merged.get("allow-lan").and_then(|v| v.as_bool()), Some(true));
 
         let config = finalize_runtime_config(merged, false, ClashMode::Direct);
-        let tun = config
-            .get("tun")
-            .and_then(|v| v.as_mapping())
-            .expect("tun mapping");
+        let tun = config.get("tun").and_then(|v| v.as_mapping()).expect("tun mapping");
         assert_eq!(tun.get("enable").and_then(|v| v.as_bool()), Some(false));
         assert_eq!(tun.get("strict-route").and_then(|v| v.as_bool()), Some(false));
         assert_eq!(config.get("allow-lan").and_then(|v| v.as_bool()), Some(true));
 
         assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
-        let rules = config
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("rules");
+        let rules = config.get("rules").and_then(|v| v.as_sequence()).expect("rules");
         assert!(!rules.iter().any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")));
         assert!(rules.iter().any(|r| r.as_str() == Some("MATCH,Direct")));
 
@@ -1088,20 +1052,13 @@ rules:
         .expect("yaml");
         let config = super::finalize_runtime_config(config, false, ClashMode::Rule);
         assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
-        let rules = config
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("rules");
+        let rules = config.get("rules").and_then(|v| v.as_sequence()).expect("rules");
         assert!(
-            rules
-                .iter()
-                .any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")),
+            rules.iter().any(|r| r.as_str() == Some("DOMAIN,example.com,PROXY")),
             "switching UI back to rule must restore profile rules, not keep core GLOBAL",
         );
         assert!(
-            !rules
-                .iter()
-                .all(|r| r.as_str() == Some("MATCH,Auto")),
+            !rules.iter().all(|r| r.as_str() == Some("MATCH,Auto")),
             "rule mode must not collapse to the global MATCH,Auto override",
         );
     }
@@ -1129,10 +1086,7 @@ rules:
             global.get("rule-providers").and_then(|v| v.as_mapping()).is_some(),
             "global override must not drop rule-providers; rule mode hot-swap reuses them",
         );
-        let global_rules = global
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("global rules");
+        let global_rules = global.get("rules").and_then(|v| v.as_sequence()).expect("global rules");
         assert_eq!(global_rules.len(), 1);
         assert_eq!(global_rules[0].as_str(), Some("MATCH,Auto"));
 
@@ -1142,9 +1096,7 @@ rules:
             .and_then(|v| v.as_sequence())
             .expect("rule mode rules");
         assert!(
-            rule_rows
-                .iter()
-                .any(|row| row.as_str() == Some("RULE-SET,ads,REJECT")),
+            rule_rows.iter().any(|row| row.as_str() == Some("RULE-SET,ads,REJECT")),
             "switching back to rule must restore RULE-SET lines",
         );
     }
@@ -1166,7 +1118,11 @@ rules:
             .get("rules")
             .and_then(|value| value.as_sequence())
             .expect("rules");
-        assert!(rules.iter().any(|rule| rule.as_str() == Some("DOMAIN,example.com,PROXY")));
+        assert!(
+            rules
+                .iter()
+                .any(|rule| rule.as_str() == Some("DOMAIN,example.com,PROXY"))
+        );
     }
 
     #[test]
@@ -1182,10 +1138,7 @@ rules:
         .expect("yaml");
         let config = finalize_runtime_config(config, false, ClashMode::Offline);
         assert_eq!(config.get("mode").and_then(|v| v.as_str()), Some("rule"));
-        let rules = config
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("rules");
+        let rules = config.get("rules").and_then(|v| v.as_sequence()).expect("rules");
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].as_str(), Some("MATCH,REJECT"));
     }
@@ -1364,13 +1317,14 @@ dns:
         let config: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(yaml).expect("yaml");
         let config = super::apply_proxy_ads_block(config);
 
-        let rules = config
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("rules");
+        let rules = config.get("rules").and_then(|v| v.as_sequence()).expect("rules");
         assert_eq!(rules.len(), 3);
         assert_eq!(rules[2].as_str(), Some("MATCH,PROXY"));
-        assert!(!rules.iter().any(|r| r.as_str().map(|s| s.trim()) == Some("RULE-SET,ads,REJECT")));
+        assert!(
+            !rules
+                .iter()
+                .any(|r| r.as_str().map(|s| s.trim()) == Some("RULE-SET,ads,REJECT"))
+        );
 
         let policy = config
             .get("dns")
@@ -1378,9 +1332,7 @@ dns:
             .and_then(|d| d.get(&serde_yaml_ng::Value::from("nameserver-policy")))
             .and_then(|p| p.as_mapping())
             .expect("policy");
-        assert!(!policy
-            .iter()
-            .any(|(k, _)| k.as_str() == Some("rule-set:ads")));
+        assert!(!policy.iter().any(|(k, _)| k.as_str() == Some("rule-set:ads")));
 
         assert_eq!(
             config
@@ -1388,9 +1340,11 @@ dns:
                 .and_then(|v| v.as_i64()),
             Some(2)
         );
-        assert!(config
-            .get(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
-            .is_none());
+        assert!(
+            config
+                .get(crate::constants::proxy_ads::NS_POLICY_VALUE_SNAPSHOT_KEY)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1415,10 +1369,7 @@ dns:
 
         let config = super::apply_proxy_ads_block(config);
 
-        let rules = config
-            .get("rules")
-            .and_then(|v| v.as_sequence())
-            .expect("rules");
+        let rules = config.get("rules").and_then(|v| v.as_sequence()).expect("rules");
         assert_eq!(rules.len(), 4);
         assert_eq!(rules[2].as_str(), Some("RULE-SET,ads,REJECT"));
         assert_eq!(rules[3].as_str(), Some("MATCH,PROXY"));
@@ -1432,9 +1383,6 @@ dns:
             .iter()
             .filter_map(|(k, _)| k.as_str())
             .collect();
-        assert_eq!(
-            keys,
-            vec!["rule-set:private", "rule-set:trackerslist", "rule-set:cn",]
-        );
+        assert_eq!(keys, vec!["rule-set:private", "rule-set:trackerslist", "rule-set:cn",]);
     }
 }

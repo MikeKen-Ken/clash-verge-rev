@@ -9,8 +9,8 @@ use std::{
 
 use parking_lot::Mutex;
 use serde::Serialize;
-use tokio::sync::oneshot;
 use tauri::Emitter as _;
+use tokio::sync::oneshot;
 use warp::Filter as _;
 
 use crate::{
@@ -99,8 +99,22 @@ fn collect_lan_urls(port: u16, token: &str) -> CmdResult<Vec<String>> {
 fn is_virtual_interface(name: &str) -> bool {
     let lowered = name.to_ascii_lowercase();
     [
-        "vpn", "tun", "tap", "tailscale", "wireguard", "wg", "v2ray", "utun", "ppp", "loopback",
-        "virtual", "vmware", "hyper-v", "vbox", "docker", "zerotier",
+        "vpn",
+        "tun",
+        "tap",
+        "tailscale",
+        "wireguard",
+        "wg",
+        "v2ray",
+        "utun",
+        "ppp",
+        "loopback",
+        "virtual",
+        "vmware",
+        "hyper-v",
+        "vbox",
+        "docker",
+        "zerotier",
     ]
     .iter()
     .any(|k| lowered.contains(k))
@@ -111,7 +125,8 @@ fn interface_priority(name: &str) -> u8 {
     if is_virtual_interface(&lowered) {
         return 100;
     }
-    if lowered.contains("wi-fi") || lowered.contains("wifi") || lowered.contains("wlan") || lowered.contains("wireless") {
+    if lowered.contains("wi-fi") || lowered.contains("wifi") || lowered.contains("wlan") || lowered.contains("wireless")
+    {
         return 0;
     }
     if lowered.contains("ethernet") || lowered.contains("eth") || lowered.contains("en") {
@@ -121,10 +136,7 @@ fn interface_priority(name: &str) -> u8 {
 }
 
 fn is_usable_lan_ipv4(ip: Ipv4Addr) -> bool {
-    !ip.is_loopback()
-        && !ip.is_unspecified()
-        && !ip.is_multicast()
-        && !ip.is_link_local()
+    !ip.is_loopback() && !ip.is_unspecified() && !ip.is_multicast() && !ip.is_link_local()
 }
 
 fn detect_preferred_ipv4() -> Option<Ipv4Addr> {
@@ -164,8 +176,7 @@ fn pick_primary_url(urls: &[String]) -> Option<String> {
         }
     }
 
-    urls
-        .iter()
+    urls.iter()
         .min_by_key(|u| {
             if u.contains("192.168.") {
                 0u8
@@ -207,40 +218,34 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
     let used_once = std::sync::Arc::new(AtomicBool::new(false));
 
-    let route = warp::path!("share" / String / "runtime.yaml").and_then(
-        move |path_token: String| {
-            let yaml_arc = yaml_arc.clone();
-            let token_expect = token_expect.clone();
-            let used_once = used_once.clone();
-            async move {
-                if path_token != token_expect {
-                    return Err(warp::reject::not_found());
-                }
-                if used_once
-                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                    .is_err()
-                {
-                    return Err(warp::reject::not_found());
-                }
-                let reply = warp::reply::with_header(
-                    yaml_arc.as_ref().clone(),
-                    "Content-Type",
-                    "application/yaml; charset=utf-8",
-                );
-                let _ = crate::core::handle::Handle::app_handle()
-                    .emit("verge://runtime-lan-share-consumed", ());
-                stop_share_if_active(share_id);
-                Ok::<_, warp::Rejection>(reply)
+    let route = warp::path!("share" / String / "runtime.yaml").and_then(move |path_token: String| {
+        let yaml_arc = yaml_arc.clone();
+        let token_expect = token_expect.clone();
+        let used_once = used_once.clone();
+        async move {
+            if path_token != token_expect {
+                return Err(warp::reject::not_found());
             }
-        },
-    );
+            if used_once
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return Err(warp::reject::not_found());
+            }
+            let reply = warp::reply::with_header(
+                yaml_arc.as_ref().clone(),
+                "Content-Type",
+                "application/yaml; charset=utf-8",
+            );
+            let _ = crate::core::handle::Handle::app_handle().emit("verge://runtime-lan-share-consumed", ());
+            stop_share_if_active(share_id);
+            Ok::<_, warp::Rejection>(reply)
+        }
+    });
 
     {
         let mut guard = ACTIVE_LAN_SHARE.lock();
-        *guard = Some(ActiveLanShare {
-            id: share_id,
-            stop_tx,
-        });
+        *guard = Some(ActiveLanShare { id: share_id, stop_tx });
     }
 
     let ttl = RUNTIME_SHARE_TTL_SECS;
@@ -257,11 +262,7 @@ pub async fn start_runtime_config_lan_share() -> CmdResult<RuntimeLanShareInfo> 
             }
         };
 
-        warp::serve(route)
-            .incoming(listener)
-            .graceful(shutdown)
-            .run()
-            .await;
+        warp::serve(route).incoming(listener).graceful(shutdown).run().await;
 
         let mut guard = ACTIVE_LAN_SHARE.lock();
         if let Some(active) = guard.as_ref() {

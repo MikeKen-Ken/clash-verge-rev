@@ -1,7 +1,7 @@
 use super::CmdResult;
 use crate::{
     cmd::StringifyErr as _,
-    config::{runtime::IRuntime, Config, ConfigType},
+    config::{Config, ConfigType, runtime::IRuntime},
     constants,
     core::{CoreManager, handle},
     enhance,
@@ -127,9 +127,9 @@ pub async fn apply_manual_connectivity_proxy_order() -> CmdResult<()> {
             .clone()
             .ok_or_else(|| String::from("Runtime configuration is not ready"))?;
         runtime.edit_draft(|draft| {
-            draft.config = Some(
-                enhance::connectivity_order::apply_manual_connectivity_proxy_order(config),
-            );
+            draft.config = Some(enhance::connectivity_order::apply_manual_connectivity_proxy_order(
+                config,
+            ));
         });
     }
 

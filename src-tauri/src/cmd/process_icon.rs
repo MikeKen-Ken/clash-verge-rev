@@ -15,27 +15,20 @@ const ICON_PX: u32 = 20;
 fn is_transient_install_path(path: &str) -> bool {
     path.split(['\\', '/']).any(|part| {
         let part = part.to_ascii_lowercase();
-        part == "temp"
-            || part == "tmp"
-            || part == "installer"
-            || part.contains("update")
+        part == "temp" || part == "tmp" || part == "installer" || part.contains("update")
     })
 }
 
 /// 同一进程名对应多个路径时，优先实例更多、且不在临时目录中的那个。
 #[cfg(any(windows, test))]
-fn choose_best_path(
-    paths: impl IntoIterator<Item = (std::string::String, usize)>,
-) -> Option<std::string::String> {
+fn choose_best_path(paths: impl IntoIterator<Item = (std::string::String, usize)>) -> Option<std::string::String> {
     let mut best_stable: Option<(std::string::String, usize)> = None;
     let mut best_any: Option<(std::string::String, usize)> = None;
     for (path, count) in paths {
         if best_any.as_ref().is_none_or(|(_, best)| count > *best) {
             best_any = Some((path.clone(), count));
         }
-        if !is_transient_install_path(&path)
-            && best_stable.as_ref().is_none_or(|(_, best)| count > *best)
-        {
+        if !is_transient_install_path(&path) && best_stable.as_ref().is_none_or(|(_, best)| count > *best) {
             best_stable = Some((path, count));
         }
     }
@@ -114,8 +107,7 @@ fn resolve_process_path(process_name: &str) -> Option<std::string::String> {
 
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
     };
 
     let target = process_name.to_lowercase();
@@ -153,12 +145,11 @@ fn resolve_process_path(_process_name: &str) -> Option<std::string::String> {
 
 #[cfg(target_os = "windows")]
 fn process_image_path(pid: u32) -> Option<std::string::String> {
-    use windows::core::PWSTR;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
     };
+    use windows::core::PWSTR;
 
     if pid == 0 {
         return None;
@@ -167,30 +158,23 @@ fn process_image_path(pid: u32) -> Option<std::string::String> {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
         let mut buf = vec![0u16; 1024];
         let mut len = buf.len() as u32;
-        let queried = QueryFullProcessImageNameW(
-            handle,
-            PROCESS_NAME_WIN32,
-            PWSTR(buf.as_mut_ptr()),
-            &mut len,
-        );
+        let queried = QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
         let _ = CloseHandle(handle);
         queried.ok()?;
         if len == 0 {
             return None;
         }
-        Some(std::string::String::from_utf16_lossy(
-            &buf[..len as usize],
-        ))
+        Some(std::string::String::from_utf16_lossy(&buf[..len as usize]))
     }
 }
 
 #[cfg(target_os = "windows")]
 fn extract_shell_icon(exe_path: &str) -> Option<Vec<u8>> {
-    use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
-    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
-    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON};
+    use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize};
+    use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGetFileInfoW};
     use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
+    use windows::core::PCWSTR;
 
     let wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
@@ -226,10 +210,9 @@ fn extract_shell_icon(_exe_path: &str) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 fn render_icon(icon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<Vec<u8>> {
     use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
-        DIB_RGB_COLORS, HGDIOBJ,
+        CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, HGDIOBJ, SelectObject,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{DrawIconEx, GetIconInfo, DI_NORMAL, ICONINFO};
+    use windows::Win32::UI::WindowsAndMessaging::{DI_NORMAL, DrawIconEx, GetIconInfo, ICONINFO};
 
     unsafe {
         let mut icon_info = ICONINFO::default();
@@ -248,15 +231,7 @@ fn render_icon(icon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<V
 
         let bmi = dib_info(width, height);
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let bitmap = CreateDIBSection(
-            Some(hdc),
-            &bmi,
-            DIB_RGB_COLORS,
-            std::ptr::addr_of_mut!(bits),
-            None,
-            0,
-        )
-        .ok();
+        let bitmap = CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, std::ptr::addr_of_mut!(bits), None, 0).ok();
         let Some(bitmap) = bitmap else {
             release_icon_bitmaps(&icon_info);
             let _ = DeleteDC(hdc);
@@ -271,9 +246,7 @@ fn render_icon(icon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<V
             return None;
         }
 
-        let byte_count = (width as usize)
-            .saturating_mul(height as usize)
-            .saturating_mul(4);
+        let byte_count = (width as usize).saturating_mul(height as usize).saturating_mul(4);
         if bits.is_null() || byte_count == 0 {
             release_icon_bitmaps(&icon_info);
             let _ = SelectObject(hdc, old);
@@ -296,7 +269,7 @@ fn render_icon(icon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<V
 
 #[cfg(target_os = "windows")]
 fn icon_size(icon_info: &windows::Win32::UI::WindowsAndMessaging::ICONINFO) -> (i32, i32) {
-    use windows::Win32::Graphics::Gdi::{GetObjectW, BITMAP, HGDIOBJ};
+    use windows::Win32::Graphics::Gdi::{BITMAP, GetObjectW, HGDIOBJ};
 
     let mut bmp = BITMAP::default();
     let read = unsafe {
@@ -306,12 +279,7 @@ fn icon_size(icon_info: &windows::Win32::UI::WindowsAndMessaging::ICONINFO) -> (
             Some(&mut bmp as *mut BITMAP as *mut core::ffi::c_void),
         )
     };
-    if read == 0
-        || bmp.bmWidth <= 0
-        || bmp.bmHeight == 0
-        || bmp.bmWidth > 256
-        || bmp.bmHeight.abs() > 256
-    {
+    if read == 0 || bmp.bmWidth <= 0 || bmp.bmHeight == 0 || bmp.bmWidth > 256 || bmp.bmHeight.abs() > 256 {
         return (32, 32);
     }
     (bmp.bmWidth, bmp.bmHeight.abs())
@@ -319,7 +287,7 @@ fn icon_size(icon_info: &windows::Win32::UI::WindowsAndMessaging::ICONINFO) -> (
 
 #[cfg(target_os = "windows")]
 fn dib_info(width: i32, height: i32) -> windows::Win32::Graphics::Gdi::BITMAPINFO {
-    use windows::Win32::Graphics::Gdi::{BITMAPINFO, BITMAPINFOHEADER, BI_RGB};
+    use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFO, BITMAPINFOHEADER};
 
     BITMAPINFO {
         bmiHeader: BITMAPINFOHEADER {
@@ -347,7 +315,7 @@ fn apply_mask_alpha(
     width: i32,
     height: i32,
 ) {
-    use windows::Win32::Graphics::Gdi::{GetDIBits, GetObjectW, BITMAP, DIB_RGB_COLORS, HGDIOBJ};
+    use windows::Win32::Graphics::Gdi::{BITMAP, DIB_RGB_COLORS, GetDIBits, GetObjectW, HGDIOBJ};
 
     if icon_info.hbmMask.is_invalid() {
         fill_opaque_where_colored(rgba);
@@ -411,16 +379,9 @@ fn png_from_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     use std::io::Cursor;
 
     let image = image::RgbaImage::from_raw(width, height, rgba.to_vec())?;
-    let resized = image::imageops::resize(
-        &image,
-        ICON_PX,
-        ICON_PX,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let resized = image::imageops::resize(&image, ICON_PX, ICON_PX, image::imageops::FilterType::Lanczos3);
     let mut png = Cursor::new(Vec::new());
-    resized
-        .write_to(&mut png, image::ImageFormat::Png)
-        .ok()?;
+    resized.write_to(&mut png, image::ImageFormat::Png).ok()?;
     Some(png.into_inner())
 }
 
@@ -450,9 +411,7 @@ mod tests {
 
     #[test]
     fn temp_and_updater_paths_are_transient() {
-        assert!(is_transient_install_path(
-            r"C:\Users\me\AppData\Local\Temp\Cursor.exe"
-        ));
+        assert!(is_transient_install_path(r"C:\Users\me\AppData\Local\Temp\Cursor.exe"));
         assert!(is_transient_install_path(
             r"C:\Users\me\AppData\Local\cursor-updater\Cursor.exe"
         ));
@@ -467,10 +426,7 @@ mod tests {
             (r"C:\Users\me\AppData\Local\Temp\Cursor.exe".to_owned(), 2),
             (r"C:\Program Files\cursor\Cursor.exe".to_owned(), 1),
         ]);
-        assert_eq!(
-            chosen.as_deref(),
-            Some(r"C:\Program Files\cursor\Cursor.exe")
-        );
+        assert_eq!(chosen.as_deref(), Some(r"C:\Program Files\cursor\Cursor.exe"));
     }
 
     #[test]

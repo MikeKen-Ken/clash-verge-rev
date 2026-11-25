@@ -13,11 +13,12 @@ struct StoreState {
     loaded: bool,
 }
 
-static STORE: once_cell::sync::Lazy<Mutex<StoreState>> =
-    once_cell::sync::Lazy::new(|| Mutex::new(StoreState {
+static STORE: once_cell::sync::Lazy<Mutex<StoreState>> = once_cell::sync::Lazy::new(|| {
+    Mutex::new(StoreState {
         rules: Vec::new(),
         loaded: false,
-    }));
+    })
+});
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -130,16 +131,11 @@ pub fn list_rules() -> Vec<SessionRule> {
     with_store(|store| store.rules.clone())
 }
 
-pub fn add_rule(
-    rule_type: String,
-    payload: String,
-    target: String,
-    label: String,
-) -> SessionRule {
+pub fn add_rule(rule_type: String, payload: String, target: String, label: String) -> SessionRule {
     with_store(|store| {
-        store.rules.retain(|r| {
-            !(r.rule_type == rule_type && r.payload == payload && r.target == target)
-        });
+        store
+            .rules
+            .retain(|r| !(r.rule_type == rule_type && r.payload == payload && r.target == target));
 
         let rule = SessionRule {
             id: nanoid::nanoid!(8).into(),

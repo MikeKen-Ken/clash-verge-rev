@@ -104,9 +104,7 @@ pub(super) fn progress(percent: u8) {
     publish(snapshot);
 }
 
-pub(super) fn finish(
-    outcome: Result<(Vec<PulledDevice>, PulledDevice, Vec<String>), String>,
-) {
+pub(super) fn finish(outcome: Result<(Vec<PulledDevice>, PulledDevice, Vec<String>), String>) {
     let snapshot = {
         let mut status = cell().write();
         status.progress = 100;

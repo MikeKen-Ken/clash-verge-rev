@@ -3,11 +3,7 @@
 use crate::{config::Config, feat, singleton};
 use clash_verge_logging::{Type, logging, logging_error};
 use parking_lot::RwLock;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 
 /// 自首次失败时刻起，在第 5 / 15 / 30 分钟各重试一次。
@@ -46,10 +42,7 @@ impl ProfileUpdateRetry {
     }
 
     fn is_generation_current(&self, uid: &str, generation: u64) -> bool {
-        self.generations
-            .read()
-            .get(uid)
-            .is_some_and(|&g| g == generation)
+        self.generations.read().get(uid).is_some_and(|&g| g == generation)
     }
 
     /// 取消该订阅尚未执行的重试（成功、删除、禁用自动更新等场景）
@@ -100,18 +93,13 @@ impl ProfileUpdateRetry {
                     uid
                 );
 
-                let result = ProfileUpdateRetry::global()
-                    .run_locked_update(&uid, false, false)
-                    .await;
+                let result = ProfileUpdateRetry::global().run_locked_update(&uid, false, false).await;
 
                 match result {
-                    feat::ProfileUpdateResult::DownloadSucceeded | feat::ProfileUpdateResult::Applied | feat::ProfileUpdateResult::ActivationFailed => {
-                        logging!(
-                            info,
-                            Type::Timer,
-                            "[订阅失败重试] uid={} 重试成功，停止后续重试",
-                            uid
-                        );
+                    feat::ProfileUpdateResult::DownloadSucceeded
+                    | feat::ProfileUpdateResult::Applied
+                    | feat::ProfileUpdateResult::ActivationFailed => {
+                        logging!(info, Type::Timer, "[订阅失败重试] uid={} 重试成功，停止后续重试", uid);
                         ProfileUpdateRetry::global().cancel_failure_retries(&uid);
                         return;
                     }
@@ -125,12 +113,7 @@ impl ProfileUpdateRetry {
                         );
                     }
                     feat::ProfileUpdateResult::Skipped => {
-                        logging!(
-                            info,
-                            Type::Timer,
-                            "[订阅失败重试] uid={} 已跳过更新，取消重试链",
-                            uid
-                        );
+                        logging!(info, Type::Timer, "[订阅失败重试] uid={} 已跳过更新，取消重试链", uid);
                         ProfileUpdateRetry::global().cancel_failure_retries(&uid);
                         return;
                     }
@@ -158,14 +141,7 @@ impl ProfileUpdateRetry {
         let _guard = lock.lock().await;
 
         let uid_ss: smartstring::alias::String = uid.into();
-        match feat::update_profile(
-            &uid_ss,
-            None,
-            auto_refresh,
-            ignore_auto_update,
-        )
-        .await
-        {
+        match feat::update_profile(&uid_ss, None, auto_refresh, ignore_auto_update).await {
             Ok(result) => result,
             Err(e) => {
                 logging_error!(Type::Timer, "Failed to update profile uid {}: {}", uid, e);
@@ -187,9 +163,6 @@ impl ProfileUpdateRetry {
         if item.url.is_none() {
             return false;
         }
-        item.option
-            .as_ref()
-            .and_then(|o| o.allow_auto_update)
-            .unwrap_or(true)
+        item.option.as_ref().and_then(|o| o.allow_auto_update).unwrap_or(true)
     }
 }

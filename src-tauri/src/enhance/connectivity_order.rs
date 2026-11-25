@@ -217,11 +217,7 @@ fn sort_names_by_connectivity(
     decorated.into_iter().map(|item| item.2).collect()
 }
 
-fn sort_proxy_mappings(
-    proxies: &mut [Value],
-    stats: &HashMap<String, WeightedStats>,
-    prior_delay_ms: f64,
-) {
+fn sort_proxy_mappings(proxies: &mut [Value], stats: &HashMap<String, WeightedStats>, prior_delay_ms: f64) {
     if proxies.len() <= 1 {
         return;
     }
@@ -233,11 +229,7 @@ fn sort_proxy_mappings(
         return;
     }
     let sorted = sort_names_by_connectivity(&names, stats, prior_delay_ms);
-    let index_by_name: HashMap<String, usize> = sorted
-        .iter()
-        .enumerate()
-        .map(|(i, name)| (name.clone(), i))
-        .collect();
+    let index_by_name: HashMap<String, usize> = sorted.iter().enumerate().map(|(i, name)| (name.clone(), i)).collect();
     proxies.sort_by_key(|item| {
         item.as_mapping()
             .and_then(|m| m.get("name"))
@@ -247,24 +239,13 @@ fn sort_proxy_mappings(
     });
 }
 
-fn sort_group_proxies_list(
-    list: &mut [Value],
-    stats: &HashMap<String, WeightedStats>,
-    prior_delay_ms: f64,
-) {
-    let names: Vec<String> = list
-        .iter()
-        .filter_map(|v| v.as_str().map(String::from))
-        .collect();
+fn sort_group_proxies_list(list: &mut [Value], stats: &HashMap<String, WeightedStats>, prior_delay_ms: f64) {
+    let names: Vec<String> = list.iter().filter_map(|v| v.as_str().map(String::from)).collect();
     if names.len() != list.len() || names.len() <= 1 {
         return;
     }
     let sorted = sort_names_by_connectivity(&names, stats, prior_delay_ms);
-    let index_by_name: HashMap<String, usize> = sorted
-        .iter()
-        .enumerate()
-        .map(|(i, name)| (name.clone(), i))
-        .collect();
+    let index_by_name: HashMap<String, usize> = sorted.iter().enumerate().map(|(i, name)| (name.clone(), i)).collect();
     list.sort_by_key(|v| {
         v.as_str()
             .and_then(|name| index_by_name.get(name).copied())
@@ -333,20 +314,12 @@ pub fn apply_manual_connectivity_proxy_order(config: Mapping) -> Mapping {
 /// 前端同步联通统计 JSON 到数据目录（不触发 reload）。
 pub fn write_connectivity_stats_file(raw_json: &str) -> Result<(), String> {
     transact_connectivity_stats_file(|current| {
-        let mut replacement: serde_json::Value =
-            serde_json::from_str(raw_json).map_err(|e| e.to_string())?;
-        let current: serde_json::Value =
-            serde_json::from_str(current).unwrap_or(serde_json::Value::Null);
-        if let (Some(target), Some(sync)) = (
-            replacement.as_object_mut(),
-            current.get("_sync").cloned(),
-        ) {
+        let mut replacement: serde_json::Value = serde_json::from_str(raw_json).map_err(|e| e.to_string())?;
+        let current: serde_json::Value = serde_json::from_str(current).unwrap_or(serde_json::Value::Null);
+        if let (Some(target), Some(sync)) = (replacement.as_object_mut(), current.get("_sync").cloned()) {
             target.entry("_sync").or_insert(sync);
         }
-        Ok((
-            serde_json::to_string(&replacement).map_err(|e| e.to_string())?,
-            (),
-        ))
+        Ok((serde_json::to_string(&replacement).map_err(|e| e.to_string())?, ()))
     })
 }
 
@@ -362,9 +335,7 @@ pub fn transact_connectivity_stats_file<T>(
         let path = home.join(STATS_FILE);
         let current = match std::fs::read_to_string(&path) {
             Ok(raw) => raw,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                r#"{"v":2,"data":{}}"#.to_string()
-            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => r#"{"v":2,"data":{}}"#.to_string(),
             Err(err) => return Err(err.to_string()),
         };
         let (replacement, result) = transaction(&current)?;
@@ -375,8 +346,7 @@ pub fn transact_connectivity_stats_file<T>(
             .write(true)
             .open(&tmp)
             .map_err(|e| e.to_string())?;
-        file.write_all(replacement.as_bytes())
-            .map_err(|e| e.to_string())?;
+        file.write_all(replacement.as_bytes()).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
@@ -391,18 +361,13 @@ pub fn read_connectivity_stats_file() -> Result<String, String> {
         let path = home.join(STATS_FILE);
         match std::fs::read_to_string(&path) {
             Ok(raw) => Ok(raw),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                Ok(r#"{"v":2,"data":{}}"#.to_string())
-            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(r#"{"v":2,"data":{}}"#.to_string()),
             Err(err) => Err(err.to_string()),
         }
     })
 }
 
-fn with_connectivity_stats_lock<T>(
-    home: &PathBuf,
-    f: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
+fn with_connectivity_stats_lock<T>(home: &PathBuf, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     use fs2::FileExt;
     use std::fs::OpenOptions;
     use std::time::{Duration, Instant};
@@ -468,11 +433,7 @@ mod tests {
 
     #[test]
     fn sort_names_by_penalized_delay_desc() {
-        let names = vec![
-            "node-low".into(),
-            "node-high".into(),
-            "node-untested".into(),
-        ];
+        let names = vec!["node-low".into(), "node-high".into(), "node-untested".into()];
         let mut stats = HashMap::new();
         stats.insert(
             "node-low".into(),
@@ -515,22 +476,8 @@ mod tests {
     fn older_day_counts_less_than_today() {
         let today = NaiveDate::from_ymd_opt(2026, 7, 5).unwrap();
         let mut days = HashMap::new();
-        days.insert(
-            "2026-07-05".into(),
-            DayCounts {
-                s: 10,
-                f: 0,
-                ds: 3000,
-            },
-        );
-        days.insert(
-            "2026-07-02".into(),
-            DayCounts {
-                s: 10,
-                f: 0,
-                ds: 3000,
-            },
-        );
+        days.insert("2026-07-05".into(), DayCounts { s: 10, f: 0, ds: 3000 });
+        days.insert("2026-07-02".into(), DayCounts { s: 10, f: 0, ds: 3000 });
         let weighted = sum_weighted_days(&days, today);
         assert!(weighted.success > 10.0);
         assert!(weighted.success < 20.0);

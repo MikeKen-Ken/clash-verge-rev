@@ -427,12 +427,7 @@ impl Timer {
         let tid = timer.timer_count.fetch_add(1, Ordering::Relaxed);
         let delay_timer = timer.delay_timer.write();
         if let Err(e) = timer.add_task(&delay_timer, uid.clone(), tid, interval, run_at) {
-            logging_error!(
-                Type::Timer,
-                "Failed to reschedule task for uid {}: {}",
-                uid,
-                e
-            );
+            logging_error!(Type::Timer, "Failed to reschedule task for uid {}: {}", uid, e);
             drop(delay_timer);
             let mut timer_map = timer.timer_map.write();
             if timer_map.get(uid).is_some_and(|task| task.task_id == old_tid) {
@@ -547,9 +542,7 @@ impl Timer {
         Self::emit_update_event(uid, true);
 
         let result = match tokio::time::timeout(std::time::Duration::from_secs(40), async {
-            ProfileUpdateRetry::global()
-                .run_locked_update(uid, false, false)
-                .await
+            ProfileUpdateRetry::global().run_locked_update(uid, false, false).await
         })
         .await
         {
@@ -606,10 +599,7 @@ mod tests {
             sanitize_update_interval("a", MAX_UPDATE_INTERVAL_MINUTES),
             Some(MAX_UPDATE_INTERVAL_MINUTES)
         );
-        assert_eq!(
-            sanitize_update_interval("a", MAX_UPDATE_INTERVAL_MINUTES + 1),
-            None
-        );
+        assert_eq!(sanitize_update_interval("a", MAX_UPDATE_INTERVAL_MINUTES + 1), None);
         assert_eq!(sanitize_update_interval("a", 100_000_000_000_000_000), None);
     }
 }

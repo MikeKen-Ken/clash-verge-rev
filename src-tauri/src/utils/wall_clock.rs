@@ -64,9 +64,6 @@ mod tests {
         let last = 1_700_000_000;
         let interval = 24 * 3600;
         let now = last + interval + 60;
-        assert_eq!(
-            next_unix_timestamp(last, interval, now, true),
-            (now + interval) as u64
-        );
+        assert_eq!(next_unix_timestamp(last, interval, now, true), (now + interval) as u64);
     }
 }

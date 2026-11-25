@@ -234,7 +234,12 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
     // 如果获取到文件路径，检查YAML语法
     if let Some(file_path) = config_file_result {
         if !file_path.exists() {
-            logging!(error, Type::Cmd, "Target profile file does not exist: {}", file_path.display());
+            logging!(
+                error,
+                Type::Cmd,
+                "Target profile file does not exist: {}",
+                file_path.display()
+            );
             handle::Handle::notice_message("config_validate::file_not_found", format!("{}", file_path.display()));
             return Err(());
         }
@@ -288,7 +293,12 @@ async fn validate_new_profile(new_profile: &String) -> Result<(), ()> {
 
 /// 执行配置更新并处理结果
 async fn restore_previous_profile(prev_profile: &String) -> CmdResult<()> {
-    logging!(info, Type::Cmd, "Trying to restore the previous profile: {}", prev_profile);
+    logging!(
+        info,
+        Type::Cmd,
+        "Trying to restore the previous profile: {}",
+        prev_profile
+    );
     let restore_profiles = IProfiles {
         current: Some(prev_profile.to_owned()),
         items: None,
@@ -340,10 +350,7 @@ async fn handle_validation_failure(error_msg: String, current_profile: Option<&S
     Ok(false)
 }
 
-async fn handle_update_error<E: std::fmt::Display>(
-    e: E,
-    current_profile: Option<&String>,
-) -> CmdResult<bool> {
+async fn handle_update_error<E: std::fmt::Display>(e: E, current_profile: Option<&String>) -> CmdResult<bool> {
     logging!(warn, Type::Cmd, "更新过程发生错误: {}", e,);
     Config::profiles().await.discard();
     if let Some(prev_profile) = current_profile {
@@ -382,7 +389,11 @@ async fn perform_config_update(current_value: Option<&String>, current_profile: 
 #[tauri::command]
 pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     if !try_begin_profile_switch() {
-        logging!(info, Type::Cmd, "A profile switch is already in progress; abandoning request");
+        logging!(
+            info,
+            Type::Cmd,
+            "A profile switch is already in progress; abandoning request"
+        );
         return Ok(false);
     }
 

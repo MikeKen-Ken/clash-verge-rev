@@ -1,5 +1,5 @@
-use crate::{constants::files::DNS_CONFIG, feat};
 use crate::{config::Config, process::AsyncHandler, utils::dirs};
+use crate::{constants::files::DNS_CONFIG, feat};
 use anyhow::Error;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use clash_verge_logging::{Type, logging};
@@ -74,8 +74,7 @@ impl WebDavClient {
 
         let verge = Config::verge().await.data_arc();
         if verge.webdav_url.is_none() || verge.webdav_username.is_none() || verge.webdav_password.is_none() {
-            let msg: String =
-                "Unable to create web dav client, please make sure the webdav config is correct".into();
+            let msg: String = "Unable to create web dav client, please make sure the webdav config is correct".into();
             return Err(anyhow::Error::msg(msg));
         }
 
@@ -289,11 +288,7 @@ impl WebDavClient {
     /// Upload a small application data object to an explicit WebDAV path.
     pub async fn put_bytes(&self, path: &str, content: Vec<u8>) -> Result<(), Error> {
         let client = self.get_sync_client(Operation::Upload).await?;
-        timeout(
-            Duration::from_secs(TIMEOUT_UPLOAD),
-            client.put(path, content),
-        )
-        .await??;
+        timeout(Duration::from_secs(TIMEOUT_UPLOAD), client.put(path, content)).await??;
         Ok(())
     }
 

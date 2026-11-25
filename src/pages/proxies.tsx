@@ -239,13 +239,25 @@ const ProxyPage = () => {
       return;
     }
 
+    let inFlight = false;
+    const runRefresh = () => {
+      if (inFlight) return;
+      inFlight = true;
+      void refreshProxy()
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+
     if (!wasVisibleRef.current) {
-      refreshProxy().catch(() => {});
+      runRefresh();
     }
     wasVisibleRef.current = true;
-    autoRefreshTimerRef.current = setInterval(() => {
-      refreshProxy().catch(() => {});
-    }, DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS * 1000);
+    autoRefreshTimerRef.current = setInterval(
+      runRefresh,
+      DEFAULT_AUTO_REFRESH_INTERVAL_SECONDS * 1000,
+    );
     return () => {
       if (autoRefreshTimerRef.current) {
         clearInterval(autoRefreshTimerRef.current);

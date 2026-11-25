@@ -61,8 +61,7 @@ impl TrayState {
                             Type::Tray,
                             "icon.ico fallback failed ({ico_err}); trying icon.png"
                         );
-                        tauri::image::Image::from_bytes(include_bytes!("../../../icons/icon.png"))
-                            .map_err(|e| e.into())
+                        tauri::image::Image::from_bytes(include_bytes!("../../../icons/icon.png")).map_err(|e| e.into())
                     }
                 }
             }
@@ -71,10 +70,8 @@ impl TrayState {
 
     async fn get_tray_icon(verge: &IVerge) -> (bool, Vec<u8>) {
         let system_mode = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = crate::config::effective_tun_enabled(
-            verge.enable_tun_mode,
-            crate::config::tun_privilege_available().await,
-        );
+        let tun_mode =
+            crate::config::effective_tun_enabled(verge.enable_tun_mode, crate::config::tun_privilege_available().await);
         match (*system_mode, tun_mode) {
             (true, true) => Self::get_tun_tray_icon(verge).await,
             (true, false) => Self::get_sysproxy_tray_icon(verge).await,
@@ -183,7 +180,11 @@ impl Tray {
 
     pub async fn init(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "Application is exiting; skipping tray initialization");
+            logging!(
+                debug,
+                Type::Tray,
+                "Application is exiting; skipping tray initialization"
+            );
             return Ok(());
         }
 
@@ -208,7 +209,11 @@ impl Tray {
     /// 更新托盘点击行为
     pub async fn update_click_behavior(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "Application is exiting; skipping tray click behavior update");
+            logging!(
+                debug,
+                Type::Tray,
+                "Application is exiting; skipping tray click behavior update"
+            );
             return Ok(());
         }
 
@@ -262,10 +267,7 @@ impl Tray {
                         app_handle,
                         mode,
                         *system_proxy,
-                        crate::config::effective_tun_enabled(
-                            verge.enable_tun_mode,
-                            tun_mode_available,
-                        ),
+                        crate::config::effective_tun_enabled(verge.enable_tun_mode, tun_mode_available),
                         tun_mode_available,
                         profiles_preview,
                         is_lightweight_mode,
@@ -336,7 +338,11 @@ impl Tray {
     /// 更新托盘提示
     pub async fn update_tooltip(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "Application is exiting; skipping tray tooltip update");
+            logging!(
+                debug,
+                Type::Tray,
+                "Application is exiting; skipping tray tooltip update"
+            );
             return Ok(());
         }
 
@@ -344,10 +350,8 @@ impl Tray {
 
         let verge = Config::verge().await.latest_arc();
         let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = crate::config::effective_tun_enabled(
-            verge.enable_tun_mode,
-            crate::config::tun_privilege_available().await,
-        );
+        let tun_mode =
+            crate::config::effective_tun_enabled(verge.enable_tun_mode, crate::config::tun_privilege_available().await);
 
         let switch_map = {
             let mut map = std::collections::HashMap::new();
@@ -403,7 +407,11 @@ impl Tray {
 
     pub async fn update_part(&self) -> Result<()> {
         if handle::Handle::global().is_exiting() {
-            logging!(debug, Type::Tray, "Application is exiting; skipping partial tray update");
+            logging!(
+                debug,
+                Type::Tray,
+                "Application is exiting; skipping partial tray update"
+            );
             return Ok(());
         }
         let verge = Config::verge().await.data_arc();

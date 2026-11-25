@@ -77,6 +77,7 @@ pub async fn build_new_window(resume_path: Option<&str>) -> Result<WebviewWindow
 
     match builder.build() {
         Ok(window) => {
+            crate::module::window_liveness::note_window_created(&window);
             logging_error!(Type::Window, window.set_background_color(Some(background_color)));
             logging_error!(Type::Window, window.eval(INITIAL_LOADING_OVERLAY));
             Ok(window)

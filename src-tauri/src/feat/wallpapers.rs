@@ -88,18 +88,11 @@ fn theme_paths(theme: &IVergeTheme) -> Vec<std::string::String> {
         .map(|path| path.to_string())
         .collect();
     if paths.is_empty() {
-        if let Some(image) = theme
-            .background_image
-            .clone()
-            .filter(|value| !value.is_empty())
-        {
+        if let Some(image) = theme.background_image.clone().filter(|value| !value.is_empty()) {
             paths.push(image.to_string());
         }
     }
-    paths
-        .into_iter()
-        .filter(|path| Path::new(path).is_file())
-        .collect()
+    paths.into_iter().filter(|path| Path::new(path).is_file()).collect()
 }
 
 pub async fn encode_wallpaper_pack() -> Result<PathBuf> {
@@ -116,11 +109,7 @@ pub async fn encode_wallpaper_pack() -> Result<PathBuf> {
         return Err(anyhow!("Wallpaper library has too many images"));
     }
 
-    let playback = theme
-        .background_playback
-        .as_deref()
-        .unwrap_or("fixed")
-        .to_string();
+    let playback = theme.background_playback.as_deref().unwrap_or("fixed").to_string();
     let interval = theme.background_interval_seconds.unwrap_or(300);
     let mut sources = Vec::with_capacity(paths.len());
     let mut seen_ids = HashSet::new();
@@ -149,8 +138,7 @@ pub async fn encode_wallpaper_pack() -> Result<PathBuf> {
             return Err(anyhow!("Wallpaper library contains duplicate file names"));
         }
         let metadata = fs::metadata(src).await?;
-        let size = usize::try_from(metadata.len())
-            .map_err(|_| anyhow!("Wallpaper image size is not supported"))?;
+        let size = usize::try_from(metadata.len()).map_err(|_| anyhow!("Wallpaper image size is not supported"))?;
         if size == 0 {
             return Err(anyhow!("Wallpaper image is empty: {file_name}"));
         }
@@ -188,8 +176,7 @@ pub async fn encode_wallpaper_pack() -> Result<PathBuf> {
     let encode_result: Result<()> = async {
         let file = std::fs::File::create(&tmp)?;
         let mut zip = ZipWriter::new(file);
-        let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
         let mut actual_payload_bytes = manifest_bytes.len();
 
         for source in &sources {
@@ -247,17 +234,15 @@ fn decode_wallpaper_pack(bytes: &[u8]) -> Result<DecodedWallpaperPack> {
         if name.contains("..") {
             return Err(anyhow!("wallpaper pack contains path traversal"));
         }
-        let declared_size = usize::try_from(entry.size())
-            .map_err(|_| anyhow!("wallpaper pack entry size is not supported"))?;
+        let declared_size =
+            usize::try_from(entry.size()).map_err(|_| anyhow!("wallpaper pack entry size is not supported"))?;
         if declared_size > MAX_ENTRY_BYTES {
             return Err(anyhow!("wallpaper pack entry too large"));
         }
         let remaining = MAX_PACK_BYTES.saturating_sub(total);
         let allowed = MAX_ENTRY_BYTES.min(remaining);
         let mut buf = Vec::with_capacity(declared_size.min(allowed));
-        entry
-            .take((allowed + 1) as u64)
-            .read_to_end(&mut buf)?;
+        entry.take((allowed + 1) as u64).read_to_end(&mut buf)?;
         if buf.len() > MAX_ENTRY_BYTES {
             return Err(anyhow!("wallpaper pack entry too large"));
         }
@@ -287,9 +272,7 @@ fn decode_wallpaper_pack(bytes: &[u8]) -> Result<DecodedWallpaperPack> {
     let mut referenced_file_names = HashSet::new();
     for item in &manifest.items {
         if item.id.is_empty() || !referenced_ids.insert(item.id.clone()) {
-            return Err(anyhow!(
-                "wallpaper manifest contains a blank or duplicate image ID"
-            ));
+            return Err(anyhow!("wallpaper manifest contains a blank or duplicate image ID"));
         }
         let file_name = safe_wallpaper_file_name(&item.file_name)
             .ok_or_else(|| anyhow!("wallpaper manifest contains an invalid file name"))?;
@@ -385,8 +368,7 @@ mod tests {
     fn zip_with_entry(name: &str, content: &[u8]) -> Vec<u8> {
         let cursor = Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(cursor);
-        let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         zip.start_file(name, options).unwrap();
         zip.write_all(content).unwrap();
         zip.finish().unwrap().into_inner()

@@ -11,13 +11,19 @@ const HEARTBEAT_GAP_MS = 5_000;
 export function useWindowHeartbeat() {
   useEffect(() => {
     let stopped = false;
+    let inFlight = false;
     let lastSent = 0;
     let frame = 0;
 
     const send = (now: number) => {
-      if (stopped || now - lastSent < HEARTBEAT_GAP_MS) return;
+      if (stopped || inFlight || now - lastSent < HEARTBEAT_GAP_MS) return;
+      inFlight = true;
       lastSent = now;
-      void invoke("window_heartbeat").catch(() => {});
+      void invoke("window_heartbeat")
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+        });
     };
 
     const loop = (now: number) => {

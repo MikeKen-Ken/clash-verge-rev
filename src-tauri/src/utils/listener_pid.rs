@@ -2,17 +2,118 @@
 //! replace one whose window no longer answers.
 
 pub fn terminate_app_listeners(port: u16) -> bool {
+    terminate_previous_instance(port)
+}
+
+/// Another Clash window or its mihomo sidecar is still running.
+pub fn other_instance_running() -> bool {
     let mine = std::process::id();
-    let mut found = false;
-    let mut terminated = true;
-    for pid in listener_pids(port) {
-        if pid == 0 || pid == mine || !is_app_process(pid) {
-            continue;
-        }
-        found = true;
-        terminated &= terminate_pid(pid);
+    process_rows()
+        .into_iter()
+        .any(|(pid, _, exe)| pid != mine && (exe_is_ui(&exe) || exe_is_sidecar(&exe)))
+}
+
+/// End the previous UI, its WebView children, and the mihomo sidecar.
+/// The current process is left alone. An already-exited pid counts as done.
+pub fn terminate_previous_instance(port: u16) -> bool {
+    let pids = instance_pids(port);
+    if pids.is_empty() {
+        return true;
     }
-    found && terminated
+    pids.into_iter().all(terminate_pid)
+}
+
+fn instance_pids(port: u16) -> Vec<u32> {
+    let mine = std::process::id();
+    let rows = process_rows();
+    let mut pids = Vec::new();
+    for (pid, _, exe) in &rows {
+        if *pid != 0 && *pid != mine && (exe_is_ui(exe) || exe_is_sidecar(exe)) {
+            push_pid(&mut pids, *pid);
+        }
+    }
+    // WebView children are parented under the browser process, not the UI.
+    let mut grew = true;
+    while grew {
+        grew = false;
+        for (pid, parent, exe) in &rows {
+            if *pid != mine && exe_is_webview(exe) && pids.contains(parent) && !pids.contains(pid) {
+                pids.push(*pid);
+                grew = true;
+            }
+        }
+    }
+    for pid in listener_pids(port) {
+        if pid != 0 && pid != mine && is_app_process(pid) {
+            push_pid(&mut pids, pid);
+        }
+    }
+    pids
+}
+
+fn push_pid(pids: &mut Vec<u32>, pid: u32) {
+    if !pids.contains(&pid) {
+        pids.push(pid);
+    }
+}
+
+pub fn exe_is_ui(name: &str) -> bool {
+    let file = file_name(name);
+    file.contains("clash-verge") || file.contains("clash verge")
+}
+
+pub fn exe_is_sidecar(name: &str) -> bool {
+    let file = file_name(name);
+    let stem = file.strip_suffix(".exe").unwrap_or(&file);
+    stem == "mihomo" || stem.starts_with("verge-mihomo")
+}
+
+fn exe_is_webview(name: &str) -> bool {
+    file_name(name).contains("msedgewebview2")
+}
+
+fn file_name(name: &str) -> std::string::String {
+    name.rsplit(['\\', '/']).next().unwrap_or(name).to_lowercase()
+}
+
+#[cfg(windows)]
+fn process_rows() -> Vec<(u32, u32, std::string::String)> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
+    };
+
+    let mut rows = Vec::new();
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return rows;
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                let exe = wide_exe(&entry.szExeFile);
+                rows.push((entry.th32ProcessID, entry.th32ParentProcessID, exe));
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snapshot);
+    }
+    rows
+}
+
+fn wide_exe(buf: &[u16]) -> std::string::String {
+    let end = buf.iter().position(|&unit| unit == 0).unwrap_or(buf.len());
+    std::string::String::from_utf16_lossy(&buf[..end])
+}
+
+#[cfg(not(windows))]
+fn process_rows() -> Vec<(u32, u32, std::string::String)> {
+    Vec::new()
 }
 
 #[cfg(windows)]
@@ -150,12 +251,22 @@ fn terminate_pid(pid: u32) -> bool {
     unsafe {
         let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
         if handle.is_null() {
-            return false;
+            // 87: the pid is already gone. Anything else is a real failure.
+            return last_error() == 87;
         }
         let ok = TerminateProcess(handle, 1);
         let _ = CloseHandle(handle);
         ok != 0
     }
+}
+
+#[cfg(windows)]
+fn last_error() -> u32 {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLastError() -> u32;
+    }
+    unsafe { GetLastError() }
 }
 
 #[cfg(not(windows))]
@@ -178,5 +289,18 @@ mod tests {
     fn network_order_port_uses_the_first_two_bytes() {
         let raw = u32::from_ne_bytes([0x82, 0x33, 0, 0]);
         assert_eq!(tcp_port(raw), 0x8233);
+    }
+
+    #[test]
+    fn ui_and_sidecar_names_match_the_running_executables() {
+        use super::{exe_is_sidecar, exe_is_ui};
+
+        assert!(exe_is_ui("clash-verge.exe"));
+        assert!(exe_is_ui(r"C:\Program Files\Clash Verge\clash-verge.exe"));
+        assert!(!exe_is_ui("verge-mihomo-custom.exe"));
+        assert!(exe_is_sidecar("verge-mihomo-custom.exe"));
+        assert!(exe_is_sidecar("mihomo.exe"));
+        assert!(!exe_is_sidecar("clash-verge.exe"));
+        assert!(!exe_is_sidecar("msedgewebview2.exe"));
     }
 }

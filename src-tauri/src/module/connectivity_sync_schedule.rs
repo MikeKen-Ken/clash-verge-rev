@@ -57,12 +57,7 @@ impl Default for ConnectivitySyncSettings {
 }
 
 fn webdav_ready(verge: &IVerge) -> bool {
-    let url = verge
-        .webdav_url
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
+    let url = verge.webdav_url.as_deref().unwrap_or("").trim().to_ascii_lowercase();
     let username = verge.webdav_username.as_deref().unwrap_or("").trim();
     let password = verge.webdav_password.as_deref().unwrap_or("");
     url.starts_with("https://") && !username.is_empty() && !password.is_empty()
@@ -70,23 +65,9 @@ fn webdav_ready(verge: &IVerge) -> bool {
 
 fn webdav_fingerprint(verge: &IVerge) -> u64 {
     let mut hasher = DefaultHasher::new();
-    verge
-        .webdav_url
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .hash(&mut hasher);
-    verge
-        .webdav_username
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .hash(&mut hasher);
-    verge
-        .webdav_password
-        .as_deref()
-        .unwrap_or("")
-        .hash(&mut hasher);
+    verge.webdav_url.as_deref().unwrap_or("").trim().hash(&mut hasher);
+    verge.webdav_username.as_deref().unwrap_or("").trim().hash(&mut hasher);
+    verge.webdav_password.as_deref().unwrap_or("").hash(&mut hasher);
     hasher.finish()
 }
 
@@ -99,11 +80,7 @@ fn backoff_delay_ms(failure_streak: u32) -> u64 {
 }
 
 /// `last_sync_at` and `now` are unix milliseconds, matching the persisted merge clock.
-pub fn is_connectivity_auto_merge_due(
-    last_sync_at_ms: i64,
-    interval_hours: u32,
-    now_ms: i64,
-) -> bool {
+pub fn is_connectivity_auto_merge_due(last_sync_at_ms: i64, interval_hours: u32, now_ms: i64) -> bool {
     let hours = interval_hours.clamp(MIN_INTERVAL_HOURS, MAX_INTERVAL_HOURS);
     wall_clock::is_due(last_sync_at_ms, hours as i64 * MS_PER_HOUR, now_ms)
 }
@@ -252,7 +229,7 @@ impl ConnectivitySyncScheduler {
 
 #[cfg(test)]
 mod tests {
-    use super::{backoff_delay_ms, is_connectivity_auto_merge_due, MS_PER_HOUR};
+    use super::{MS_PER_HOUR, backoff_delay_ms, is_connectivity_auto_merge_due};
 
     const NOW: i64 = 1_700_000_000_000;
     const MINUTE_MS: u64 = 60 * 1000;

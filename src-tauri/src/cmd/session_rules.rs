@@ -1,5 +1,8 @@
 use super::CmdResult;
-use crate::{feat, session_rules::{self, SessionRule}};
+use crate::{
+    feat,
+    session_rules::{self, SessionRule},
+};
 use smartstring::alias::String;
 
 #[tauri::command]
@@ -15,9 +18,7 @@ pub async fn add_session_rule(
     label: String,
 ) -> CmdResult<SessionRule> {
     let rule = session_rules::add_rule(rule_type, payload, target, label);
-    feat::enhance_profiles()
-        .await
-        .map_err(|e| e.to_string())?;
+    feat::enhance_profiles().await.map_err(|e| e.to_string())?;
     Ok(rule)
 }
 
@@ -26,17 +27,13 @@ pub async fn remove_session_rule(id: String) -> CmdResult {
     if !session_rules::remove_rule(&id) {
         return Err("Temporary rule does not exist".into());
     }
-    feat::enhance_profiles()
-        .await
-        .map_err(|e| e.to_string())?;
+    feat::enhance_profiles().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn clear_session_rules() -> CmdResult {
     session_rules::clear_rules();
-    feat::enhance_profiles()
-        .await
-        .map_err(|e| e.to_string())?;
+    feat::enhance_profiles().await.map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -54,8 +54,8 @@ pub(crate) fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
         bail!("Runtime YAML is larger than 10 MB");
     }
 
-    let mapping = serde_yaml_ng::from_str::<Mapping>(content)
-        .context("Runtime YAML must contain a top-level mapping")?;
+    let mapping =
+        serde_yaml_ng::from_str::<Mapping>(content).context("Runtime YAML must contain a top-level mapping")?;
     if mapping.is_empty() {
         bail!("Runtime YAML is empty");
     }
@@ -65,8 +65,8 @@ pub(crate) fn validate_runtime_yaml(content: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_RUNTIME_YAML_BYTES, SLOT_DESC, SLOT_NAME, SLOT_UID, find_runtime_yaml_slot,
-        new_runtime_yaml_slot_uid, validate_runtime_yaml,
+        MAX_RUNTIME_YAML_BYTES, SLOT_DESC, SLOT_NAME, SLOT_UID, find_runtime_yaml_slot, new_runtime_yaml_slot_uid,
+        validate_runtime_yaml,
     };
     use crate::config::PrfItem;
     use smartstring::alias::String;
@@ -106,10 +106,7 @@ mod tests {
             local_item("Lother", SLOT_NAME, Some(SLOT_DESC)),
             local_item(SLOT_UID, "Renamed", Some(SLOT_DESC)),
         ];
-        assert_eq!(
-            find_runtime_yaml_slot(&items, None).as_deref(),
-            Some(SLOT_UID)
-        );
+        assert_eq!(find_runtime_yaml_slot(&items, None).as_deref(), Some(SLOT_UID));
     }
 
     #[test]
@@ -154,12 +151,7 @@ mod tests {
 }
 
 async fn require_https_webdav() -> anyhow::Result<()> {
-    let url = Config::verge()
-        .await
-        .data_arc()
-        .webdav_url
-        .clone()
-        .unwrap_or_default();
+    let url = Config::verge().await.data_arc().webdav_url.clone().unwrap_or_default();
     if !url.trim().to_ascii_lowercase().starts_with("https://") {
         bail!("WebDAV URL must be https");
     }
@@ -168,10 +160,7 @@ async fn require_https_webdav() -> anyhow::Result<()> {
 
 pub(crate) async fn current_runtime_yaml() -> anyhow::Result<std::string::String> {
     let runtime = Config::runtime().await.latest_arc();
-    let config = runtime
-        .config
-        .as_ref()
-        .context("Runtime YAML is not available")?;
+    let config = runtime.config.as_ref().context("Runtime YAML is not available")?;
     serde_yaml_ng::to_string(config).context("failed to convert config to yaml")
 }
 
@@ -235,10 +224,7 @@ fn rollback_error(error: impl std::fmt::Display, rollback: impl std::fmt::Displa
     format!("{error}; rollback also failed: {rollback}").into()
 }
 
-async fn activate_runtime_yaml_profile(
-    switch_lock: &mut ProfileSwitchLock,
-    uid: String,
-) -> CmdResult<String> {
+async fn activate_runtime_yaml_profile(switch_lock: &mut ProfileSwitchLock, uid: String) -> CmdResult<String> {
     switch_lock.hand_off();
     match patch_profiles_config_locked(
         IProfiles {
@@ -267,13 +253,8 @@ async fn overwrite_runtime_yaml_slot(
         .uid
         .clone()
         .ok_or_else(|| String::from("Runtime YAML profile is missing a uid"))?;
-    let file = existing
-        .file
-        .clone()
-        .unwrap_or_else(|| format!("{uid}.yaml").into());
-    let profile_path = dirs::app_profiles_dir()
-        .stringify_err()?
-        .join(file.as_str());
+    let file = existing.file.clone().unwrap_or_else(|| format!("{uid}.yaml").into());
+    let profile_path = dirs::app_profiles_dir().stringify_err()?.join(file.as_str());
     let previous_content = tokio::fs::read_to_string(&profile_path)
         .await
         .with_context(|| format!("failed to back up runtime YAML profile file \"{file}\""))
@@ -292,12 +273,10 @@ async fn overwrite_runtime_yaml_slot(
 
     match activate_runtime_yaml_profile(switch_lock, uid.clone()).await {
         Ok(uid) => Ok(uid),
-        Err(error) => {
-            match restore_runtime_yaml_slot(&uid, existing, previous_content).await {
-                Ok(()) => Err(error),
-                Err(rollback) => Err(rollback_error(error, rollback)),
-            }
-        }
+        Err(error) => match restore_runtime_yaml_slot(&uid, existing, previous_content).await {
+            Ok(()) => Err(error),
+            Err(rollback) => Err(rollback_error(error, rollback)),
+        },
     }
 }
 
@@ -342,10 +321,7 @@ async fn create_runtime_yaml_slot(
             let Some(items) = profiles.items.as_mut() else {
                 return;
             };
-            let Some(source_index) = items
-                .iter()
-                .position(|item| item.uid.as_ref() == Some(&uid))
-            else {
+            let Some(source_index) = items.iter().position(|item| item.uid.as_ref() == Some(&uid)) else {
                 return;
             };
             let candidate = items.remove(source_index);
@@ -366,14 +342,11 @@ async fn create_runtime_yaml_slot(
     }
 }
 
-async fn import_runtime_yaml_content(
-    name: String,
-    content: std::string::String,
-) -> CmdResult<String> {
+async fn import_runtime_yaml_content(name: String, content: std::string::String) -> CmdResult<String> {
     validate_runtime_yaml(content.as_str()).stringify_err()?;
 
-    let mut switch_lock = ProfileSwitchLock::acquire()
-        .ok_or_else(|| String::from("A profile switch is already in progress"))?;
+    let mut switch_lock =
+        ProfileSwitchLock::acquire().ok_or_else(|| String::from("A profile switch is already in progress"))?;
 
     let profiles = Config::profiles().await.data_arc();
     let previous_items = profiles.items.clone().unwrap_or_default();
@@ -405,16 +378,12 @@ async fn get_remote_runtime_yaml_bytes() -> anyhow::Result<Vec<u8>> {
             .await
             .map_err(|legacy| {
                 if webdav_object_missing(&legacy) {
-                    anyhow::anyhow!(
-                        "No runtime YAML on WebDAV yet. Upload from a running client first."
-                    )
+                    anyhow::anyhow!("No runtime YAML on WebDAV yet. Upload from a running client first.")
                 } else {
                     anyhow::anyhow!("Failed to download runtime YAML from WebDAV: {legacy}")
                 }
             }),
-        Err(error) => Err(anyhow::anyhow!(
-            "Failed to download runtime YAML from WebDAV: {error}"
-        )),
+        Err(error) => Err(anyhow::anyhow!("Failed to download runtime YAML from WebDAV: {error}")),
     }
 }
 

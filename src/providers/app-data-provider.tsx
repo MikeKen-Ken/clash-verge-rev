@@ -17,7 +17,6 @@ import {
   calcuProxies,
   calcuProxyProviders,
   CONNECTIVITY_MERGE_STATUS_EVENT,
-  getAppUptime,
   getRunningMode,
   getSystemProxy,
   type ConnectivityMergeStatus,
@@ -587,12 +586,6 @@ export const AppDataProvider = ({
     SWR_DEFAULTS,
   );
 
-  const { data: uptimeData } = useSWR("appUptime", getAppUptime, {
-    ...SWR_DEFAULTS,
-    refreshInterval: 3000,
-    errorRetryCount: 1,
-  });
-
   // 提供统一的刷新方法
   const refreshAll = useCallback(async () => {
     await Promise.all([
@@ -652,7 +645,7 @@ export const AppDataProvider = ({
       rules: rulesData?.rules || [],
       sysproxy,
       runningMode,
-      uptime: uptimeData || 0,
+      uptime: 0,
 
       // 提供者数据
       proxyProviders: proxyProviders || {},
@@ -675,7 +668,6 @@ export const AppDataProvider = ({
     rulesData,
     sysproxy,
     runningMode,
-    uptimeData,
     proxyProviders,
     ruleProviders,
     verge,

@@ -112,7 +112,8 @@ impl AutoBackupManager {
             *self.settings.write() = settings;
         }
         let _ = self.settings_tx.send_replace(settings);
-        self.last_backup.store(latest_auto_backup_unix(None).await, Ordering::Release);
+        self.last_backup
+            .store(latest_auto_backup_unix(None).await, Ordering::Release);
         self.maybe_start_runner(settings);
         Ok(())
     }
@@ -173,14 +174,9 @@ impl AutoBackupManager {
             let duration_secs = current.interval_hours.saturating_mul(3600);
             let last = latest_auto_backup_unix(Some(AutoBackupTrigger::Scheduled.slug())).await;
             let now = Local::now().timestamp();
-            let delay_secs = wall_clock::next_unix_timestamp(
-                last,
-                duration_secs as i64,
-                now,
-                just_ran,
-            )
-            .saturating_sub(now as u64)
-            .max(1);
+            let delay_secs = wall_clock::next_unix_timestamp(last, duration_secs as i64, now, just_ran)
+                .saturating_sub(now as u64)
+                .max(1);
             let sleeper = tokio::time::sleep(Duration::from_secs(delay_secs));
             tokio::pin!(sleeper);
 

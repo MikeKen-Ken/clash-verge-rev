@@ -49,12 +49,7 @@ pub async fn apply_group_proxy_order(group: String, proxies: Vec<String>) -> Cmd
 pub async fn clear_proxy_group_manual_selection(group: String) -> CmdResult<()> {
     match crate::utils::mihomo_ipc::delete_proxy_fixed(&group).await {
         Ok(_) => {
-            logging!(
-                info,
-                Type::Cmd,
-                "Cleared manual selection for proxy group: {}",
-                group
-            );
+            logging!(info, Type::Cmd, "Cleared manual selection for proxy group: {}", group);
             Ok(())
         }
         Err(e) => {

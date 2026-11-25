@@ -1,23 +1,15 @@
-use crate::{
-    config::Config, core::backup::WebDavClient, enhance::connectivity_order,
-    utils::dirs,
-};
+use crate::{config::Config, core::backup::WebDavClient, enhance::connectivity_order, utils::dirs};
 use anyhow::{Context, Error};
-use clash_verge_logging::{Type, logging};
 use chrono::{Duration, Local, NaiveDate, Utc};
+use clash_verge_logging::{Type, logging};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs,
-    io::Write as _,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fs, io::Write as _, path::PathBuf};
 
 mod protocol;
 mod status;
 use protocol::*;
-pub use status::{current as connectivity_merge_status, ConnectivityMergeStatus, PulledDevice};
+pub use status::{ConnectivityMergeStatus, PulledDevice, current as connectivity_merge_status};
 
 const PROTOCOL_VERSION: u8 = 2;
 const STORE_VERSION: u8 = 2;
@@ -151,9 +143,7 @@ fn load_state() -> Result<SyncState, Error> {
     let mut state = fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str::<SyncState>(&raw).ok())
-        .filter(|state| {
-            (state.v == 1 || state.v == PROTOCOL_VERSION) && valid_device_id(&state.device_id)
-        })
+        .filter(|state| (state.v == 1 || state.v == PROTOCOL_VERSION) && valid_device_id(&state.device_id))
         .unwrap_or_else(|| SyncState {
             v: PROTOCOL_VERSION,
             device_id: nanoid::nanoid!(24),
@@ -203,9 +193,7 @@ fn prune(data: &mut StatsData) {
             let Ok(parsed) = NaiveDate::parse_from_str(day, "%Y-%m-%d") else {
                 return false;
             };
-            parsed >= cutoff
-                && parsed <= today
-                && (counts.s > 0 || counts.f > 0 || counts.ds > 0)
+            parsed >= cutoff && parsed <= today && (counts.s > 0 || counts.f > 0 || counts.ds > 0)
         });
         !entry.days.is_empty()
     });
@@ -289,10 +277,7 @@ fn prepare_local_merge(
         baseline.clear();
     }
     for (name, generation) in &active_resets {
-        if embedded_resets
-            .get(name)
-            .map_or(true, |previous| generation > previous)
-        {
+        if embedded_resets.get(name).map_or(true, |previous| generation > previous) {
             current.data.remove(name);
             baseline.remove(name);
         }
@@ -324,12 +309,7 @@ fn prepare_local_merge(
 }
 
 async fn require_https_webdav() -> Result<(), Error> {
-    let url = Config::verge()
-        .await
-        .data_arc()
-        .webdav_url
-        .clone()
-        .unwrap_or_default();
+    let url = Config::verge().await.data_arc().webdav_url.clone().unwrap_or_default();
     if !url.trim().to_ascii_lowercase().starts_with("https://") {
         return Err(Error::msg("WebDAV URL must be https"));
     }
@@ -346,11 +326,7 @@ pub async fn merge_connectivity_statistics() -> Result<ConnectivitySyncResult, E
     status::begin();
     let result = merge_locked().await;
     status::finish(match &result {
-        Ok(result) => Ok((
-            result.pulled.clone(),
-            result.uploaded.clone(),
-            result.skipped.clone(),
-        )),
+        Ok(result) => Ok((result.pulled.clone(), result.uploaded.clone(), result.skipped.clone())),
         Err(error) => Err(error.to_string()),
     });
     result
@@ -401,9 +377,7 @@ async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
                 }
             };
             let mut snapshot = match serde_json::from_slice::<DeviceSnapshot>(&bytes) {
-                Ok(snapshot) if snapshot_matches(&snapshot, &reference, PROTOCOL_VERSION) => {
-                    snapshot
-                }
+                Ok(snapshot) if snapshot_matches(&snapshot, &reference, PROTOCOL_VERSION) => snapshot,
                 Ok(_) => {
                     skip_reason = Some("snapshot identity mismatch".to_string());
                     candidates.push(None);
@@ -516,13 +490,8 @@ async fn merge_locked() -> Result<ConnectivitySyncResult, Error> {
         clear_all: local_merge.clear_all.clone(),
         device_name: device_name.clone(),
     };
-    let own_path = format!(
-        "{REMOTE_DEVICES_DIR}/{}",
-        snapshot_filename(&state.device_id, slot)
-    );
-    client
-        .put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?)
-        .await?;
+    let own_path = format!("{REMOTE_DEVICES_DIR}/{}", snapshot_filename(&state.device_id, slot));
+    client.put_bytes(&own_path, serde_json::to_vec(&own_snapshot)?).await?;
 
     state.revision = revision;
     state.last_others = remote_others;
@@ -555,8 +524,7 @@ pub async fn reset_connectivity_statistics(proxy_name: Option<&str>) -> Result<(
     let selected_name = proxy_name.filter(|name| !name.is_empty()).map(str::to_string);
     let (next_others, next_resets, next_clear_all) =
         connectivity_order::transact_connectivity_stats_file(|current_raw| {
-            let mut current =
-                parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
+            let mut current = parse_local_stats_file(current_raw).map_err(|error| error.to_string())?;
             let embedded = current.sync.take().unwrap_or_else(|| LocalSyncMetadata {
                 last_others: fallback_others.clone(),
                 reset_watermarks: ResetWatermarks::new(),
@@ -564,18 +532,17 @@ pub async fn reset_connectivity_statistics(proxy_name: Option<&str>) -> Result<(
             });
             let active = merge_reset_watermarks([&state_resets, &embedded.reset_watermarks])
                 .map_err(|error| error.to_string())?;
-            let base_clear_all = merge_clear_all([&state_clear_all, &embedded.clear_all])
-                .map_err(|error| error.to_string())?;
+            let base_clear_all =
+                merge_clear_all([&state_clear_all, &embedded.clear_all]).map_err(|error| error.to_string())?;
             let (resets, clear_all, last_others) = if let Some(name) = selected_name.clone() {
-                let resets = advance_reset_watermarks(&active, [name.clone()], &device_id)
-                    .map_err(|error| error.to_string())?;
+                let resets =
+                    advance_reset_watermarks(&active, [name.clone()], &device_id).map_err(|error| error.to_string())?;
                 let mut last_others = embedded.last_others;
                 current.data.remove(&name);
                 last_others.remove(&name);
                 (resets, base_clear_all, last_others)
             } else {
-                let clear_all = advance_clear_all(&base_clear_all, &device_id)
-                    .map_err(|error| error.to_string())?;
+                let clear_all = advance_clear_all(&base_clear_all, &device_id).map_err(|error| error.to_string())?;
                 current.data.clear();
                 (active, clear_all, StatsData::new())
             };
@@ -584,8 +551,7 @@ pub async fn reset_connectivity_statistics(proxy_name: Option<&str>) -> Result<(
                 reset_watermarks: resets.clone(),
                 clear_all: clear_all.clone(),
             });
-            let replacement =
-                serde_json::to_string(&current).map_err(|error| error.to_string())?;
+            let replacement = serde_json::to_string(&current).map_err(|error| error.to_string())?;
             Ok((replacement, (last_others, resets, clear_all)))
         })
         .map_err(Error::msg)?;
@@ -621,11 +587,7 @@ mod tests {
         let current = data(8, 3);
         let others = data(5, 1);
         let own = subtract(&current, &others);
-        let counts = count_at(
-            &own,
-            "node",
-            &Local::now().format("%Y-%m-%d").to_string(),
-        );
+        let counts = count_at(&own, "node", &Local::now().format("%Y-%m-%d").to_string());
         assert_eq!((counts.s, counts.f), (3, 2));
     }
 
@@ -634,11 +596,7 @@ mod tests {
         let mut merged = StatsData::new();
         add_into(&mut merged, &data(3, 1));
         add_into(&mut merged, &data(5, 2));
-        let counts = count_at(
-            &merged,
-            "node",
-            &Local::now().format("%Y-%m-%d").to_string(),
-        );
+        let counts = count_at(&merged, "node", &Local::now().format("%Y-%m-%d").to_string());
         assert_eq!((counts.s, counts.f), (8, 3));
     }
 

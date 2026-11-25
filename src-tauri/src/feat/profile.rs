@@ -213,11 +213,7 @@ async fn perform_profile_update(
             return Ok(PerformUpdateResult::Succeeded(is_current));
         }
         Err(err) => {
-            logging!(
-                warn,
-                Type::Config,
-                "Warning: [订阅更新] 系统代理更新失败: {err}",
-            );
+            logging!(warn, Type::Config, "Warning: [订阅更新] 系统代理更新失败: {err}",);
             last_err = err;
         }
     }

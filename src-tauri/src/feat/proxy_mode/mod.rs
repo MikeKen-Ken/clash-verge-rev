@@ -18,14 +18,8 @@ pub async fn change_clash_mode(mode: ClashMode) -> Result<()> {
     // Close after the matcher swap (same order as Android PatchMode) so new
     // reconnects use the updated rules. Skip on apply failure so rollback
     // keeps existing flows.
-    let auto_close = Config::verge()
-        .await
-        .latest_arc()
-        .auto_close_connection
-        .unwrap_or(true);
-    if auto_close
-        && let Err(err) = handle::Handle::mihomo().await.close_all_connections().await
-    {
+    let auto_close = Config::verge().await.latest_arc().auto_close_connection.unwrap_or(true);
+    if auto_close && let Err(err) = handle::Handle::mihomo().await.close_all_connections().await {
         logging!(
             error,
             Type::Core,

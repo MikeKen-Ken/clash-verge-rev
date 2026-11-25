@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { mutate } from "swr";
 import { MihomoWebSocket, type LogLevel } from "tauri-plugin-mihomo-api";
 
@@ -51,7 +51,7 @@ function extractProcessName(payload: string): string | undefined {
 }
 
 export const MAX_LOG_NUM = 3000;
-const FLUSH_DELAY_MS = 50;
+const FLUSH_DELAY_MS = 150;
 type LogType = ILogItem["type"];
 
 const DEFAULT_LOG_TYPES: LogType[] = ["debug", "info", "warning", "error"];
@@ -131,11 +131,15 @@ function mergeSnapshotIntoCurrent(
   return clampLogs([...prefix, ...cur]);
 }
 
-export const useLogData = () => {
+export const useLogData = (isActive = true) => {
   const [clashLog] = useClashLog();
   const enableLog = clashLog.enable;
   const logLevel = clashLog.logLevel;
   const allowedTypes = LOG_LEVEL_FILTERS[logLevel] ?? DEFAULT_LOG_TYPES;
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  const flushRef = useRef<(() => void) | null>(null);
+  const clearBufferRef = useRef<(() => void) | null>(null);
 
   const { response, refresh, subscriptionCacheKey } = useMihomoWsSubscription<
     ILogItem[]
@@ -168,6 +172,20 @@ export const useLogData = () => {
         flushTimer = null;
       };
 
+      const flushNow = () => {
+        clearFlushTimer();
+        flush();
+      };
+
+      const clearBuffer = () => {
+        clearFlushTimer();
+        buffer.length = 0;
+        batchTimestamp = null;
+      };
+
+      flushRef.current = flushNow;
+      clearBufferRef.current = clearBuffer;
+
       return {
         handleMessage: (data) => {
           if (data.startsWith("Websocket error")) {
@@ -192,7 +210,10 @@ export const useLogData = () => {
               parsed.processName = extractProcessName(parsed.payload);
             }
             buffer.push(parsed);
-            if (!flushTimer) {
+            if (buffer.length > MAX_LOG_NUM) {
+              buffer.splice(0, buffer.length - MAX_LOG_NUM);
+            }
+            if (isActiveRef.current && !flushTimer) {
               flushTimer = setTimeout(flush, FLUSH_DELAY_MS);
             }
           } catch (error) {
@@ -212,10 +233,24 @@ export const useLogData = () => {
             next(null, (prev) => mergeSnapshotIntoCurrent(prev, snapshot));
           }
         },
-        cleanup: clearFlushTimer,
+        cleanup: () => {
+          clearFlushTimer();
+          if (flushRef.current === flushNow) {
+            flushRef.current = null;
+          }
+          if (clearBufferRef.current === clearBuffer) {
+            clearBufferRef.current = null;
+          }
+        },
       };
     },
   });
+
+  useEffect(() => {
+    if (isActive) {
+      flushRef.current?.();
+    }
+  }, [isActive]);
 
   useEffect(() => {
     if (!logLevel) {
@@ -241,29 +276,36 @@ export const useLogData = () => {
       }
       return;
     }
-    latestStableLogs = d.slice();
+    latestStableLogs = d;
     debugLog("[日志数据] 已更新缓存条数", latestStableLogs.length);
   }, [response.data, response.error]);
 
   // 订阅 key 就绪后把上次缓存塞回 SWR，减轻 $sub$ mutate 触发的短暂空白
   useEffect(() => {
     if (!subscriptionCacheKey || latestStableLogs.length === 0) return;
-    mutate(subscriptionCacheKey, latestStableLogs.slice(), {
+    mutate(subscriptionCacheKey, latestStableLogs, {
       revalidate: false,
     });
     debugLog("[日志数据] 已从 latestStableLogs 回填", latestStableLogs.length);
   }, [subscriptionCacheKey]);
 
-  const refreshGetClashLog = (clear = false) => {
-    if (clear) {
-      latestStableLogs = [];
-      if (subscriptionCacheKey) {
-        mutate(subscriptionCacheKey, []);
+  const refreshGetClashLog = useCallback(
+    (clear = false) => {
+      if (clear) {
+        clearBufferRef.current?.();
+        latestStableLogs = [];
+        if (subscriptionCacheKey) {
+          mutate(subscriptionCacheKey, []);
+        }
+      } else {
+        refresh();
       }
-    } else {
-      refresh();
-    }
-  };
+    },
+    [refresh, subscriptionCacheKey],
+  );
 
-  return { response, refreshGetClashLog };
+  return useMemo(
+    () => ({ response, refreshGetClashLog }),
+    [response, refreshGetClashLog],
+  );
 };

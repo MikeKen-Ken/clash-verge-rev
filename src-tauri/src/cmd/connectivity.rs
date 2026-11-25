@@ -30,14 +30,14 @@ pub async fn connectivity_merge_status() -> CmdResult<feat::ConnectivityMergeSta
 /// Persisted last successful merge time in unix milliseconds.
 #[tauri::command]
 pub async fn connectivity_last_sync_at() -> CmdResult<i64> {
-    feat::last_connectivity_sync_at().await.map_err(|error| error.to_string().into())
+    feat::last_connectivity_sync_at()
+        .await
+        .map_err(|error| error.to_string().into())
 }
 
 /// Persist a reset generation and clear the selected aggregate counters atomically.
 #[tauri::command]
-pub async fn reset_connectivity_stats_sync_baseline(
-    proxy_name: Option<String>,
-) -> CmdResult<()> {
+pub async fn reset_connectivity_stats_sync_baseline(proxy_name: Option<String>) -> CmdResult<()> {
     feat::reset_connectivity_statistics(proxy_name.as_deref())
         .await
         .map_err(|error| error.to_string().into())

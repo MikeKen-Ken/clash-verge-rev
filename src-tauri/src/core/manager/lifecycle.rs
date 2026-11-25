@@ -121,11 +121,7 @@ impl CoreManager {
         use crate::{config::Config, constants::timing};
         use backoff::{Error as BackoffError, ExponentialBackoff};
 
-        let needs_service = Config::verge()
-            .await
-            .latest_arc()
-            .enable_tun_mode
-            .unwrap_or(false);
+        let needs_service = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
 
         if !needs_service {
             return;

@@ -1,4 +1,4 @@
-use super::{StatsData, MAX_SAFE_COUNT};
+use super::{MAX_SAFE_COUNT, StatsData};
 use crate::utils::help;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
@@ -53,9 +53,7 @@ pub(super) fn valid_device_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
-pub(super) fn sanitize_reset_watermarks(
-    input: &ResetWatermarks,
-) -> Result<ResetWatermarks, Error> {
+pub(super) fn sanitize_reset_watermarks(input: &ResetWatermarks) -> Result<ResetWatermarks, Error> {
     if input.len() > MAX_RESET_ENTRIES {
         return Err(Error::msg("too many connectivity reset watermarks"));
     }
@@ -79,9 +77,7 @@ pub(super) fn merge_reset_watermarks<'a>(
     let mut merged = ResetWatermarks::new();
     for part in parts {
         for (name, generation) in sanitize_reset_watermarks(part)? {
-            let should_replace = merged
-                .get(&name)
-                .map_or(true, |current| generation > current.clone());
+            let should_replace = merged.get(&name).map_or(true, |current| generation > current.clone());
             if should_replace {
                 merged.insert(name, generation);
             }
@@ -130,18 +126,10 @@ pub(super) fn snapshot_filename(device_id: &str, slot: u8) -> String {
 
 fn filename_from_href(href: &str) -> Option<String> {
     let decoded = help::get_last_part_and_decode(href.trim_end_matches('/'))?;
-    if decoded.is_empty() {
-        None
-    } else {
-        Some(decoded)
-    }
+    if decoded.is_empty() { None } else { Some(decoded) }
 }
 
-pub(super) fn snapshot_matches(
-    snapshot: &DeviceSnapshot,
-    reference: &RemoteSnapshotRef,
-    protocol_version: u8,
-) -> bool {
+pub(super) fn snapshot_matches(snapshot: &DeviceSnapshot, reference: &RemoteSnapshotRef, protocol_version: u8) -> bool {
     snapshot.v == protocol_version
         && snapshot.device_id == reference.device_id
         && snapshot.slot == reference.slot
@@ -155,18 +143,14 @@ pub(super) fn snapshot_matches(
         && snapshot
             .generations
             .iter()
-            .all(|(name, generation)| {
-                snapshot.data.contains_key(name) && snapshot.resets.get(name) == Some(generation)
-            })
+            .all(|(name, generation)| snapshot.data.contains_key(name) && snapshot.resets.get(name) == Some(generation))
         && snapshot
             .data
             .keys()
             .all(|name| snapshot.generations.get(name) == snapshot.resets.get(name))
 }
 
-pub(super) fn newest_complete_snapshot(
-    candidates: Vec<Option<DeviceSnapshot>>,
-) -> Option<DeviceSnapshot> {
+pub(super) fn newest_complete_snapshot(candidates: Vec<Option<DeviceSnapshot>>) -> Option<DeviceSnapshot> {
     if candidates.iter().any(Option::is_none) {
         return None;
     }
@@ -195,9 +179,7 @@ pub(super) fn reset_names(
         .collect()
 }
 
-pub(super) fn listed_snapshot_refs<'a>(
-    hrefs: impl IntoIterator<Item = &'a str>,
-) -> Vec<RemoteSnapshotRef> {
+pub(super) fn listed_snapshot_refs<'a>(hrefs: impl IntoIterator<Item = &'a str>) -> Vec<RemoteSnapshotRef> {
     let mut listed = Vec::new();
     let mut seen = HashSet::new();
     for href in hrefs {
@@ -227,16 +209,12 @@ pub(super) fn listed_snapshot_refs<'a>(
     listed
 }
 
-pub(super) fn device_limit_exceeded(
-    listed: &[RemoteSnapshotRef],
-    own_device_id: &str,
-) -> bool {
+pub(super) fn device_limit_exceeded(listed: &[RemoteSnapshotRef], own_device_id: &str) -> bool {
     if listed.len() > MAX_REMOTE_FILES {
         return true;
     }
     let devices: HashSet<&str> = listed.iter().map(|item| item.device_id.as_str()).collect();
-    devices.len() > MAX_REMOTE_DEVICES
-        || (!devices.contains(own_device_id) && devices.len() >= MAX_REMOTE_DEVICES)
+    devices.len() > MAX_REMOTE_DEVICES || (!devices.contains(own_device_id) && devices.len() >= MAX_REMOTE_DEVICES)
 }
 
 pub(super) fn clear_all_absent(value: &ResetGeneration) -> bool {
@@ -266,10 +244,7 @@ pub(super) fn merge_clear_all<'a>(
     Ok(best)
 }
 
-pub(super) fn advance_clear_all(
-    current: &ResetGeneration,
-    device_id: &str,
-) -> Result<ResetGeneration, Error> {
+pub(super) fn advance_clear_all(current: &ResetGeneration, device_id: &str) -> Result<ResetGeneration, Error> {
     let current = sanitize_clear_all(current)?;
     if !valid_device_id(device_id) {
         return Err(Error::msg("invalid connectivity device id"));
@@ -284,10 +259,7 @@ pub(super) fn advance_clear_all(
 }
 
 /// Drop every counter in a snapshot recorded before the active clear-all.
-pub(super) fn retain_snapshot_for_clear_all(
-    snapshot: &mut DeviceSnapshot,
-    active: &ResetGeneration,
-) {
+pub(super) fn retain_snapshot_for_clear_all(snapshot: &mut DeviceSnapshot, active: &ResetGeneration) {
     if &snapshot.clear_all != active {
         snapshot.data.clear();
     }
@@ -300,16 +272,8 @@ pub(super) fn filter_snapshot_data(snapshot: &mut DeviceSnapshot, active: &Reset
     });
 }
 
-pub(super) fn generations_for(
-    data: &StatsData,
-    active: &ResetWatermarks,
-) -> ResetWatermarks {
+pub(super) fn generations_for(data: &StatsData, active: &ResetWatermarks) -> ResetWatermarks {
     data.keys()
-        .filter_map(|name| {
-            active
-                .get(name)
-                .cloned()
-                .map(|generation| (name.clone(), generation))
-        })
+        .filter_map(|name| active.get(name).cloned().map(|generation| (name.clone(), generation)))
         .collect()
 }

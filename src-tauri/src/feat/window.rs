@@ -1,10 +1,10 @@
-use anyhow::{Context as _, anyhow};
-use clash_verge_logging::{Type, logging};
 use crate::config::Config;
 use crate::core::{CoreManager, handle, sysopt};
 use crate::module::lightweight;
 use crate::utils;
 use crate::utils::window_manager::WindowManager;
+use anyhow::{Context as _, anyhow};
+use clash_verge_logging::{Type, logging};
 use std::sync::mpsc::RecvTimeoutError;
 use tokio::time::{Duration, timeout};
 

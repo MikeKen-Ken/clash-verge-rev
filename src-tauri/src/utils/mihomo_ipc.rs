@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, HOST};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HOST, HeaderMap, HeaderValue};
 use reqwest::{Method, StatusCode};
 
 use crate::config::{Config, IClashTemp};
@@ -57,8 +57,8 @@ pub(crate) async fn build_ipc_client(timeout: Duration) -> Result<(reqwest::Clie
     headers.insert(HOST, HeaderValue::from_static("localhost"));
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     if let Some(ref s) = secret {
-        let auth = HeaderValue::from_str(&format!("Bearer {s}"))
-            .context("invalid clash secret for Authorization header")?;
+        let auth =
+            HeaderValue::from_str(&format!("Bearer {s}")).context("invalid clash secret for Authorization header")?;
         headers.insert(AUTHORIZATION, auth);
     }
 
@@ -82,10 +82,7 @@ fn encode_rule_provider_path_segment(name: &str) -> String {
         .as_bytes()
         .iter()
         .copied()
-        .filter(|&b| {
-            !(b.is_ascii_alphanumeric()
-                || matches!(b, b'-' | b'_' | b'.' | b'~'))
-        })
+        .filter(|&b| !(b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~')))
         .count();
     let mut out = String::with_capacity(name.len() + reserve * 2);
     for &byte in name.as_bytes() {
@@ -141,10 +138,7 @@ pub async fn post_traffic_reset() -> Result<()> {
     Ok(())
 }
 
-async fn post_typed_network_recovery_request(
-    kind: &str,
-    reason: &str,
-) -> Result<reqwest::Response> {
+async fn post_typed_network_recovery_request(kind: &str, reason: &str) -> Result<reqwest::Response> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
 
     let url = "http://localhost/network/recover";
@@ -158,10 +152,7 @@ async fn post_typed_network_recovery_request(
 }
 
 /// POST `/network/recover` without destructive compatibility behavior.
-pub async fn post_typed_network_recovery(
-    kind: &str,
-    reason: &str,
-) -> Result<NetworkRecoveryStatus> {
+pub async fn post_typed_network_recovery(kind: &str, reason: &str) -> Result<NetworkRecoveryStatus> {
     let response = post_typed_network_recovery_request(kind, reason).await?;
 
     if response.status() == StatusCode::NOT_FOUND {
@@ -187,10 +178,7 @@ pub async fn post_network_recovery(kind: &str, reason: &str) -> Result<NetworkRe
     if !response.status().is_success() {
         anyhow::bail!("POST /network/recover returned {}", response.status());
     }
-    response
-        .json()
-        .await
-        .context("decode POST /network/recover response")
+    response.json().await.context("decode POST /network/recover response")
 }
 
 async fn legacy_network_recovery(kind: &str) -> Result<NetworkRecoveryReport> {
@@ -272,17 +260,12 @@ pub async fn get_rule_provider_preview(provider_name: &str) -> Result<RuleProvid
         );
     }
     let body = response.text().await.context("read rule provider preview body")?;
-    serde_json::from_str(&body).with_context(|| {
-        format!("parse rule provider preview JSON for provider {provider_name:?}")
-    })
+    serde_json::from_str(&body)
+        .with_context(|| format!("parse rule provider preview JSON for provider {provider_name:?}"))
 }
 
 /// PUT `/proxies/{group}` — select a node; `force` skips the extra URLTest in Set().
-pub async fn put_group_selected_proxy(
-    group_name: &str,
-    proxy_name: &str,
-    force: bool,
-) -> Result<()> {
+pub async fn put_group_selected_proxy(group_name: &str, proxy_name: &str, force: bool) -> Result<()> {
     let (client, headers) = build_ipc_client(RESET_TIMEOUT).await?;
     let encoded = encode_path_segment(group_name);
     let url = format!("http://localhost/proxies/{encoded}");
@@ -355,8 +338,7 @@ pub async fn delete_proxy_fixed(group_name: &str) -> Result<()> {
 /// ApplyConfig also recreates the named pipe; a pooled in-flight request then
 /// never sees the HTTP response. A one-shot client avoids that stall.
 pub async fn put_configs_reload(path: &str) -> Result<()> {
-    let (client, headers) =
-        build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
+    let (client, headers) = build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
     let response = client
         .request(Method::PUT, "http://localhost/configs?force=true")
         .headers(headers)
@@ -383,8 +365,7 @@ const RULES_RELOAD_UNSUPPORTED: &str = "core does not support PUT /rules; update
 /// full reload. A 404 means an older sidecar; callers may fall back to
 /// `PUT /configs`.
 pub async fn put_rules_reload(path: &str) -> Result<()> {
-    let (client, headers) =
-        build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
+    let (client, headers) = build_ipc_client(timing::CORE_RELOAD_TIMEOUT + Duration::from_secs(2)).await?;
     let response = client
         .request(Method::PUT, "http://localhost/rules")
         .headers(headers)

@@ -30,6 +30,13 @@ static SHUTDOWN_SENDER: OnceCell<Mutex<Option<oneshot::Sender<()>>>> = OnceCell:
 /// check whether there is already exists
 pub async fn check_singleton() -> Result<()> {
     let port = IVerge::get_singleton_port();
+    // Opening the app again replaces a frozen window. The old process can
+    // still answer its health port, and its sidecar keeps the core ports,
+    // so a health check alone still leaves the user killing both by hand.
+    #[cfg(windows)]
+    if plain_launch() {
+        return replace_previous_instance(port).await;
+    }
     if !is_port_in_use(port) {
         return Ok(());
     }
@@ -47,16 +54,38 @@ pub async fn check_singleton() -> Result<()> {
         Type::Window,
         "Replacing a stuck instance that held the singleton port {port}"
     );
-    if !crate::utils::listener_pid::terminate_app_listeners(port) {
-        bail!("stuck instance still holds the singleton port");
+    replace_previous_instance(port).await
+}
+
+#[cfg(windows)]
+fn plain_launch() -> bool {
+    std::env::args().skip(1).all(|arg| !is_scheme_arg(&arg))
+}
+
+#[cfg(windows)]
+fn is_scheme_arg(arg: &str) -> bool {
+    let arg = arg.to_ascii_lowercase();
+    arg.starts_with("clash:") || arg.starts_with("clash-verge:")
+}
+
+async fn replace_previous_instance(port: u16) -> Result<()> {
+    let running = is_port_in_use(port) || crate::utils::listener_pid::other_instance_running();
+    if !running {
+        return Ok(());
     }
-    for _ in 0..30 {
-        if !is_port_in_use(port) {
+    logging!(
+        warn,
+        Type::Window,
+        "Closing the running Clash window and mihomo before this launch"
+    );
+    crate::utils::listener_pid::terminate_previous_instance(port);
+    for _ in 0..50 {
+        if !is_port_in_use(port) && !crate::utils::listener_pid::other_instance_running() {
             return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    bail!("stuck instance still holds the singleton port")
+    bail!("the previous Clash instance is still running")
 }
 
 async fn probe_health(port: u16) -> HealthReply {

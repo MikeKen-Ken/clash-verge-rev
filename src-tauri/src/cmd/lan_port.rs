@@ -41,11 +41,7 @@ pub async fn refresh_lan_port() -> CmdResult<u16> {
 async fn current_mixed_port() -> u16 {
     let runtime = Config::runtime().await;
     let snapshot = runtime.latest_arc();
-    snapshot
-        .config
-        .as_ref()
-        .map(IClashTemp::guard_mixed_port)
-        .unwrap_or(0)
+    snapshot.config.as_ref().map(IClashTemp::guard_mixed_port).unwrap_or(0)
 }
 
 fn random_ports() -> impl Iterator<Item = u16> {
@@ -59,19 +55,14 @@ fn random_ports() -> impl Iterator<Item = u16> {
     })
 }
 
-fn pick_port(
-    current: u16,
-    candidates: impl Iterator<Item = u16>,
-    free: impl Fn(u16) -> bool,
-) -> Option<u16> {
-    candidates.take(PICK_ATTEMPTS).find(|&port| {
-        port >= LAN_PORT_MIN && port != current && !RESERVED_PORTS.contains(&port) && free(port)
-    })
+fn pick_port(current: u16, candidates: impl Iterator<Item = u16>, free: impl Fn(u16) -> bool) -> Option<u16> {
+    candidates
+        .take(PICK_ATTEMPTS)
+        .find(|&port| port >= LAN_PORT_MIN && port != current && !RESERVED_PORTS.contains(&port) && free(port))
 }
 
 fn can_bind(port: u16) -> bool {
-    TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
-        && UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
+    TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok() && UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
 }
 
 #[cfg(test)]

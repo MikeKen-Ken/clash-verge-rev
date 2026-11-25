@@ -352,11 +352,20 @@ impl IVerge {
         if needs_fix {
             logging!(info, Type::Config, "Saving the corrected configuration file...");
             help::save_yaml(&config_path, &config, Some("# Clash Verge Config")).await?;
-            logging!(info, Type::Config, "Configuration file correction completed; reload required");
+            logging!(
+                info,
+                Type::Config,
+                "Configuration file correction completed; reload required"
+            );
 
             Self::reload_config_after_fix(config).await?;
         } else {
-            logging!(info, Type::Config, "clash_core configuration validated: {:?}", config.clash_core);
+            logging!(
+                info,
+                Type::Config,
+                "clash_core configuration validated: {:?}",
+                config.clash_core
+            );
         }
 
         Ok(())

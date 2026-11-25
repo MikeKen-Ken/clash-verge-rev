@@ -65,7 +65,13 @@ mod tests {
 
     #[test]
     fn activation_outcomes_have_distinct_ipc_values() {
-        assert_eq!(serde_json::to_string(&ProfileUpdateResult::Applied).unwrap(), "\"applied\"");
-        assert_eq!(serde_json::to_string(&ProfileUpdateResult::ActivationFailed).unwrap(), "\"activationFailed\"");
+        assert_eq!(
+            serde_json::to_string(&ProfileUpdateResult::Applied).unwrap(),
+            "\"applied\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ProfileUpdateResult::ActivationFailed).unwrap(),
+            "\"activationFailed\""
+        );
     }
 }

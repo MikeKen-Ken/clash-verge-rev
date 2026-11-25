@@ -94,7 +94,11 @@ pub async fn notify_event<'a>(event: NotificationEvent<'a>) {
         NotificationEvent::MaxConnectTimesDelayTest { group, proxy } => {
             notify(
                 "Request count delay test".into(),
-                format!("Group {} reached the request count limit; testing current node {}", group, proxy).into(),
+                format!(
+                    "Group {} reached the request count limit; testing current node {}",
+                    group, proxy
+                )
+                .into(),
             );
         }
         #[cfg(target_os = "macos")]

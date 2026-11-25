@@ -68,9 +68,7 @@ pub(super) async fn reload_config_resilient(path: &str) -> Result<()> {
     {
         Ok(()) => Ok(()),
         Err(TimeoutRetryError::Operation(err)) => Err(err),
-        Err(TimeoutRetryError::TimedOut { timeout, .. }) => {
-            Err(anyhow!("reload timed out after {:?}", timeout))
-        }
+        Err(TimeoutRetryError::TimedOut { timeout, .. }) => Err(anyhow!("reload timed out after {:?}", timeout)),
     }
 }
 
@@ -82,20 +80,15 @@ mod tests {
     #[tokio::test]
     async fn first_timeout_then_success_matches_mode_switch_symptom() {
         let attempts = AtomicU32::new(0);
-        let result = with_timeout_retry(
-            Duration::from_millis(20),
-            Duration::from_millis(1),
-            2,
-            || {
-                let n = attempts.fetch_add(1, Ordering::SeqCst);
-                async move {
-                    if n == 0 {
-                        tokio::time::sleep(Duration::from_millis(80)).await;
-                    }
-                    Ok::<(), &'static str>(())
+        let result = with_timeout_retry(Duration::from_millis(20), Duration::from_millis(1), 2, || {
+            let n = attempts.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if n == 0 {
+                    tokio::time::sleep(Duration::from_millis(80)).await;
                 }
-            },
-        )
+                Ok::<(), &'static str>(())
+            }
+        })
         .await;
 
         assert_eq!(result, Ok(()));
@@ -105,15 +98,10 @@ mod tests {
     #[tokio::test]
     async fn immediate_success_does_not_retry() {
         let attempts = AtomicU32::new(0);
-        let result = with_timeout_retry(
-            Duration::from_millis(50),
-            Duration::from_millis(1),
-            2,
-            || {
-                attempts.fetch_add(1, Ordering::SeqCst);
-                async { Ok::<(), &'static str>(()) }
-            },
-        )
+        let result = with_timeout_retry(Duration::from_millis(50), Duration::from_millis(1), 2, || {
+            attempts.fetch_add(1, Ordering::SeqCst);
+            async { Ok::<(), &'static str>(()) }
+        })
         .await;
 
         assert_eq!(result, Ok(()));
@@ -123,15 +111,10 @@ mod tests {
     #[tokio::test]
     async fn operation_error_is_not_retried() {
         let attempts = AtomicU32::new(0);
-        let result = with_timeout_retry(
-            Duration::from_millis(50),
-            Duration::from_millis(1),
-            2,
-            || {
-                attempts.fetch_add(1, Ordering::SeqCst);
-                async { Err::<(), _>("invalid config") }
-            },
-        )
+        let result = with_timeout_retry(Duration::from_millis(50), Duration::from_millis(1), 2, || {
+            attempts.fetch_add(1, Ordering::SeqCst);
+            async { Err::<(), _>("invalid config") }
+        })
         .await;
 
         assert_eq!(result, Err(TimeoutRetryError::Operation("invalid config")));

@@ -1,7 +1,7 @@
 use super::{CoreManager, RunningMode};
 use crate::{
     AsyncHandler,
-    config::{sidecar_binary_name, Config, IClashTemp},
+    config::{Config, IClashTemp, sidecar_binary_name},
     core::{handle, logger::Logger, manager::CLASH_LOGGER, service},
     logging,
     utils::{
@@ -42,21 +42,18 @@ impl CoreManager {
         let binary = sidecar_binary_name(clash_core.as_str());
         let config_dir = dirs::app_home_dir()?;
 
-        let command = app_handle
-            .shell()
-            .sidecar(binary)?
-            .args([
-                "-d",
-                dirs::path_to_str(&config_dir)?,
-                "-f",
-                dirs::path_to_str(&config_file)?,
-                if cfg!(windows) {
-                    "-ext-ctl-pipe"
-                } else {
-                    "-ext-ctl-unix"
-                },
-                &IClashTemp::guard_external_controller_ipc(),
-            ]);
+        let command = app_handle.shell().sidecar(binary)?.args([
+            "-d",
+            dirs::path_to_str(&config_dir)?,
+            "-f",
+            dirs::path_to_str(&config_file)?,
+            if cfg!(windows) {
+                "-ext-ctl-pipe"
+            } else {
+                "-ext-ctl-unix"
+            },
+            &IClashTemp::guard_external_controller_ipc(),
+        ]);
 
         // 防御性清理：避免重复调用导致旧子进程与 stdout reader 任务叠加。
         // 放在所有可提前失败的准备步骤之后，减少启动失败时误杀当前可用核心的窗口。
@@ -221,9 +218,7 @@ impl CoreManager {
 
                             let key = message.to_string();
                             if initialized && !previous_matches.contains(&key) {
-                                if let Some((group, proxy)) =
-                                    parse_max_connect_times_test_log(message.as_str())
-                                {
+                                if let Some((group, proxy)) = parse_max_connect_times_test_log(message.as_str()) {
                                     notify_event(NotificationEvent::MaxConnectTimesDelayTest {
                                         group: group.as_str(),
                                         proxy: proxy.as_str(),
