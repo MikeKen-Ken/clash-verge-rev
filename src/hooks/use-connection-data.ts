@@ -18,6 +18,7 @@ import { registerProcessPath } from "./use-process-icon";
 import { useMihomoWsSubscription } from "./use-mihomo-ws-subscription";
 import { useSystemState } from "./use-system-state";
 import { useVerge } from "./use-verge";
+import { useVisibility } from "./use-visibility";
 import {
   DEFAULT_CLOSED_CONNECTIONS_LIMIT,
   type ClosedConnectionsLimit,
@@ -289,6 +290,10 @@ export const useConnectionData = () => {
   const { verge } = useVerge();
   const { isTunModeAvailable } = useSystemState();
   const tunEnabled = (verge?.enable_tun_mode ?? false) && isTunModeAvailable;
+  const visible = useVisibility();
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const flushNowRef = useRef<(() => void) | null>(null);
   const [setting] = useConnectionSetting();
   const closedLimit: ClosedConnectionsLimit =
     setting?.closedConnectionsLimit ?? DEFAULT_CLOSED_CONNECTIONS_LIMIT;
@@ -408,11 +413,19 @@ export const useConnectionData = () => {
 
         const flushPending = () => {
           flushTimer = null;
+          if (!visibleRef.current) return;
           const raw = pendingRaw;
           pendingRaw = null;
           if (!raw || !isMounted()) return;
           applySnapshot(raw);
         };
+
+        const flushNow = () => {
+          clearFlushTimer();
+          flushPending();
+        };
+
+        flushNowRef.current = flushNow;
 
         return {
           handleMessage: (data) => {
@@ -422,16 +435,27 @@ export const useConnectionData = () => {
               return;
             }
 
-            // 节流窗口内只保留最新原文，避免高频快照解析出用不到的对象图
+            // 节流窗口内只保留最新原文；不可见时仅缓存原文，恢复可见后再解析并刷新 UI
             pendingRaw = data;
-            if (!flushTimer) {
+            if (visibleRef.current && !flushTimer) {
               flushTimer = setTimeout(flushPending, CONNECTION_WS_FLUSH_MS);
             }
           },
-          cleanup: clearFlushTimer,
+          cleanup: () => {
+            clearFlushTimer();
+            if (flushNowRef.current === flushNow) {
+              flushNowRef.current = null;
+            }
+          },
         };
       },
     });
+
+  useEffect(() => {
+    if (visible) {
+      flushNowRef.current?.();
+    }
+  }, [visible]);
 
   // 重新进入连接页时从 IndexedDB 恢复上次快照（活跃+已关闭），避免列表空白；若无快照则仅恢复已关闭列表
   useEffect(() => {
